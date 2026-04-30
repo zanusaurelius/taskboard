@@ -1,0 +1,10 @@
+-- CreateTable
+CREATE TABLE "Note" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "title" TEXT NOT NULL DEFAULT '',
+    "content" TEXT NOT NULL DEFAULT '',
+    "projectId" INTEGER,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Note_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);

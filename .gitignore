@@ -39,3 +39,21 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/app/generated/prisma
+
+certificates
+
+# database — never commit user data
+dev.db
+dev.db-shm
+dev.db-wal
+prisma/dev.db
+prisma/dev.db-shm
+prisma/dev.db-wal
+
+# uploaded files — stored outside public/ for auth-gated serving
+/data/
+
+# never let uploads land in public/ where Next.js would serve them without auth
+/public/uploads/

@@ -1,0 +1,11 @@
+.git
+node_modules
+.next
+prisma/dev.db
+prisma/dev.db-shm
+prisma/dev.db-wal
+dev.db
+dev.db-shm
+dev.db-wal
+data/
+.env
