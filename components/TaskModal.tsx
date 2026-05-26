@@ -11,9 +11,12 @@ import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
+import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Switch from "@mui/material/Switch";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ArchiveIcon from "@mui/icons-material/Archive";
@@ -68,7 +71,10 @@ export default function TaskModal({
   const [dueDate, setDueDate]       = useState("");
   const [projectId, setProjectId]   = useState<string>("");
   const [description, setDesc]      = useState("");
+  const [sensitive, setSensitive]   = useState(false);
   const [expanded, setExpanded]     = useState(false);
+
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   // A counter that increments each time the modal opens with a new task,
   // used as the RichTextEditor key to force a fresh editor instance.
@@ -87,6 +93,7 @@ export default function TaskModal({
       setPriority(task.priority || "");
       setDueDate(task.dueDate || "");
       setProjectId(task.projectId);
+      setSensitive(task.sensitive ?? false);
     } else {
       setTitle(defaultTitle);
       setDesc(defaultDescription);
@@ -94,7 +101,7 @@ export default function TaskModal({
       setPriority("");
       setDueDate("");
       setProjectId(projects.length === 1 ? projects[0].id : "");
-
+      setSensitive(false);
     }
     setExpanded(false);
   // Intentionally exclude `projects` — a new array reference from the store
@@ -111,10 +118,17 @@ export default function TaskModal({
       priority: (priority as Task["priority"]) || null,
       dueDate: dueDate || null,
       projectId,
+      sensitive,
     });
   };
 
   const descMinHeight = expanded ? 460 : 130;
+
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => titleInputRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [open]);
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth={expanded ? "lg" : "sm"}>
@@ -139,18 +153,23 @@ export default function TaskModal({
         <TextField
           label="Title" value={title}
           onChange={(e) => setTitle(e.target.value)}
-          fullWidth required autoFocus
+          fullWidth required inputRef={titleInputRef}
         />
 
         <Box sx={{ display: "flex", gap: 2 }}>
-          <FormControl fullWidth required>
-            <InputLabel>Project</InputLabel>
-            <Select value={projectId} label="Project" onChange={(e) => setProjectId(e.target.value)}>
-              {projects.filter((p) => !p.archived).map((p) => (
-                <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Autocomplete
+            fullWidth
+            options={projects.filter((p) => !p.archived)}
+            getOptionLabel={(p) => p.name}
+            isOptionEqualToValue={(opt, val) => opt.id === val.id}
+            value={projects.find((p) => p.id === projectId) ?? null}
+            onChange={(_, val) => setProjectId(val?.id ?? "")}
+            renderInput={(params) => (
+              <TextField {...params} label="Project" required
+                error={!projectId && false}
+              />
+            )}
+          />
           <FormControl fullWidth>
             <InputLabel>Stage</InputLabel>
             <Select value={stage} label="Stage" onChange={(e) => setStage(e.target.value as Task["stage"])}>
@@ -186,6 +205,26 @@ export default function TaskModal({
             slotProps={{ inputLabel: { shrink: true } }}
           />
         </Box>
+
+        <FormControlLabel
+          control={
+            <Switch
+              checked={sensitive}
+              onChange={(e) => setSensitive(e.target.checked)}
+              size="small"
+              sx={{
+                "& .MuiSwitch-switchBase.Mui-checked": { color: "#6366f1" },
+                "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#6366f1" },
+              }}
+            />
+          }
+          label={
+            <Typography sx={{ fontSize: "0.85rem", color: "#475569", fontWeight: 500 }}>
+              Hide in Privacy Mode
+            </Typography>
+          }
+          sx={{ ml: 0 }}
+        />
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 2.5 }}>

@@ -6,6 +6,9 @@ import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import AddTaskIcon from "@mui/icons-material/AddTask";
+import Tooltip from "@mui/material/Tooltip";
+import IconButton from "@mui/material/IconButton";
 import dayjs from "dayjs";
 import { Task } from "@/lib/types";
 
@@ -32,16 +35,43 @@ function projectColor(id: string) {
 interface Props {
   task: Task;
   onClick: () => void;
+  onAddToFocus?: () => void;
+  privacyMode?: boolean;
 }
 
-export default function TaskCard({ task, onClick }: Props) {
+export default function TaskCard({ task, onClick, onAddToFocus, privacyMode }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: task.id });
 
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const pColor = projectColor(task.projectId);
+  const pColor = task.project?.color ?? projectColor(task.projectId);
   const isOverdue = !task.archived && !!task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), "day");
   const hasImage = task.description?.includes("<img");
+  const isRedacted = privacyMode && task.sensitive;
+
+  if (isRedacted) {
+    return (
+      <Box
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        sx={{
+          backgroundColor: "#e2e8f0",
+          borderRadius: 2,
+          mb: 1.25,
+          height: 52,
+          cursor: isDragging ? "grabbing" : "default",
+          boxShadow: isDragging
+            ? "0 12px 32px rgba(0,0,0,0.16)"
+            : "0 1px 3px rgba(0,0,0,0.06)",
+          border: "1px solid #cbd5e1",
+          opacity: isDragging ? 0.5 : 1,
+          userSelect: "none",
+        }}
+      />
+    );
+  }
 
   return (
     <Box
@@ -64,6 +94,7 @@ export default function TaskCard({ task, onClick }: Props) {
         "&:hover": {
           boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
           transform: isDragging ? undefined : "translateY(-1px)",
+          "& .pin-btn": { opacity: 1 },
         },
         transition: "box-shadow 0.15s ease, transform 0.15s ease",
         userSelect: "none",
@@ -88,16 +119,28 @@ export default function TaskCard({ task, onClick }: Props) {
         </Box>
       )}
 
-      {/* Title */}
-      <Typography sx={{
-        fontWeight: 500,
-        fontSize: "0.9rem",
-        lineHeight: 1.5,
-        color: "#1e293b",
-        mb: (task.priority || task.dueDate) ? 1.25 : 0,
-      }}>
-        {task.title}
-      </Typography>
+      {/* Title row */}
+      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5, mb: (task.priority || task.dueDate) ? 1.25 : 0 }}>
+        <Typography sx={{ fontWeight: 500, fontSize: "0.9rem", lineHeight: 1.5, color: "#1e293b", flex: 1 }}>
+          {task.title}
+        </Typography>
+        {onAddToFocus && (
+          <Tooltip title="Add to today's focus" placement="top">
+            <IconButton
+              size="small"
+              className="pin-btn"
+              onClick={(e) => { e.stopPropagation(); onAddToFocus(); }}
+              sx={{
+                p: 0.3, opacity: 0, flexShrink: 0, mt: "-2px",
+                color: "#94a3b8", transition: "opacity 0.15s, color 0.15s",
+                "&:hover": { color: "#6366f1", backgroundColor: "transparent" },
+              }}
+            >
+              <AddTaskIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Box>
 
       {/* Meta row */}
       {(task.priority || task.dueDate || hasImage) && (

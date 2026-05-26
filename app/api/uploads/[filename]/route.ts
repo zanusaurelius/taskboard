@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import { join } from "path";
-import { auth } from "@/auth";
+import { getUserId } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(_: Request, { params }: { params: Promise<{ filename: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+export async function GET(request: Request, { params }: { params: Promise<{ filename: string }> }) {
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { filename } = await params;
 

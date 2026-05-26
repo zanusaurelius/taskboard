@@ -43,30 +43,40 @@ export default function RegisterPage() {
     if (password !== confirm) { setError("Passwords don't match."); return; }
     if (password.length < 8)  { setError("Password must be at least 8 characters."); return; }
     setLoading(true);
-
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) { setError(data.error || "Registration failed."); setLoading(false); return; }
-
-    // Show recovery code before signing in
-    setRecoveryCode(data.recoveryCode);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Registration failed."); return; }
+      setRecoveryCode(data.recoveryCode);
+    } catch {
+      setError("Could not reach the server. Check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleContinue = async () => {
     setLoading(true);
-    const result = await signIn("credentials", { username, password, redirect: false });
-    setLoading(false);
-    if (result?.error) {
-      setError("Account created but sign-in failed. Please log in.");
+    try {
+      const result = await signIn("credentials", { username, password, redirect: false });
+      if (!result || result.error) {
+        setError("Account created but sign-in failed. Please log in manually.");
+        setRecoveryCode(null);
+        router.push("/login");
+      } else {
+        router.push("/");
+        router.refresh();
+      }
+    } catch {
+      setError("Account created but sign-in failed. Please log in manually.");
       setRecoveryCode(null);
-    } else {
-      router.push("/");
-      router.refresh();
+      router.push("/login");
+    } finally {
+      setLoading(false);
     }
   };
 

@@ -1,60 +1,172 @@
 import { create } from "zustand";
 import { Task, Project, Note, Folder } from "./types";
+import {
+  getCachedNotes, setCachedNotes, upsertCachedNote, removeCachedNote, enqueueOp,
+} from "./offline-db";
+import { encryptContent, decryptContent } from "./vault-crypto";
+
+// ── Encryption helpers ────────────────────────────────────────────────────────
+
+async function encField(text: string | null | undefined, key: Uint8Array): Promise<string | null> {
+  if (!text) return null;
+  return JSON.stringify(await encryptContent(text, key));
+}
+
+async function decField(enc: string | null | undefined, key: Uint8Array): Promise<string | null> {
+  if (!enc) return null;
+  try { return await decryptContent(JSON.parse(enc), key); } catch { return null; }
+}
+
+async function decryptTask(t: Task, key: Uint8Array): Promise<Task> {
+  return {
+    ...t,
+    title: t.encTitle ? ((await decField(t.encTitle, key)) ?? t.title) : t.title,
+    description: t.encDescription ? ((await decField(t.encDescription, key)) ?? t.description) : t.description,
+  };
+}
+
+async function decryptProject(p: Project, key: Uint8Array): Promise<Project> {
+  return {
+    ...p,
+    name: p.encName ? ((await decField(p.encName, key)) ?? p.name) : p.name,
+  };
+}
+
+async function decryptFolder(f: Folder, key: Uint8Array): Promise<Folder> {
+  return {
+    ...f,
+    name: f.encName ? ((await decField(f.encName, key)) ?? f.name) : f.name,
+  };
+}
+
+// ── Store interface ───────────────────────────────────────────────────────────
 
 interface TaskBoardStore {
+  masterKey: Uint8Array | null;
+  setMasterKey: (key: Uint8Array | null) => Promise<void>;
+
   tasks: Task[];
   projects: Project[];
   notes: Note[];
+  trashNotes: Note[];
   fetchAll: (includeArchivedTasks?: boolean, includeArchivedProjects?: boolean) => Promise<void>;
   createTask: (fields: Partial<Task>) => Promise<Task>;
   updateTask: (id: string, fields: Partial<Task>) => Promise<Task>;
   deleteTask: (id: string) => Promise<void>;
-  createProject: (name: string) => Promise<Project>;
+  createProject: (name: string, color?: string | null) => Promise<Project>;
   updateProject: (id: string, fields: Partial<Project>) => Promise<Project>;
   deleteProject: (id: string) => Promise<void>;
   permanentDeleteProject: (id: string) => Promise<void>;
   archiveAllDone: () => Promise<void>;
   folders: Folder[];
-  fetchFolders: () => Promise<void>;
+  fetchFolders: (revealToken?: string) => Promise<void>;
   createFolder: (name: string) => Promise<Folder>;
   updateFolder: (id: string, name: string) => Promise<void>;
+  patchFolder: (id: string, fields: Partial<Pick<Folder, "name" | "pinned" | "hidden" | "locked">>) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
-  fetchNotes: () => Promise<void>;
+  fetchNotes: (revealToken?: string) => Promise<void>;
+  fetchTrash: () => Promise<void>;
   createNote: () => Promise<Note>;
   duplicateNote: (id: string) => Promise<Note>;
   updateNote: (id: string, fields: Partial<Note>) => Promise<void>;
-  deleteNote: (id: string) => Promise<void>;
+  deleteNote: (id: string) => Promise<boolean>;
+  restoreNote: (id: string) => Promise<void>;
+  permanentDeleteNote: (id: string) => Promise<void>;
+  emptyTrash: () => Promise<void>;
 }
 
 export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
+  masterKey: null,
   tasks: [],
   projects: [],
   notes: [],
+  trashNotes: [],
   folders: [],
 
-  fetchFolders: async () => {
-    const res = await fetch("/api/folders");
-    set({ folders: await res.json() });
+  setMasterKey: async (key) => {
+    set({ masterKey: key });
+    if (!key) return;
+    const { tasks, projects, folders } = get();
+    const [decTasks, decProjects, decFolders] = await Promise.all([
+      Promise.all(tasks.map((t) => decryptTask(t, key))),
+      Promise.all(projects.map((p) => decryptProject(p, key))),
+      Promise.all(folders.map((f) => decryptFolder(f, key))),
+    ]);
+    set({
+      tasks: decTasks,
+      projects: decProjects.sort((a, b) => a.name.localeCompare(b.name)),
+      folders: decFolders.sort((a, b) => a.name.localeCompare(b.name)),
+    });
+  },
+
+  fetchFolders: async (revealToken?: string) => {
+    const res = await fetch("/api/folders", {
+      headers: revealToken ? { "x-reveal-token": revealToken } : {},
+    });
+    if (!res.ok) return;
+    let folders: Folder[] = await res.json();
+    const { masterKey } = get();
+    if (masterKey) {
+      folders = await Promise.all(folders.map((f) => decryptFolder(f, masterKey)));
+    }
+    set({ folders: folders.sort((a, b) => a.name.localeCompare(b.name)) });
   },
 
   createFolder: async (name) => {
+    const { masterKey } = get();
+    const body: Record<string, unknown> = {};
+    if (masterKey) {
+      body.encName = await encField(name, masterKey);
+      body.name = "";
+    } else {
+      body.name = name;
+    }
     const res = await fetch("/api/folders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(body),
     });
-    const folder = await res.json();
+    const raw: Folder = await res.json();
+    const folder = masterKey ? await decryptFolder(raw, masterKey) : raw;
     set((s) => ({ folders: [...s.folders, folder].sort((a, b) => a.name.localeCompare(b.name)) }));
     return folder;
   },
 
   updateFolder: async (id, name) => {
+    const { masterKey } = get();
+    const body: Record<string, unknown> = {};
+    if (masterKey) {
+      body.encName = await encField(name, masterKey);
+      body.name = "";
+    } else {
+      body.name = name;
+    }
     const res = await fetch(`/api/folders/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(body),
     });
-    const folder = await res.json();
+    const raw: Folder = await res.json();
+    const folder = masterKey ? await decryptFolder(raw, masterKey) : raw;
+    set((s) => ({
+      folders: s.folders.map((f) => f.id === id ? folder : f).sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+  },
+
+  patchFolder: async (id, fields) => {
+    const { masterKey } = get();
+    const body: Record<string, unknown> = { ...fields };
+    if (masterKey && typeof fields.name === "string") {
+      body.encName = await encField(fields.name, masterKey);
+      body.name = "";
+    }
+    const res = await fetch(`/api/folders/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const raw: Folder = await res.json();
+    const folder = masterKey ? await decryptFolder(raw, masterKey) : raw;
     set((s) => ({
       folders: s.folders.map((f) => f.id === id ? folder : f).sort((a, b) => a.name.localeCompare(b.name)),
     }));
@@ -73,28 +185,61 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       fetch(`/api/tasks${includeArchivedTasks ? "?includeArchived=true" : ""}`),
       fetch(`/api/projects${includeArchivedProjects ? "?includeArchived=true" : ""}`),
     ]);
-    const [tasks, projects] = await Promise.all([tasksRes.json(), projectsRes.json()]);
-    set({ tasks, projects });
+    let [tasks, projects]: [Task[], Project[]] = await Promise.all([tasksRes.json(), projectsRes.json()]);
+    const { masterKey } = get();
+    if (masterKey) {
+      [tasks, projects] = await Promise.all([
+        Promise.all(tasks.map((t) => decryptTask(t, masterKey))),
+        Promise.all(projects.map((p) => decryptProject(p, masterKey))),
+      ]);
+    }
+    set({ tasks, projects: projects.sort((a, b) => a.name.localeCompare(b.name)) });
   },
 
   createTask: async (fields) => {
+    const { masterKey } = get();
+    const body: Record<string, unknown> = { ...fields };
+    if (masterKey) {
+      if (fields.title) {
+        body.encTitle = await encField(fields.title, masterKey);
+        body.title = "";
+      }
+      if (fields.description) {
+        body.encDescription = await encField(fields.description, masterKey);
+        body.description = null;
+      }
+    }
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fields),
+      body: JSON.stringify(body),
     });
-    const task = await res.json();
+    const raw: Task = await res.json();
+    const task = masterKey ? await decryptTask(raw, masterKey) : raw;
     set((s) => ({ tasks: [...s.tasks, task] }));
     return task;
   },
 
   updateTask: async (id, fields) => {
+    const { masterKey } = get();
+    const body: Record<string, unknown> = { ...fields };
+    if (masterKey) {
+      if (typeof fields.title === "string") {
+        body.encTitle = await encField(fields.title, masterKey);
+        body.title = "";
+      }
+      if (fields.description !== undefined && fields.description !== null) {
+        body.encDescription = await encField(fields.description, masterKey);
+        body.description = null;
+      }
+    }
     const res = await fetch(`/api/tasks/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fields),
+      body: JSON.stringify(body),
     });
-    const task = await res.json();
+    const raw: Task = await res.json();
+    const task = masterKey ? await decryptTask(raw, masterKey) : raw;
     set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? task : t)) }));
     return task;
   },
@@ -104,24 +249,40 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
     set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
   },
 
-  createProject: async (name) => {
+  createProject: async (name, color) => {
+    const { masterKey } = get();
+    const body: Record<string, unknown> = { color: color ?? null };
+    if (masterKey) {
+      body.encName = await encField(name, masterKey);
+      body.name = "";
+    } else {
+      body.name = name;
+    }
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(body),
     });
-    const project = await res.json();
+    const raw: Project = await res.json();
+    const project = masterKey ? await decryptProject(raw, masterKey) : raw;
     set((s) => ({ projects: [...s.projects, project].sort((a, b) => a.name.localeCompare(b.name)) }));
     return project;
   },
 
   updateProject: async (id, fields) => {
+    const { masterKey } = get();
+    const body: Record<string, unknown> = { ...fields };
+    if (masterKey && typeof fields.name === "string" && fields.name) {
+      body.encName = await encField(fields.name, masterKey);
+      body.name = "";
+    }
     const res = await fetch(`/api/projects/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fields),
+      body: JSON.stringify(body),
     });
-    const project = await res.json();
+    const raw: Project = await res.json();
+    const project = masterKey ? await decryptProject(raw, masterKey) : raw;
     set((s) => ({
       projects: s.projects
         .map((p) => (p.id === id ? project : p))
@@ -161,54 +322,152 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
     }));
   },
 
-  fetchNotes: async () => {
-    const res = await fetch("/api/notes");
-    const notes = await res.json();
-    set({ notes });
+  fetchNotes: async (revealToken?: string) => {
+    const headers: HeadersInit = revealToken ? { "x-reveal-token": revealToken } : {};
+    try {
+      const res = await fetch("/api/notes", { headers });
+      if (!res.ok) throw new Error("fetch failed");
+      const notes = await res.json();
+      set({ notes });
+      setCachedNotes(notes).catch(() => {});
+    } catch {
+      const cached = await getCachedNotes().catch(() => [] as Note[]);
+      if (cached.length > 0) set({ notes: cached });
+    }
+  },
+
+  fetchTrash: async () => {
+    const res = await fetch("/api/notes/trash");
+    if (!res.ok) return;
+    const trashNotes = await res.json();
+    set({ trashNotes });
   },
 
   duplicateNote: async (id) => {
+    const { masterKey } = get();
     const src = get().notes.find((n) => n.id === id);
     if (!src) throw new Error("Note not found");
+
+    // src.title is the in-memory decrypted title (or empty if encrypted + locked)
+    // src.encTitle holds the blob — re-encrypt for the copy
+    const body: Record<string, unknown> = { folderId: src.folderId };
+    if (masterKey && (src.encTitle || src.encContent)) {
+      const plainTitle = src.title || (src.encTitle ? (await decField(src.encTitle, masterKey) ?? "") : "");
+      const plainContent = src.content || (src.encContent ? (await decField(src.encContent, masterKey) ?? "") : "");
+      body.encTitle = await encField(plainTitle ? `${plainTitle} (copy)` : "", masterKey);
+      body.encContent = await encField(plainContent, masterKey);
+      body.title = "";
+      body.content = "";
+    } else {
+      body.title = src.title ? `${src.title} (copy)` : "";
+      body.content = src.content;
+    }
+
     const res = await fetch("/api/notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: src.title ? `${src.title} (copy)` : "", content: src.content, folderId: src.folderId }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error("Failed to duplicate note");
-    const note = await res.json();
+    const note: Note = await res.json();
     set((s) => ({ notes: [note, ...s.notes] }));
     return note;
   },
 
   createNote: async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const now = new Date().toISOString();
+      const tempNote: Note = {
+        id: tempId, title: "", content: "",
+        pinned: false, starred: false, hidden: false, locked: false,
+        hint: null, encContent: null, encTitle: null,
+        folderId: null, projectId: null,
+        createdAt: now, updatedAt: now, deletedAt: null,
+      };
+      set((s) => ({ notes: [tempNote, ...s.notes] }));
+      upsertCachedNote(tempNote).catch(() => {});
+      await enqueueOp({ type: "create-note", tempId, fields: { title: "", content: "" } });
+      return tempNote;
+    }
     const res = await fetch("/api/notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "", content: "" }),
     });
     if (!res.ok) throw new Error(`Failed to create note: ${res.status}`);
-    const note = await res.json();
+    const note: Note = await res.json();
     set((s) => ({ notes: [note, ...s.notes] }));
+    upsertCachedNote(note).catch(() => {});
     return note;
   },
 
   updateNote: async (id, fields) => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      const now = new Date().toISOString();
+      set((s) => ({
+        notes: s.notes.map((n) => n.id === id ? { ...n, ...fields, updatedAt: now } : n),
+      }));
+      const updated = get().notes.find((n) => n.id === id);
+      if (updated) upsertCachedNote(updated).catch(() => {});
+      await enqueueOp({ type: "update-note", noteId: id, fields: fields as Record<string, unknown> });
+      return;
+    }
     const res = await fetch(`/api/notes/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fields),
     });
-    const note = await res.json();
+    if (!res.ok) {
+      let message = `Failed to update note (${res.status})`;
+      try { const err = await res.json(); if (err.error) message = err.error; } catch {}
+      throw new Error(message);
+    }
+    const note: Note = await res.json();
     set((s) => ({
-      notes: s.notes
-        .map((n) => (n.id === id ? note : n))
-        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+      notes: s.notes.map((n) => (n.id === id ? note : n)),
     }));
+    upsertCachedNote(note).catch(() => {});
   },
 
   deleteNote: async (id) => {
-    await fetch(`/api/notes/${id}`, { method: "DELETE" });
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      set((s) => ({ notes: s.notes.filter((n) => n.id !== id) }));
+      removeCachedNote(id).catch(() => {});
+      await enqueueOp({ type: "delete-note", noteId: id });
+      return true;
+    }
+    const res = await fetch(`/api/notes/${id}`, { method: "DELETE" });
+    if (res.status === 200) {
+      const trashed = await res.json();
+      set((s) => ({
+        notes: s.notes.filter((n) => n.id !== id),
+        trashNotes: [trashed, ...s.trashNotes],
+      }));
+      removeCachedNote(id).catch(() => {});
+      return true;
+    }
     set((s) => ({ notes: s.notes.filter((n) => n.id !== id) }));
+    removeCachedNote(id).catch(() => {});
+    return false;
+  },
+
+  restoreNote: async (id) => {
+    const res = await fetch(`/api/notes/${id}/restore`, { method: "POST" });
+    const note: Note = await res.json();
+    set((s) => ({
+      trashNotes: s.trashNotes.filter((n) => n.id !== id),
+      notes: [note, ...s.notes],
+    }));
+  },
+
+  permanentDeleteNote: async (id) => {
+    await fetch(`/api/notes/${id}?permanent=true`, { method: "DELETE" });
+    set((s) => ({ trashNotes: s.trashNotes.filter((n) => n.id !== id) }));
+  },
+
+  emptyTrash: async () => {
+    await fetch("/api/notes/trash", { method: "DELETE" });
+    set({ trashNotes: [] });
   },
 }));

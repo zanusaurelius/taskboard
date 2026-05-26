@@ -141,3 +141,137 @@ Still to do:
 | D4 | SameSite=strict cookie caveat | Changed from Lax to Strict. Side effect: navigating to the app from an external link (e.g. email, bookmark app) won't send the session cookie → user appears logged out and is redirected to /login. Acceptable for a self-hosted personal app but worth noting if sharing links becomes common. |
 | D5 | Persistent AuditLog growth | AuditLog table grows indefinitely. Add a periodic cleanup job (e.g. `DELETE WHERE createdAt < NOW() - 90 days`) or cap via a cron/housekeeping route. |
 | D6 | Orphaned uploads from public/uploads/ | Files moved to `data/uploads/` during security hardening have old timestamp-based names. The `/api/uploads/[filename]` route rejects them (regex mismatch). Consider a one-time migration script if those images are needed. |
+
+---
+
+## Deployment & distribution analysis (2026-05-05)
+
+### Goal
+Self-hosted personal productivity app, accessible from Android phone, privacy-focused.
+
+### PWA vs native APK
+
+The app already has `public/sw.js` (service worker), so PWA groundwork exists. Adding a `public/manifest.json` + two icon sizes is all that's needed to make it installable from Chrome on Android ("Add to Home Screen" → fullscreen, appears in app drawer).
+
+**Capacitor** (real APK) is a half-day conversion from a working PWA — Capacitor wraps the same web code in a native WebView shell. Low risk to defer until PWA hits a real limitation.
+
+**Offline support:** not viable without significant extra work (IndexedDB + background sync + conflict resolution). At 200-300 notes the fetch-all-decrypt-filter approach for search is fast enough — a few MB, milliseconds on device. Offline is not worth the architectural complexity for a personal app.
+
+### Hosting options compared
+
+| Option | Cost | Data location | Clearnet access | Privacy | Notes |
+|---|---|---|---|---|---|
+| Vercel + Neon/Supabase | Free | Third-party servers | ✓ built-in | Poor — multiple parties can read plaintext data | Easiest to deploy |
+| DigitalOcean droplet | ~$6/mo | Their datacenter, your server | ✓ built-in | Good — only you have server access | Recommended if paying |
+| Oracle Cloud Free Tier | Free | Their datacenter | ✓ built-in | Worse than DO — Oracle is a data broker | Termination risk (see below) |
+| Fly.io | Free (limited) | Their datacenter | ✓ built-in | Similar to DO | Resource limits tighten with use |
+| Railway | Free trial only | Their datacenter | ✓ built-in | Similar to DO | ~$5/mo after trial |
+| Home server + Tailscale | Free (after hardware) | Your hardware | ✓ via Tailscale mesh | Best — data never leaves home | Machine must stay on |
+| Home server + Cloudflare Tunnel | Free (after hardware) | Your hardware | ✓ via Cloudflare | Very good — home IP hidden | Machine must stay on |
+| Start9 EmbassyOS | Free (after hardware) | Your hardware | Tor only by default | Best | Clearnet needs port forwarding + domain |
+
+### Oracle Cloud Free Tier — why to avoid
+
+- Oracle has done mass terminations of free accounts with little/no warning
+- Terms explicitly allow reclaiming free resources at any time
+- "Idle" detection is opaque — active instances have been terminated
+- Core business includes Oracle Data Cloud, one of the largest data brokers in the world
+- Ironic choice for a privacy-focused app
+
+### Start9 EmbassyOS — status
+
+Sideloading a `.s9pk` file is easy (UI file upload). Building the `.s9pk` is significant work:
+- Dockerfile, `manifest.yaml`, start-sdk build pipeline
+- Persistent volume setup for SQLite + uploads
+- Run `prisma migrate deploy` in init script
+- Config inputs for secrets (AUTH_SECRET etc.)
+
+Remote access defaults to Tor (.onion) — works anywhere but slow (2-5s page loads). Clearnet requires domain + port forwarding + dynamic DNS. Not worth the complexity given other options.
+
+### Mobile app — research findings (2026-05-24)
+
+#### Current approach: Tor Browser + Orbot (zero dev work)
+The app is accessible today via `.onion` address through Tor Browser for Android with Orbot in VPN mode. This is Start9's own documented recommendation for Android. Try this first before building anything.
+
+#### If Tor Browser UX is not good enough: build a TRUE native app
+
+**Do not build a WebView wrapper / browser wrapper.** A WebView APK is functionally equivalent to Tor Browser — it is still just a browser loading a server-rendered page, just without the browser chrome. Not worth the effort.
+
+**How apps like Bitwarden and Element are actually built:**
+- Bitwarden (2024): fully native Swift (iOS) + Kotlin/Android. No WebView. Migrated from Xamarin/.NET MAUI.
+- Element X (Android): fully native Kotlin + Jetpack Compose UI + Rust SDK for Matrix protocol.
+- Both are **pure API clients** — they consume REST/Matrix APIs and render the entire UI natively.
+
+**Why this app can't do the same without work:**
+The taskboard is server-rendered (Next.js). The UI is generated on the server. A true native mobile app would need to consume the existing REST API routes (`/api/tasks`, `/api/notes`, etc.) and rebuild every screen natively — kanban board, rich text editor, journal, settings, vault. That is weeks of work but it is the right path if mobile is a priority.
+
+**What NOT to suggest for mobile:**
+- PWA via browser (still a browser)
+- Capacitor / WebView APK (browser wrapper — same experience as Tor Browser, not a native app)
+- GeckoView APK (still a browser wrapper, just using Firefox's engine)
+- Any approach that wraps the web app in a WebView shell
+
+**If building native mobile:**
+- Android: Kotlin + Jetpack Compose, consuming the existing REST API
+- iOS: Swift + SwiftUI, consuming the existing REST API
+- Or: React Native (single codebase, TypeScript, consumes REST API — reuses language familiarity)
+- Privacy: Orbot VPN mode routes all traffic through Tor transparently — no special Tor integration needed in the app itself
+
+**Start9 ecosystem note:**
+- iOS has "Start9 Consulate" — a custom bare-bones browser for `.onion`/`.local` URLs (essentially a WebView wrapper)
+- Android has NO equivalent from Start9 — their docs just say use Firefox + Orbot
+- Building a true native Android/iOS app for this taskboard would be more valuable than a Consulate-style wrapper
+
+#### Decision
+Try Tor Browser + Orbot first. If the experience is unsatisfactory, the next step is a true native React Native or Kotlin app — not a WebView wrapper.
+
+---
+
+### Recommended approach: DigitalOcean + E2E encryption + PWA
+
+**Why:**
+- $6/mo is the only recurring cost — reasonable for a daily-use personal app
+- Only you have server access (vs Vercel/Neon where multiple parties do)
+- E2E encryption makes the host largely irrelevant — they only ever see ciphertext
+- PWA gives a good phone experience with minimal extra work
+- Clearnet by default, no Tor latency, no port forwarding
+
+**E2E encryption plan:**
+- Vault (`lib/vault-crypto.ts`) already implements client-side encryption via Web Crypto API
+- Extend the same pattern to note content, task titles/descriptions
+- Server stores encrypted blobs; key never leaves the device
+- Key derived from vault password (one password unlocks everything — Standard Notes model)
+- Unencrypted metadata (timestamps, IDs, ordering, project membership) is an acceptable leak for personal use
+- Search: fetch all → decrypt client-side → filter. Fast at 200-300 notes
+
+**Migration from SQLite to Postgres:**
+- Change `provider` in `prisma/schema.prisma` from `sqlite` to `postgresql`
+- Update `DATABASE_URL` env var
+- Everything else (API routes, auth, vault) works as-is
+
+### Revised conclusion: E2E makes free hosting viable
+
+If E2E content encryption is implemented properly, the host can't read your data regardless of who they are. This makes **Vercel + Neon (free) + E2E** a genuinely reasonable choice — not just a compromise.
+
+Remaining differences vs self-hosted (all minor for a personal app):
+- **Metadata leaks** regardless of E2E — usage times, frequency, record counts, blob sizes visible to host
+- **JS integrity trust** — you have to trust Vercel serves unmodified JS. A compromised deploy could exfiltrate keys before encryption. Unlikely but real attack vector for a personal app.
+- **Attack surface** — Vercel + Neon + CDN is three parties; a single self-hosted server is one
+
+For a personal productivity app: **Vercel + E2E is fine.** Self-hosting is better but the gap is small once E2E is in place.
+
+### Cloudflare Tunnel into Start9 EmbassyOS
+
+Possible but not clean. Start9 is a managed OS so `cloudflared` can't run as a loose process. Options:
+- Package cloudflared as a sideloaded Start9 service (community has done this, not official)
+- Run cloudflared on a second device on the same LAN, tunnel to the Embassy's local IP
+- Wait — Start9 is actively adding more clearnet options in newer StartOS versions
+
+### Final hosting decision matrix
+
+| Want | Best option |
+|---|---|
+| Free + no hardware + private enough | Vercel + Neon + E2E encryption |
+| Best privacy, own hardware, clearnet | Home server + Cloudflare Tunnel |
+| Best privacy, own hardware, okay with Tor | Start9 EmbassyOS |
+| Paid, simplest managed server | DigitalOcean (~$6/mo) |

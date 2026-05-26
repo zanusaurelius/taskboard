@@ -57,3 +57,6 @@ prisma/dev.db-wal
 
 # never let uploads land in public/ where Next.js would serve them without auth
 /public/uploads/
+
+# start9 packaging — exclude docker image tarballs (large binary artifacts)
+docker-images/

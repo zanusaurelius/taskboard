@@ -4,9 +4,12 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { audit } from "@/lib/audit";
+import { MAX_PASSWORD_LEN } from "@/lib/constants";
 
-// Pre-computed hash used for constant-time dummy compare when username not found
-const DUMMY_HASH = "$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/lewdummyhashxxxx";
+// Valid 60-char bcrypt hash used for constant-time dummy compare when username not found.
+// Must be exactly 60 chars — bcryptjs bails early (no computation) on wrong-length hashes,
+// which would defeat the timing equalisation and re-expose username enumeration.
+const DUMMY_HASH = "$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/lewdummyhashxxxxx";
 
 function generateRecoveryCode(): string {
   const hex = randomBytes(18).toString("hex").toUpperCase();
@@ -20,13 +23,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many recovery attempts. Try again later." }, { status: 429 });
   }
 
-  const { username, recoveryCode, newPassword } = await request.json();
+  const body = await request.json().catch(() => null);
+  const { username, recoveryCode, newPassword } = body ?? {};
 
   if (!username || !recoveryCode || !newPassword) {
     return NextResponse.json({ error: "Username, recovery code, and new password are required" }, { status: 400 });
   }
   if (newPassword.length < 8) {
     return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
+  }
+  if (newPassword.length > MAX_PASSWORD_LEN) {
+    return NextResponse.json({ error: "Password is too long" }, { status: 400 });
   }
 
   const user = await prisma.user.findUnique({

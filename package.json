@@ -18,7 +18,11 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.0",
     "@mui/material": "^9.0.0",
-    "@prisma/client": "^5.22.0",
+    "@prisma/adapter-better-sqlite3": "^6.19.3",
+    "@prisma/client": "^6.19.3",
+    "better-sqlite3-multiple-ciphers": "^12.9.0",
+    "@simplewebauthn/browser": "^9.0.1",
+    "@simplewebauthn/server": "^9.0.3",
     "@tiptap/extension-image": "^3.22.5",
     "@tiptap/extension-underline": "^3.22.5",
     "@tiptap/pm": "^3.22.5",
@@ -40,7 +44,10 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
-    "prisma": "^5.22.0",
+    "prisma": "^6.19.3",
     "typescript": "^5"
+  },
+  "overrides": {
+    "better-sqlite3": "npm:better-sqlite3-multiple-ciphers@^12.9.0"
   }
 }

@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
@@ -13,11 +14,16 @@ import DialogActions from "@mui/material/DialogActions";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import LinearProgress from "@mui/material/LinearProgress";
+import Tooltip from "@mui/material/Tooltip";
+import Snackbar from "@mui/material/Snackbar";
+import Alert from "@mui/material/Alert";
+import Popover from "@mui/material/Popover";
 import AddIcon from "@mui/icons-material/Add";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import RestoreIcon from "@mui/icons-material/Restore";
 import EditIcon from "@mui/icons-material/Edit";
+import PaletteIcon from "@mui/icons-material/Palette";
 import SearchIcon from "@mui/icons-material/Search";
 import UndoIcon from "@mui/icons-material/Undo";
 import {
@@ -30,6 +36,8 @@ import { useTaskBoardStore } from "@/lib/store";
 import { Task, Project } from "@/lib/types";
 import TaskCard from "./TaskCard";
 import TaskModal from "./TaskModal";
+import dynamic from "next/dynamic";
+const DailyFocus = dynamic(() => import("./DailyFocus"), { ssr: false });
 
 interface DeletionEntry {
   id: string;
@@ -122,6 +130,28 @@ const STAGE_BG: Record<string, string> = {
   todo: "#eef0ff", in_progress: "#eff6ff", blocked: "#fff1f2", done: "#f0fdf4",
 };
 
+const STAGE_COLOR_OPTIONS = [
+  "#6366f1", "#3b82f6", "#ef4444", "#22c55e",
+  "#f59e0b", "#8b5cf6", "#0ea5e9", "#14b8a6",
+  "#ec4899", "#f43f5e", "#64748b", "#10b981",
+  "#06b6d4", "#a855f7", "#84cc16", "#1e293b",
+];
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function loadStageColors(): Record<string, string> {
+  if (typeof window === "undefined") return { ...STAGE_COLORS };
+  try {
+    const stored = localStorage.getItem("stageColors");
+    return stored ? { ...STAGE_COLORS, ...JSON.parse(stored) } : { ...STAGE_COLORS };
+  } catch { return { ...STAGE_COLORS }; }
+}
+
 const PROJECT_COLORS = [
   "#f59e0b", "#10b981", "#3b82f6", "#ec4899",
   "#8b5cf6", "#0ea5e9", "#14b8a6", "#f43f5e", "#84cc16", "#6366f1",
@@ -131,7 +161,29 @@ function hashId(id: string): number {
   for (let i = 0; i < id.length; i++) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
   return Math.abs(h);
 }
-const projectColor = (id: string) => PROJECT_COLORS[hashId(id) % PROJECT_COLORS.length];
+const autoColor = (id: string) => PROJECT_COLORS[hashId(id) % PROJECT_COLORS.length];
+const projectColor = (p: { id: string; color?: string | null }) => p.color ?? autoColor(p.id);
+
+function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  return (
+    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 2 }}>
+      {PROJECT_COLORS.map((c) => (
+        <Box
+          key={c}
+          onClick={() => onChange(c)}
+          sx={{
+            width: 28, height: 28, borderRadius: "50%",
+            backgroundColor: c, cursor: "pointer", flexShrink: 0,
+            border: value === c ? "3px solid #1e293b" : "3px solid transparent",
+            boxShadow: value === c ? `0 0 0 2px ${c}` : "none",
+            transition: "all 0.1s ease",
+            "&:hover": { transform: "scale(1.15)" },
+          }}
+        />
+      ))}
+    </Box>
+  );
+}
 
 function DroppableColumn({ id, children }: { id: string; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id });
@@ -144,6 +196,7 @@ interface TaskBoardProps {
 }
 
 export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: TaskBoardProps = {}) {
+  const isMobile = useMediaQuery("(max-width: 860px)");
   const { tasks, projects, fetchAll, createTask, updateTask, deleteTask, createProject, updateProject, deleteProject, permanentDeleteProject, archiveAllDone } = useTaskBoardStore();
 
   const [localTasks, setLocalTasks] = useState<Task[]>([]);
@@ -151,6 +204,9 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [defaultStage, setDefaultStage] = useState<Task["stage"]>("todo");
+  const [stageColors, setStageColors] = useState<Record<string, string>>(loadStageColors);
+  const [stageColorAnchor, setStageColorAnchor] = useState<HTMLElement | null>(null);
+  const [editingStageId, setEditingStageId] = useState<string | null>(null);
   const [modalDefaultTitle, setModalDefaultTitle] = useState("");
   const [modalDefaultDescription, setModalDefaultDescription] = useState("");
   const [projectFilter, setProjectFilter] = useState<string[]>([]);
@@ -158,11 +214,14 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   const [searchText, setSearchText] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedProjects, setShowArchivedProjects] = useState(false);
+  const [privacyMode, setPrivacyMode] = useState(true);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectColor, setNewProjectColor] = useState(PROJECT_COLORS[0]);
   const [pendingTaskStage, setPendingTaskStage] = useState<Task["stage"] | null>(null);
   const [renamingProject, setRenamingProject] = useState<Project | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [renameColor, setRenameColor] = useState(PROJECT_COLORS[0]);
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
     message: string;
@@ -171,7 +230,10 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     onConfirm: () => void;
   } | null>(null);
   const [deletionQueue, setDeletionQueue] = useState<DeletionEntry[]>([]);
+  const [focusSnackbar, setFocusSnackbar] = useState(false);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const newProjectInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -179,6 +241,18 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
       timersRef.current.forEach((t) => clearTimeout(t));
     };
   }, []);
+
+  useEffect(() => {
+    if (!newProjectOpen) return;
+    const t = setTimeout(() => newProjectInputRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [newProjectOpen]);
+
+  useEffect(() => {
+    if (!renamingProject) return;
+    const t = setTimeout(() => renameInputRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [renamingProject]);
 
   const scheduleDeletion = useCallback((
     label: string,
@@ -205,6 +279,21 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   }, []);
 
   useEffect(() => { fetchAll(showArchived, showArchivedProjects); }, [fetchAll, showArchived, showArchivedProjects]);
+
+  useEffect(() => {
+    const days = parseInt(localStorage.getItem("autoArchiveDays") ?? "0", 10);
+    if (!days) return;
+    fetch("/api/tasks/auto-archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days }),
+    }).then(async (res) => {
+      if (res.ok) {
+        const { count } = await res.json();
+        if (count > 0) fetchAll(showArchived, showArchivedProjects);
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeId === null) setLocalTasks(tasks); }, [tasks, activeId]);
 
   useEffect(() => {
@@ -381,8 +470,9 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
 
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
-    await createProject(newProjectName.trim());
+    await createProject(newProjectName.trim(), newProjectColor);
     setNewProjectName("");
+    setNewProjectColor(PROJECT_COLORS[0]);
     setNewProjectOpen(false);
     if (pendingTaskStage !== null) {
       setEditingTask(null);
@@ -392,33 +482,60 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     }
   };
 
+  const handleAddToFocus = async (task: Task) => {
+    const today = new Date().toISOString().slice(0, 10);
+    let limit = parseInt(typeof window !== "undefined" ? (localStorage.getItem("dailyGoalLimit") ?? "3") : "3", 10) || 3;
+    let res = await fetch("/api/daily-goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: task.title, taskId: task.id, date: today, position: 999, limit }),
+    });
+    if (!res.ok && limit < 20) {
+      limit += 1;
+      localStorage.setItem("dailyGoalLimit", String(limit));
+      res = await fetch("/api/daily-goals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: task.title, taskId: task.id, date: today, position: 999, limit }),
+      });
+    }
+    if (res.ok) setFocusSnackbar(true);
+    window.dispatchEvent(new Event("dailyfocus:refresh"));
+  };
+
   const handleRename = async () => {
     if (!renamingProject || !renameValue.trim()) return;
-    await updateProject(renamingProject.id, { name: renameValue.trim() });
+    await updateProject(renamingProject.id, { name: renameValue.trim(), color: renameColor });
     setRenamingProject(null);
   };
 
   const toggleProjectFilter = (id: string) =>
     setProjectFilter((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
+  const handleStageColorChange = (stageId: string, color: string) => {
+    const updated = { ...stageColors, [stageId]: color };
+    setStageColors(updated);
+    localStorage.setItem("stageColors", JSON.stringify(updated));
+  };
+
   const toggleStageFilter = (id: Task["stage"]) =>
     setStageFilter((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
   return (
-    <Box sx={{ height: "100vh", backgroundColor: "#f1f5f9", display: "flex", flexDirection: "column" }}>
+    <Box sx={{ minHeight: "100%", backgroundColor: "#f1f5f9", display: "flex", flexDirection: "column" }}>
 
       {/* ── Top action bar ── */}
       <Box sx={{
         backgroundColor: "#fff",
         borderBottom: "1px solid #e2e8f0",
-        px: 3, py: 1.5,
+        px: { xs: 1.5, sm: 3 }, py: 1.5,
         display: "flex", alignItems: "center", justifyContent: "space-between",
         flexShrink: 0,
       }}>
         <Typography sx={{ fontWeight: 700, fontSize: "1rem", color: "#1e293b", letterSpacing: "-0.2px" }}>
           Task Board
         </Typography>
-        <Box sx={{ display: "flex", gap: 1.5 }}>
+        <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.5 } }}>
           <Button
             size="small"
             startIcon={<AddIcon />}
@@ -431,10 +548,11 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
               fontWeight: 600,
               textTransform: "none",
               borderRadius: 2,
-              px: 2,
+              px: { xs: 1, sm: 2 },
+              minWidth: 0,
               "&:hover": { borderColor: "#94a3b8", backgroundColor: "#f8fafc" },
             }}>
-            New Project
+            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Project</Box>
           </Button>
           <Button
             size="small"
@@ -447,24 +565,28 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
               fontWeight: 600,
               textTransform: "none",
               borderRadius: 2,
-              px: 2,
+              px: { xs: 1, sm: 2 },
+              minWidth: 0,
               boxShadow: "0 2px 8px rgba(99,102,241,0.4)",
               "&:hover": { background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)" },
             }}>
-            New Task
+            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Task</Box>
           </Button>
         </Box>
       </Box>
 
       {/* ── Page body ── */}
-      <Box sx={{ flex: 1, p: 3, display: "flex", flexDirection: "column", overflowX: "auto", overflowY: "hidden" }}>
+      <Box sx={{ flex: 1, p: { xs: 1.5, sm: 3 }, display: "flex", flexDirection: "column", overflowX: isMobile ? "hidden" : "auto" }}>
+
+        {/* ── Daily Focus ── */}
+        <DailyFocus tasks={tasks} />
 
         {/* ── Filter bar ── */}
         <Box sx={{
           backgroundColor: "#fff",
           borderRadius: 2.5,
           boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
-          p: 3,
+          p: { xs: 1.5, sm: 3 },
           mb: 3,
           flexShrink: 0,
         }}>
@@ -499,57 +621,73 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
           <Divider sx={{ borderColor: "#f1f5f9", mb: 2.5 }} />
 
           {/* Projects row */}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, flexWrap: "wrap", mb: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 2 }}>
             <Typography sx={{
               color: "#94a3b8", fontWeight: 800, fontSize: "0.7rem",
-              textTransform: "uppercase", letterSpacing: 1.2, minWidth: 70,
+              textTransform: "uppercase", letterSpacing: 1.2,
+              flexShrink: 0, minWidth: 70, lineHeight: "30px",
             }}>
               Projects
             </Typography>
-            <Chip label="All" size="small"
-              onClick={() => setProjectFilter([])}
-              sx={allChipSx(projectFilter.length === 0)} />
-            {projects.filter((p) => !p.archived).map((p) => (
-              <Box key={p.id} sx={{ display: "inline-flex", alignItems: "center", gap: 0.25, "&:hover .proj-edit": { opacity: 1 } }}>
-                <Chip
-                  label={`${p.name} · ${taskCountByProject[p.id] || 0}`}
-                  size="small"
-                  onClick={() => toggleProjectFilter(p.id)}
-                  onDelete={() => handleArchiveProject(p.id)}
-                  sx={filterChipSx(projectFilter.includes(p.id), projectColor(p.id))}
-                />
-                <IconButton className="proj-edit" size="small"
-                  onClick={() => { setRenamingProject(p); setRenameValue(p.name); }}
-                  sx={{ opacity: 0, p: 0.4, transition: "opacity 0.15s", color: "#94a3b8", "&:hover": { color: "#475569" } }}>
-                  <EditIcon sx={{ fontSize: 14 }} />
-                </IconButton>
-              </Box>
-            ))}
-            {showArchivedProjects && projects.filter((p) => p.archived && !pendingProjectIds.has(p.id)).map((p) => (
-              <Box key={p.id} sx={{ display: "inline-flex", alignItems: "center", gap: 0.25 }}>
-                <Chip
-                  label={p.name}
-                  size="small"
-                  sx={{ ...filterChipSx(false, "#94a3b8"), opacity: 0.6 }}
-                />
-                <IconButton size="small" title="Restore project"
-                  onClick={() => updateProject(p.id, { archived: false })}
-                  sx={{ p: 0.4, color: "#94a3b8", "&:hover": { color: "#22c55e", backgroundColor: "#f0fdf4" } }}>
-                  <RestoreIcon sx={{ fontSize: 15 }} />
-                </IconButton>
-                <IconButton size="small" title="Delete permanently"
-                  onClick={() => handlePermanentDeleteProject(p.id, p.name)}
-                  sx={{ p: 0.4, color: "#94a3b8", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
-                  <DeleteForeverIcon sx={{ fontSize: 15 }} />
-                </IconButton>
-              </Box>
-            ))}
-            <Chip
-              label={showArchivedProjects ? "Hide Archived" : "Show Archived Projects"}
-              size="small"
-              onClick={() => setShowArchivedProjects((v) => !v)}
-              sx={{ ...filterChipSx(showArchivedProjects, "#f59e0b"), ml: "auto" }}
-            />
+            <Box sx={{
+              flex: 1, minWidth: 0,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 1.25,
+              alignItems: "center",
+            }}>
+              <Chip label="All" size="small"
+                onClick={() => setProjectFilter([])}
+                sx={allChipSx(projectFilter.length === 0)} />
+              {projects.filter((p) => !p.archived).map((p) => (
+                <Tooltip key={p.id} title={`${p.name} · ${taskCountByProject[p.id] || 0} task${(taskCountByProject[p.id] || 0) === 1 ? "" : "s"}`} placement="top" arrow>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, "&:hover .proj-edit": { opacity: 1 } }}>
+                    <Chip
+                      label={`${p.name} · ${taskCountByProject[p.id] || 0}`}
+                      size="small"
+                      onClick={() => toggleProjectFilter(p.id)}
+                      onDelete={() => handleArchiveProject(p.id)}
+                      sx={{
+                        ...filterChipSx(projectFilter.includes(p.id), projectColor(p)),
+                        maxWidth: 200,
+                        "& .MuiChip-label": { px: 1.5, overflow: "hidden", textOverflow: "ellipsis", display: "block" },
+                      }}
+                    />
+                    <IconButton className="proj-edit" size="small"
+                      onClick={() => { setRenamingProject(p); setRenameValue(p.name); setRenameColor(p.color ?? autoColor(p.id)); }}
+                      sx={{ opacity: 0, p: 0.4, flexShrink: 0, transition: "opacity 0.15s", color: "#94a3b8", "&:hover": { color: "#475569" } }}>
+                      <EditIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </Box>
+                </Tooltip>
+              ))}
+              {showArchivedProjects && projects.filter((p) => p.archived && !pendingProjectIds.has(p.id)).map((p) => (
+                <Box key={p.id} sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                  <Chip label={p.name} size="small"
+                    sx={{
+                      ...filterChipSx(false, "#94a3b8"), opacity: 0.6, maxWidth: 160,
+                      "& .MuiChip-label": { overflow: "hidden", textOverflow: "ellipsis", display: "block" },
+                    }}
+                  />
+                  <IconButton size="small" title="Restore project"
+                    onClick={() => updateProject(p.id, { archived: false })}
+                    sx={{ p: 0.4, flexShrink: 0, color: "#94a3b8", "&:hover": { color: "#22c55e", backgroundColor: "#f0fdf4" } }}>
+                    <RestoreIcon sx={{ fontSize: 15 }} />
+                  </IconButton>
+                  <IconButton size="small" title="Delete permanently"
+                    onClick={() => handlePermanentDeleteProject(p.id, p.name)}
+                    sx={{ p: 0.4, flexShrink: 0, color: "#94a3b8", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
+                    <DeleteForeverIcon sx={{ fontSize: 15 }} />
+                  </IconButton>
+                </Box>
+              ))}
+              <Chip
+                label={showArchivedProjects ? "Hide Archived" : "Show Archived"}
+                size="small"
+                onClick={() => setShowArchivedProjects((v) => !v)}
+                sx={filterChipSx(showArchivedProjects, "#f59e0b")}
+              />
+            </Box>
           </Box>
 
           {/* Stages row */}
@@ -566,13 +704,19 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
             {STAGES.map((s) => (
               <Chip key={s.id} label={s.label} size="small"
                 onClick={() => toggleStageFilter(s.id)}
-                sx={filterChipSx(stageFilter.includes(s.id), STAGE_COLORS[s.id])} />
+                sx={filterChipSx(stageFilter.includes(s.id), stageColors[s.id] ?? STAGE_COLORS[s.id])} />
             ))}
+            <Chip
+              label={privacyMode ? "Privacy Mode On" : "Privacy Mode"}
+              size="small"
+              onClick={() => setPrivacyMode((v) => !v)}
+              sx={{ ...filterChipSx(privacyMode, "#64748b"), ml: "auto" }}
+            />
             <Chip
               label={showArchived ? "Hide Archived Tasks" : "Show Archived Tasks"}
               size="small"
               onClick={() => setShowArchived((v) => !v)}
-              sx={{ ...filterChipSx(showArchived, "#f59e0b"), ml: "auto" }}
+              sx={filterChipSx(showArchived, "#f59e0b")}
             />
           </Box>
         </Box>
@@ -580,19 +724,28 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
         {/* ── Board ── */}
         <DndContext sensors={sensors} collisionDetection={closestCorners}
           onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-          <Box sx={{ display: "flex", gap: 3, alignItems: "flex-start" }}>
+          <Box sx={{
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            gap: 3,
+            alignItems: isMobile ? "stretch" : "flex-start",
+            flexWrap: "nowrap",
+          }}>
             {STAGES.map((stage) => {
-              const color = STAGE_COLORS[stage.id];
-              const bg = STAGE_BG[stage.id];
+              const color = stageColors[stage.id] ?? STAGE_COLORS[stage.id];
+              const bg = hexToRgba(color, 0.08);
               const columnTasks = tasksForStage(stage.id);
               return (
                 <Box key={stage.id} sx={{
-                  minWidth: 300, flex: "0 0 300px",
+                  ...(isMobile
+                    ? { width: "100%" }
+                    : { minWidth: 240, flex: "1 1 240px", maxWidth: 400 }
+                  ),
                   borderRadius: 2.5,
                   overflow: "hidden",
                   boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
                   display: "flex", flexDirection: "column",
-                  maxHeight: "calc(100vh - 210px)",
+                  ...(!isMobile && { maxHeight: "calc(100vh - 210px)" }),
                 }}>
                   {/* Column header */}
                   <Box sx={{
@@ -600,6 +753,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                     px: 2.5, py: 1.75,
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     flexShrink: 0,
+                    "&:hover .stage-palette": { opacity: 1 },
                   }}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
                       <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "#fff", letterSpacing: 0.1 }}>
@@ -616,6 +770,17 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                       </Box>
                     </Box>
                     <Box sx={{ display: "flex", alignItems: "center" }}>
+                      <Tooltip title="Change color" placement="top">
+                        <IconButton
+                          size="small"
+                          className="stage-palette"
+                          onClick={(e) => { setEditingStageId(stage.id); setStageColorAnchor(e.currentTarget); }}
+                          sx={{ color: "rgba(255,255,255,0.55)", opacity: 0, transition: "opacity 0.15s",
+                            "&:hover": { backgroundColor: "rgba(255,255,255,0.2)", color: "#fff" } }}
+                        >
+                          <PaletteIcon sx={{ fontSize: 15 }} />
+                        </IconButton>
+                      </Tooltip>
                       {stage.id === "done" && (
                         <IconButton size="small" title="Archive all completed tasks"
                           onClick={handleArchiveAllDone}
@@ -633,11 +798,14 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                   </Box>
 
                   {/* Column body */}
-                  <Box sx={{ backgroundColor: bg, p: 1.75, flex: 1, overflowY: "auto" }}>
+                  <Box sx={{ backgroundColor: bg, p: 1.75, flex: 1, ...(!isMobile && { overflowY: "auto" }) }}>
                     <DroppableColumn id={stage.id}>
                       <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                         {columnTasks.map((task) => (
-                          <TaskCard key={task.id} task={task} onClick={() => openEdit(task)} />
+                          <TaskCard key={task.id} task={task} onClick={() => openEdit(task)}
+                            onAddToFocus={task.stage !== "done" ? () => handleAddToFocus(task) : undefined}
+                            privacyMode={privacyMode}
+                          />
                         ))}
                       </SortableContext>
                       {columnTasks.length === 0 && (
@@ -657,10 +825,41 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
             })}
           </Box>
 
+          {/* Stage color picker popover */}
+          <Popover
+            open={Boolean(stageColorAnchor)}
+            anchorEl={stageColorAnchor}
+            onClose={() => { setStageColorAnchor(null); setEditingStageId(null); }}
+            anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            transformOrigin={{ vertical: "top", horizontal: "left" }}
+            slotProps={{ paper: { sx: { p: 1.5, borderRadius: 2, boxShadow: "0 8px 24px rgba(0,0,0,0.14)" } } }}
+          >
+            <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, mb: 1 }}>
+              Stage color
+            </Typography>
+            <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", maxWidth: 180 }}>
+              {STAGE_COLOR_OPTIONS.map((c) => {
+                const active = editingStageId ? (stageColors[editingStageId] ?? STAGE_COLORS[editingStageId]) === c : false;
+                return (
+                  <Box key={c} onClick={() => { if (editingStageId) handleStageColorChange(editingStageId, c); }}
+                    sx={{
+                      width: 26, height: 26, borderRadius: "50%", backgroundColor: c,
+                      cursor: "pointer", flexShrink: 0,
+                      border: active ? "3px solid #1e293b" : "3px solid transparent",
+                      boxShadow: active ? `0 0 0 2px ${c}` : "none",
+                      transition: "all 0.1s",
+                      "&:hover": { transform: "scale(1.15)" },
+                    }}
+                  />
+                );
+              })}
+            </Box>
+          </Popover>
+
           <DragOverlay dropAnimation={null}>
             {activeTask && (
               <Box sx={{ transform: "rotate(2deg)", opacity: 0.95 }}>
-                <TaskCard task={activeTask} onClick={() => {}} />
+                <TaskCard task={activeTask} onClick={() => {}} privacyMode={privacyMode} />
               </Box>
             )}
           </DragOverlay>
@@ -713,14 +912,15 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
       {/* ── Rename project dialog ── */}
       <Dialog open={!!renamingProject} onClose={() => setRenamingProject(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: "1.05rem", color: "#1e293b" }}>
-          Rename Project
+          Edit Project
         </DialogTitle>
         <DialogContent sx={{ pt: "12px !important" }}>
           <TextField label="Project name" value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
-            fullWidth autoFocus
+            fullWidth inputRef={renameInputRef}
             onKeyDown={(e) => e.key === "Enter" && handleRename()}
           />
+          <ColorPicker value={renameColor} onChange={setRenameColor} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setRenamingProject(null)}
@@ -733,6 +933,23 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ── Focus added snackbar ── */}
+      <Snackbar
+        open={focusSnackbar}
+        autoHideDuration={2500}
+        onClose={() => setFocusSnackbar(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={() => setFocusSnackbar(false)}
+          severity="success"
+          variant="filled"
+          sx={{ borderRadius: 2, fontWeight: 600, fontSize: "0.875rem" }}
+        >
+          Added to today&apos;s focus
+        </Alert>
+      </Snackbar>
 
       {/* ── Undo deletion toasts ── */}
       {deletionQueue.length > 0 && (
@@ -760,9 +977,10 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
           )}
           <TextField label="Project name" value={newProjectName}
             onChange={(e) => setNewProjectName(e.target.value)}
-            fullWidth autoFocus
+            fullWidth inputRef={newProjectInputRef}
             onKeyDown={(e) => e.key === "Enter" && handleCreateProject()}
           />
+          <ColorPicker value={newProjectColor} onChange={setNewProjectColor} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => { setNewProjectOpen(false); setPendingTaskStage(null); }}

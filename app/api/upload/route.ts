@@ -3,20 +3,12 @@ import { writeFile, mkdir, unlink } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 import { randomBytes } from "crypto";
-import { auth } from "@/auth";
+import { getUserId } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB per file
 const QUOTA_BYTES = parseInt(process.env.UPLOAD_QUOTA_BYTES ?? "") || 500 * 1024 * 1024; // 500 MB default
-
-const ALLOWED_TYPES: Record<string, string> = {
-  jpeg: "image/jpeg",
-  jpg:  "image/jpeg",
-  png:  "image/png",
-  gif:  "image/gif",
-  webp: "image/webp",
-};
 
 function detectMimeFromMagic(buf: Buffer): { mime: string; ext: string } | null {
   // JPEG: FF D8 FF
@@ -54,9 +46,8 @@ async function cleanOrphanedUploads(userId: string): Promise<void> {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!await checkRateLimit(`upload:${userId}`, 20, 60 * 60 * 1000)) {
     return NextResponse.json({ error: "Upload rate limit exceeded. Try again later." }, { status: 429 });
@@ -72,6 +63,12 @@ export async function POST(request: Request) {
 
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
+
+  // Re-check size against the actual buffer — the earlier check used the multipart header
+  // which is user-controlled and can be spoofed to bypass the limit
+  if (buffer.length > MAX_BYTES) {
+    return NextResponse.json({ error: "File exceeds 10 MB limit" }, { status: 413 });
+  }
 
   const detected = detectMimeFromMagic(buffer);
   if (!detected) {

@@ -14,10 +14,13 @@ export async function PATCH(request: Request) {
   const userId = session.user.id;
 
   if (!await checkRateLimit(`account:${userId}`, 10, 15 * 60 * 1000)) {
+    audit("rate_limit_exceeded", { userId, ip: getClientIp(request), detail: "account" });
     return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
   }
 
-  const { action, currentPassword, newPassword, newUsername } = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  const { action, currentPassword, newPassword, newUsername } = body;
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
@@ -75,6 +78,7 @@ export async function DELETE(request: Request) {
   const userId = session.user.id;
 
   if (!await checkRateLimit(`account:${userId}`, 10, 15 * 60 * 1000)) {
+    audit("rate_limit_exceeded", { userId, ip: getClientIp(request), detail: "account_delete" });
     return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
   }
 

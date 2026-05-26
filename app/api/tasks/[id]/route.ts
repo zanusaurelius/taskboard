@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
+import { getUserId } from "@/lib/get-user-id";
 import { unlink } from "fs/promises";
 import { join } from "path";
 import { MAX_TASK_TITLE_LEN, MAX_TASK_DESC_LEN } from "@/lib/constants";
@@ -27,19 +27,30 @@ async function isFilenameReferenced(filename: string, userId: string, excludeTas
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: taskId } = await params;
 
-  if (!await getOwnedTask(taskId, userId)) {
+  const existing = await getOwnedTask(taskId, userId);
+  if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const body = await request.json();
-  const { title, description, stage, priority, dueDate, projectId, position, archived } = body;
+  const body = await request.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
-  if (title !== undefined && title.length > MAX_TASK_TITLE_LEN) {
+  // Conflict detection: if the client tells us when it last saw this task and the
+  // server version is newer, stop and let the client decide how to resolve it.
+  if (body.clientUpdatedAt) {
+    const clientTs = new Date(body.clientUpdatedAt).getTime();
+    if (!isNaN(clientTs) && existing.updatedAt.getTime() > clientTs) {
+      return NextResponse.json({ conflict: true, serverItem: existing }, { status: 409 });
+    }
+  }
+
+  const { title, encTitle, description, encDescription, stage, priority, dueDate, projectId, position, archived, sensitive } = body;
+
+  if (title !== undefined && typeof title === "string" && title.length > MAX_TASK_TITLE_LEN) {
     return NextResponse.json({ error: `Title must be at most ${MAX_TASK_TITLE_LEN} characters` }, { status: 400 });
   }
   if (description !== undefined && description !== null && description.length > MAX_TASK_DESC_LEN) {
@@ -56,23 +67,26 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     where: { id: taskId },
     data: {
       ...(title !== undefined && { title }),
+      ...(encTitle !== undefined && { encTitle }),
       ...(description !== undefined && { description }),
+      ...(encDescription !== undefined && { encDescription }),
       ...(stage !== undefined && { stage }),
+      ...(stage !== undefined && { doneAt: stage === "done" ? new Date() : null }),
       ...(priority !== undefined && { priority }),
       ...(dueDate !== undefined && { dueDate }),
       ...(projectId !== undefined && { projectId }),
       ...(position !== undefined && { position }),
       ...(archived !== undefined && { archived }),
+      ...(sensitive !== undefined && { sensitive }),
     },
     include: { project: true },
   });
   return NextResponse.json(task);
 }
 
-export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: taskId } = await params;
 
   const task = await getOwnedTask(taskId, userId);

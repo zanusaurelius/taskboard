@@ -27,6 +27,10 @@ async function uploadImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
   const res = await fetch("/api/upload", { method: "POST", body: formData });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? "Upload failed");
+  }
   const { url } = await res.json();
   return url;
 }
@@ -53,6 +57,18 @@ async function insertImageWithUpload(editor: Editor, file: File) {
       }
     });
     if (found) dispatch(tr);
+  } catch {
+    // Upload failed — remove the optimistically-inserted image so the editor
+    // doesn't end up with a broken src
+    const { state, dispatch } = editor.view;
+    const tr = state.tr;
+    state.doc.nodesBetween(0, state.doc.content.size, (node, pos) => {
+      if (node.type.name === "image" && node.attrs.src === localUrl) {
+        tr.delete(pos, pos + node.nodeSize);
+        return false;
+      }
+    });
+    dispatch(tr);
   } finally {
     URL.revokeObjectURL(localUrl);
   }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
+import { getUserId } from "@/lib/get-user-id";
 import { MAX_FOLDER_NAME_LEN } from "@/lib/constants";
 
 async function getOwnedFolder(id: string, userId: string) {
@@ -8,31 +8,44 @@ async function getOwnedFolder(id: string, userId: string) {
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: folderId } = await params;
 
-  if (!await getOwnedFolder(folderId, userId)) {
+  const existing = await getOwnedFolder(folderId, userId);
+  if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { name } = await request.json();
-  if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
-  if (name.trim().length > MAX_FOLDER_NAME_LEN) {
-    return NextResponse.json({ error: `Name must be at most ${MAX_FOLDER_NAME_LEN} characters` }, { status: 400 });
+  const body = await request.json().catch(() => null);
+
+  if (body?.clientUpdatedAt) {
+    const clientTs = new Date(body.clientUpdatedAt).getTime();
+    if (!isNaN(clientTs) && existing.updatedAt.getTime() > clientTs) {
+      return NextResponse.json({ conflict: true, serverItem: existing }, { status: 409 });
+    }
   }
-  const folder = await prisma.folder.update({
-    where: { id: folderId },
-    data: { name: name.trim() },
-  });
+
+  const { name, encName, hidden, locked, pinned } = body ?? {};
+  const data: { name?: string; encName?: string | null; pinned?: boolean; hidden?: boolean; locked?: boolean } = {};
+  if (name !== undefined) {
+    if (typeof name === "string" && name.trim().length > MAX_FOLDER_NAME_LEN) {
+      return NextResponse.json({ error: `Name must be at most ${MAX_FOLDER_NAME_LEN} characters` }, { status: 400 });
+    }
+    data.name = typeof name === "string" ? name.trim() : name;
+  }
+  if ("encName" in (body ?? {})) data.encName = encName ?? null;
+  if (pinned !== undefined) data.pinned = pinned;
+  if (hidden !== undefined) data.hidden = hidden;
+  if (locked !== undefined) data.locked = locked;
+  if (Object.keys(data).length === 0) return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+  const folder = await prisma.folder.update({ where: { id: folderId }, data });
   return NextResponse.json(folder);
 }
 
-export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: folderId } = await params;
 
   if (!await getOwnedFolder(folderId, userId)) {

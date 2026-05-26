@@ -1,22 +1,27 @@
 import { prisma } from "@/lib/prisma";
 
 export async function checkRateLimit(key: string, limit: number, windowMs: number): Promise<boolean> {
-  const cutoff = new Date(Date.now() - windowMs);
+  try {
+    const cutoff = new Date(Date.now() - windowMs);
 
-  const count = await prisma.rateLimit.count({
-    where: { key, hit: { gt: cutoff } },
-  });
+    const count = await prisma.rateLimit.count({
+      where: { key, hit: { gt: cutoff } },
+    });
 
-  if (count >= limit) return false;
+    if (count >= limit) return false;
 
-  await prisma.rateLimit.create({ data: { key } });
+    await prisma.rateLimit.create({ data: { key } });
 
-  // Probabilistic cleanup — ~1% of requests purge expired rows
-  if (Math.random() < 0.01) {
-    prisma.rateLimit.deleteMany({ where: { hit: { lt: cutoff } } }).catch(() => {});
+    // Probabilistic cleanup — ~1% of requests purge expired rows
+    if (Math.random() < 0.01) {
+      prisma.rateLimit.deleteMany({ where: { hit: { lt: cutoff } } }).catch(() => {});
+    }
+
+    return true;
+  } catch {
+    // Fail open — a DB error should not lock users out
+    return true;
   }
-
-  return true;
 }
 
 export function getClientIp(req: Request): string {

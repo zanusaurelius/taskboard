@@ -1,0 +1,107 @@
+id: taskboard
+title: "Taskboard Notes"
+version: "0.1.4"
+release-notes: "Privacy Mode for tasks (hide sensitive cards at a glance); fix journal autosave overwriting in-progress text"
+license: MIT
+wrapper-repo: "https://github.com/start9labs/taskboard"
+upstream-repo: "https://github.com/start9labs/taskboard"
+support-site: ~
+marketing-site: ~
+donation-url: ~
+
+description:
+  short: "Personal kanban board and notes with encrypted vault"
+  long: >
+    Taskboard Notes is a self-hosted personal productivity app with a 4-column
+    kanban board, folder-based notes with rich-text editing, daily focus
+    tracking, an end-to-end encrypted vault for sensitive notes, and optional
+    task reminders. All data is stored locally on your Embassy — nothing leaves
+    your hardware.
+
+assets:
+  license: LICENSE
+  icon: icon.png
+  instructions: instructions.md
+
+main:
+  type: docker
+  image: main
+  system: false
+  entrypoint: /entrypoint.sh
+  args: []
+  mounts:
+    db: /app/db
+    uploads: /app/data/uploads
+  io-format: ~
+
+health-checks:
+  web:
+    name: "Web UI"
+    success-message: "Taskboard is running"
+    type: docker
+    image: main
+    system: false
+    entrypoint: wget
+    args:
+      - "-qO-"
+      - "http://localhost:3000/api/health"
+    mounts: {}
+    io-format: ~
+
+volumes:
+  db:
+    type: data
+  uploads:
+    type: data
+
+min-os-version: "0.3.4"
+
+hardware-requirements:
+  arch:
+    - x86_64
+
+interfaces:
+  main:
+    name: "Web UI"
+    description: "Taskboard web interface"
+    tor-config:
+      port-mapping:
+        80: "3000"
+    lan-config:
+      443:
+        ssl: true
+        internal: 3000
+    ui: true
+    protocols:
+      - tcp
+      - http
+
+backup:
+  create:
+    type: docker
+    image: compat
+    system: true
+    entrypoint: compat
+    args:
+      - duplicity
+      - create
+      - /mnt/backup
+      - /app/db
+    mounts:
+      BACKUP: /mnt/backup
+      db: /app/db
+  restore:
+    type: docker
+    image: compat
+    system: true
+    entrypoint: compat
+    args:
+      - duplicity
+      - restore
+      - /mnt/backup
+      - /app/db
+    mounts:
+      BACKUP: /mnt/backup
+      db: /app/db
+
+dependencies: {}

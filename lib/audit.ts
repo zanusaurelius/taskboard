@@ -9,7 +9,8 @@ export type AuditEvent =
   | "account_delete"
   | "recover_success"
   | "recover_failure"
-  | "rate_limit_exceeded";
+  | "rate_limit_exceeded"
+  | "api_token_issued";
 
 export function audit(
   event: AuditEvent,

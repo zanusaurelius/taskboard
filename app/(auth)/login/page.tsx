@@ -22,13 +22,20 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const result = await signIn("credentials", { username, password, redirect: false });
-    setLoading(false);
-    if (result?.error) {
-      setError("Invalid username or password.");
-    } else {
-      router.push("/");
-      router.refresh();
+    try {
+      const result = await signIn("credentials", { username, password, redirect: false });
+      if (!result) {
+        setError("Could not reach the server. Check your connection and try again.");
+      } else if (result.error) {
+        setError("Invalid username or password.");
+      } else {
+        router.push("/");
+        router.refresh();
+      }
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 

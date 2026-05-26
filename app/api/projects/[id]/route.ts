@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
+import { getUserId } from "@/lib/get-user-id";
 import { unlink } from "fs/promises";
 import { join } from "path";
 import { MAX_PROJECT_NAME_LEN } from "@/lib/constants";
@@ -33,25 +33,37 @@ async function isFilenameReferencedElsewhere(
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: projectId } = await params;
 
-  if (!await getOwnedProject(projectId, userId)) {
+  const existing = await getOwnedProject(projectId, userId);
+  if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const body = await request.json();
-  // Whitelist — only allow changing name and archived flag
-  const data: { name?: string; archived?: boolean } = {};
+  const body = await request.json().catch(() => null);
+  if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+
+  if (body.clientUpdatedAt) {
+    const clientTs = new Date(body.clientUpdatedAt).getTime();
+    if (!isNaN(clientTs) && existing.updatedAt.getTime() > clientTs) {
+      return NextResponse.json({ conflict: true, serverItem: existing }, { status: 409 });
+    }
+  }
+  const data: { name?: string; encName?: string | null; color?: string | null; archived?: boolean } = {};
   if (typeof body.name === "string") {
     const trimmed = body.name.trim();
-    if (!trimmed) return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
     if (trimmed.length > MAX_PROJECT_NAME_LEN) {
       return NextResponse.json({ error: `Name must be at most ${MAX_PROJECT_NAME_LEN} characters` }, { status: 400 });
     }
     data.name = trimmed;
+  }
+  if ("encName" in body) data.encName = body.encName ?? null;
+  if ("color" in body) {
+    data.color = typeof body.color === "string" && /^#[0-9a-fA-F]{6}$/.test(body.color)
+      ? body.color
+      : null;
   }
   if (typeof body.archived === "boolean") data.archived = body.archived;
   if (Object.keys(data).length === 0) {
@@ -63,9 +75,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: projectId } = await params;
 
   if (!await getOwnedProject(projectId, userId)) {
