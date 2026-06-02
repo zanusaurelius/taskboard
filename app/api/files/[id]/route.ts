@@ -2,21 +2,9 @@ import { NextResponse } from "next/server";
 import { unlink, readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import { getUserId } from "@/lib/get-user-id";
+import { getUserId, getUserIdWithQueryToken } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/file-utils";
-
-async function getUserIdWithQueryToken(request: Request): Promise<string | null> {
-  const url = new URL(request.url);
-  const queryToken = url.searchParams.get("token");
-  if (queryToken) {
-    const fakeReq = new Request(request.url, {
-      headers: { Authorization: `Bearer ${queryToken}` },
-    });
-    return getUserId(fakeReq);
-  }
-  return getUserId(request);
-}
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getUserIdWithQueryToken(request);
@@ -32,7 +20,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const buffer = await readFile(filePath);
 
   const inlineMimes = ["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "video/mp4", "video/quicktime", "audio/mpeg", "audio/mp4", "text/plain", "text/markdown"];
-  // RFC 5987: encode filename to prevent header injection via " \r \n in originalName
   const safeName = encodeURIComponent(upload.originalName ?? "file");
   const disposition = inlineMimes.includes(upload.mimeType)
     ? `inline; filename*=UTF-8''${safeName}`
@@ -57,7 +44,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!upload) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await request.json();
-  const { folderId } = body as { folderId?: string | null };
+  const { folderId, originalName } = body as { folderId?: string | null; originalName?: string };
+
+  if (originalName !== undefined) {
+    if (!originalName.trim()) return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
+    if (originalName.trim().length > 255) return NextResponse.json({ error: "Name too long" }, { status: 400 });
+  }
 
   // Verify destination folder belongs to user
   if (folderId) {
@@ -67,7 +59,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const updated = await prisma.upload.update({
     where: { id },
-    data: { fileFolderId: folderId ?? null },
+    data: {
+      ...(folderId !== undefined ? { fileFolderId: folderId ?? null } : {}),
+      ...(originalName !== undefined ? { originalName: originalName.trim() } : {}),
+    },
     select: { id: true, originalName: true, mimeType: true, size: true, thumbnail: true, fileFolderId: true, createdAt: true, updatedAt: true },
   });
 

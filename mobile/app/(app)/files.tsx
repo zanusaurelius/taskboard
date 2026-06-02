@@ -11,10 +11,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import {
   listFiles, listFileFolders, uploadFile, deleteFile,
   createFileFolder, renameFileFolder, deleteFileFolder,
-  moveFile, moveFolderTo,
+  moveFile, moveFolderTo, renameFile,
   fileUrl, fileThumbnailUrl,
   type UploadFileMeta, type FileFolderMeta,
 } from '@/lib/api';
+import { Linking } from 'react-native';
 import { getBaseUrl, getToken } from '@/lib/storage';
 
 type ViewMode = 'grid' | 'list';
@@ -51,11 +52,13 @@ export default function FilesScreen() {
   const [baseUrl, setBaseUrl] = useState('');
   const [token, setToken] = useState<string | null>(null);
 
-  // Folder creation / rename modal (shared)
+  // Folder/file create + rename modal (shared)
   const [folderModalVisible, setFolderModalVisible] = useState(false);
   const [folderName, setFolderName] = useState('');
   const [folderCreating, setFolderCreating] = useState(false);
   const [renamingFolder, setRenamingFolder] = useState<FileFolderMeta | null>(null);
+  const [renamingFile, setRenamingFile] = useState<UploadFileMeta | null>(null);
+  const [renameFileName, setRenameFileName] = useState('');
 
   // Upload picker modal
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
@@ -102,7 +105,9 @@ export default function FilesScreen() {
   const handleCreateFolder = async () => {
     if (!folderName.trim()) return;
     setFolderCreating(true);
-    if (renamingFolder) {
+    if (renamingFile) {
+      await renameFile(renamingFile.id, folderName.trim());
+    } else if (renamingFolder) {
       await renameFileFolder(renamingFolder.id, folderName.trim());
     } else {
       await createFileFolder(folderName.trim(), currentFolder.id);
@@ -111,6 +116,7 @@ export default function FilesScreen() {
     setFolderModalVisible(false);
     setFolderName('');
     setRenamingFolder(null);
+    setRenamingFile(null);
     load();
   };
 
@@ -134,9 +140,23 @@ export default function FilesScreen() {
     setFolderModalVisible(true);
   };
 
+  const openFile = (file: UploadFileMeta) => {
+    if (!baseUrl) return;
+    const url = fileUrl(file.id, baseUrl, token);
+    Linking.openURL(url).catch(() => Alert.alert('Cannot open file', 'No app found to open this file type.'));
+  };
+
+  const handleRenameFile = (file: UploadFileMeta) => {
+    setRenamingFile(file);
+    setRenameFileName(file.originalName);
+    setFolderName(file.originalName);
+    setFolderModalVisible(true);
+  };
+
   const openMovePicker = (type: 'file' | 'folder', item: UploadFileMeta | FileFolderMeta) => {
     setMoveTarget({ type, item });
     setMovePickerStack([{ id: null, name: 'Files' }]);
+    setMovePickerFolders([]); // clear stale data from previous open
     setMoveModalVisible(true);
   };
 
@@ -317,7 +337,9 @@ export default function FilesScreen() {
             return (
               <TouchableOpacity
                 style={styles.listRow}
+                onPress={() => openFile(f)}
                 onLongPress={() => Alert.alert(f.originalName, '', [
+                  { text: 'Rename', onPress: () => handleRenameFile(f) },
                   { text: 'Move to…', onPress: () => openMovePicker('file', f) },
                   { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFile(f) },
                   { text: 'Cancel', style: 'cancel' },
@@ -390,7 +412,9 @@ export default function FilesScreen() {
                     <TouchableOpacity
                       key={file.id}
                       style={styles.gridCell}
+                      onPress={() => openFile(file)}
                       onLongPress={() => Alert.alert(file.originalName, '', [
+                        { text: 'Rename', onPress: () => handleRenameFile(file) },
                         { text: 'Move to…', onPress: () => openMovePicker('file', file) },
                         { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFile(file) },
                         { text: 'Cancel', style: 'cancel' },
@@ -405,7 +429,9 @@ export default function FilesScreen() {
                     <TouchableOpacity
                       key={file.id}
                       style={[styles.gridCell, styles.gridCellDoc]}
+                      onPress={() => openFile(file)}
                       onLongPress={() => Alert.alert(file.originalName, '', [
+                        { text: 'Rename', onPress: () => handleRenameFile(file) },
                         { text: 'Move to…', onPress: () => openMovePicker('file', file) },
                         { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFile(file) },
                         { text: 'Cancel', style: 'cancel' },
@@ -496,10 +522,10 @@ export default function FilesScreen() {
       </Modal>
 
       {/* New folder / rename modal */}
-      <Modal visible={folderModalVisible} transparent animationType="fade" onRequestClose={() => { setFolderModalVisible(false); setRenamingFolder(null); }}>
-        <Pressable style={styles.modalOverlay} onPress={() => { setFolderModalVisible(false); setRenamingFolder(null); }}>
+      <Modal visible={folderModalVisible} transparent animationType="fade" onRequestClose={() => { setFolderModalVisible(false); setRenamingFolder(null); setRenamingFile(null); }}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setFolderModalVisible(false); setRenamingFolder(null); setRenamingFile(null); }}>
           <Pressable style={styles.folderModal} onPress={() => {}}>
-            <Text style={styles.folderModalTitle}>{renamingFolder ? 'Rename Folder' : 'New Folder'}</Text>
+            <Text style={styles.folderModalTitle}>{renamingFile ? 'Rename File' : renamingFolder ? 'Rename Folder' : 'New Folder'}</Text>
             <TextInput
               style={styles.folderInput}
               placeholder="Folder name"
@@ -510,13 +536,13 @@ export default function FilesScreen() {
               onSubmitEditing={handleCreateFolder}
             />
             <View style={styles.folderModalBtns}>
-              <TouchableOpacity onPress={() => { setFolderModalVisible(false); setRenamingFolder(null); }} style={styles.folderModalCancel}>
+              <TouchableOpacity onPress={() => { setFolderModalVisible(false); setRenamingFolder(null); setRenamingFile(null); }} style={styles.folderModalCancel}>
                 <Text style={styles.folderModalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleCreateFolder} style={styles.folderModalCreate} disabled={folderCreating}>
                 {folderCreating
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.folderModalCreateText}>{renamingFolder ? 'Rename' : 'Create'}</Text>}
+                  : <Text style={styles.folderModalCreateText}>{renamingFile || renamingFolder ? 'Rename' : 'Create'}</Text>}
               </TouchableOpacity>
             </View>
           </Pressable>

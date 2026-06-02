@@ -2,23 +2,9 @@ import { NextResponse } from "next/server";
 import { unlink, readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import { getUserId } from "@/lib/get-user-id";
+import { getUserId, getUserIdWithQueryToken } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR } from "@/lib/file-utils";
-
-// Serve the file inline (PDF, images) or as a download (Office docs)
-async function getUserIdWithQueryToken(request: Request): Promise<string | null> {
-  // Allow ?token= query param so mobile can open files via Linking.openURL
-  const url = new URL(request.url);
-  const queryToken = url.searchParams.get("token");
-  if (queryToken) {
-    const fakeReq = new Request(request.url, {
-      headers: { Authorization: `Bearer ${queryToken}` },
-    });
-    return getUserId(fakeReq);
-  }
-  return getUserId(request);
-}
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getUserIdWithQueryToken(request);

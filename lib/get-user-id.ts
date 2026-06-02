@@ -9,6 +9,19 @@ import { prisma } from "@/lib/prisma";
  *
  * Returns null if unauthenticated or if the token was issued before a password change.
  */
+/** Like getUserId but also accepts a ?token= query param for mobile Linking.openURL flows. */
+export async function getUserIdWithQueryToken(request: Request): Promise<string | null> {
+  const url = new URL(request.url);
+  const queryToken = url.searchParams.get("token");
+  if (queryToken) {
+    const fakeReq = new Request(request.url, {
+      headers: { Authorization: `Bearer ${queryToken}` },
+    });
+    return getUserId(fakeReq);
+  }
+  return getUserId(request);
+}
+
 export async function getUserId(request: Request): Promise<string | null> {
   const authHeader = request.headers.get("authorization");
   if (authHeader?.startsWith("Bearer ")) {

@@ -282,6 +282,14 @@ export async function deleteFileFolder(id: string): Promise<boolean> {
   return result.ok;
 }
 
+export async function renameFile(id: string, originalName: string): Promise<boolean> {
+  const result = await apiFetch(`/api/files/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ originalName }),
+  });
+  return result.ok;
+}
+
 export async function moveFile(id: string, folderId: string | null): Promise<boolean> {
   const result = await apiFetch(`/api/files/${id}`, {
     method: 'PATCH',

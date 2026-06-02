@@ -64,8 +64,14 @@ export default function FilesView() {
 
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [newFolderError, setNewFolderError] = useState<string | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<FileFolder | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renamingFile, setRenamingFile] = useState<UploadFile | null>(null);
+  const [renameFileName, setRenameFileName] = useState("");
+  const [renameFileError, setRenameFileError] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,10 +84,11 @@ export default function FilesView() {
   const load = useCallback(async () => {
     setLoading(true);
     const fid = currentFolder.id;
-    const qs = fid ? `?folderId=${fid}` : "";
+    const folderQs = fid ? `?parentId=${fid}` : "";
+    const fileQs = fid ? `?folderId=${fid}` : "";
     const [fRes, uRes] = await Promise.all([
-      fetch(`/api/file-folders${qs}`),
-      fetch(`/api/files${qs}`),
+      fetch(`/api/file-folders${folderQs}`),
+      fetch(`/api/files${fileQs}`),
     ]);
     if (fRes.ok && uRes.ok) {
       const [f, u] = await Promise.all([fRes.json(), uRes.json()]);
@@ -107,31 +114,40 @@ export default function FilesView() {
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+    const chosen = Array.from(e.target.files ?? []);
+    if (!chosen.length) return;
     setUploading(true);
     setUploadError(null);
-    const fd = new FormData();
-    fd.append("file", f);
-    if (currentFolder.id) fd.append("folderId", currentFolder.id);
-    const res = await fetch("/api/files", { method: "POST", body: fd });
-    if (res.ok) {
-      load();
-    } else {
-      const d = await res.json().catch(() => ({}));
-      setUploadError(d.error ?? "Upload failed");
+    const errors: string[] = [];
+    for (const f of chosen) {
+      const fd = new FormData();
+      fd.append("file", f);
+      if (currentFolder.id) fd.append("folderId", currentFolder.id);
+      const res = await fetch("/api/files", { method: "POST", body: fd });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        errors.push(`${f.name}: ${d.error ?? "Upload failed"}`);
+      }
     }
+    if (errors.length) setUploadError(errors.join(" · "));
+    load();
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
-    await fetch("/api/file-folders", {
+    setNewFolderError(null);
+    const res = await fetch("/api/file-folders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newFolderName.trim(), parentId: currentFolder.id }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setNewFolderError(d.error ?? "Failed to create folder");
+      return;
+    }
     setNewFolderOpen(false);
     setNewFolderName("");
     load();
@@ -139,12 +155,35 @@ export default function FilesView() {
 
   const renameFolder = async () => {
     if (!renamingFolder || !renameName.trim()) return;
-    await fetch(`/api/file-folders/${renamingFolder.id}`, {
+    setRenameError(null);
+    const res = await fetch(`/api/file-folders/${renamingFolder.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: renameName.trim() }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setRenameError(d.error ?? "Failed to rename folder");
+      return;
+    }
     setRenamingFolder(null);
+    load();
+  };
+
+  const renameFile = async () => {
+    if (!renamingFile || !renameFileName.trim()) return;
+    setRenameFileError(null);
+    const res = await fetch(`/api/files/${renamingFile.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ originalName: renameFileName.trim() }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setRenameFileError(d.error ?? "Failed to rename file");
+      return;
+    }
+    setRenamingFile(null);
     load();
   };
 
@@ -166,11 +205,17 @@ export default function FilesView() {
 
   const moveItem = async (folderId: string | null) => {
     if (!menuTarget) return;
+    setMoveError(null);
     const url = menuTarget.type === "folder"
       ? `/api/file-folders/${menuTarget.item.id}`
       : `/api/files/${menuTarget.item.id}`;
     const body = menuTarget.type === "folder" ? { parentId: folderId } : { folderId };
-    await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setMoveError(d.error ?? "Move failed");
+      return;
+    }
     setMovePickerOpen(false);
     setMenuTarget(null);
     load();
@@ -244,6 +289,7 @@ export default function FilesView() {
           <input
             ref={fileInputRef}
             type="file"
+            multiple
             style={{ display: "none" }}
             onChange={handleUpload}
           />
@@ -297,7 +343,19 @@ export default function FilesView() {
         {menuTarget?.type === "folder" && (
           <MenuItem onClick={() => {
             setRenameName((menuTarget.item as FileFolder).name);
+            setRenameError(null);
             setRenamingFolder(menuTarget.item as FileFolder);
+            setMenuAnchor(null);
+          }}>
+            <DriveFileMoveIcon fontSize="small" sx={{ mr: 1, color: "#64748b" }} />
+            Rename
+          </MenuItem>
+        )}
+        {menuTarget?.type === "file" && (
+          <MenuItem onClick={() => {
+            setRenameFileName((menuTarget.item as UploadFile).originalName);
+            setRenameFileError(null);
+            setRenamingFile(menuTarget.item as UploadFile);
             setMenuAnchor(null);
           }}>
             <DriveFileMoveIcon fontSize="small" sx={{ mr: 1, color: "#64748b" }} />
@@ -318,50 +376,68 @@ export default function FilesView() {
       <MovePicker
         open={movePickerOpen}
         excludeId={menuTarget?.type === "folder" ? menuTarget.item.id : null}
+        moveError={moveError}
         onMove={moveItem}
-        onClose={() => { setMovePickerOpen(false); setMenuTarget(null); }}
+        onClose={() => { setMovePickerOpen(false); setMenuTarget(null); setMoveError(null); }}
       />
 
       {/* New folder dialog */}
-      <Dialog open={newFolderOpen} onClose={() => setNewFolderOpen(false)} maxWidth="xs" fullWidth
+      <Dialog open={newFolderOpen} onClose={() => { setNewFolderOpen(false); setNewFolderError(null); }} maxWidth="xs" fullWidth
         slotProps={{ paper: { sx: { backgroundColor: "#1e293b", borderRadius: 3, border: "1px solid #334155" } } }}>
         <DialogTitle sx={{ color: "#f1f5f9", fontWeight: 700, pb: 1 }}>New Folder</DialogTitle>
         <DialogContent>
           <TextField
-            autoFocus
-            fullWidth
-            size="small"
-            placeholder="Folder name"
+            autoFocus fullWidth size="small" placeholder="Folder name"
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && createFolder()}
             sx={{ mt: 1, "& .MuiInputBase-input": { color: "#f1f5f9" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "#475569" } }}
           />
+          {newFolderError && <Typography sx={{ color: "#f87171", fontSize: "0.78rem", mt: 1 }}>{newFolderError}</Typography>}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setNewFolderOpen(false)} sx={{ color: "#94a3b8", textTransform: "none" }}>Cancel</Button>
+          <Button onClick={() => { setNewFolderOpen(false); setNewFolderError(null); }} sx={{ color: "#94a3b8", textTransform: "none" }}>Cancel</Button>
           <Button onClick={createFolder} variant="contained" sx={{ backgroundColor: "#6366f1", textTransform: "none", borderRadius: 2 }}>Create</Button>
         </DialogActions>
       </Dialog>
 
       {/* Rename folder dialog */}
-      <Dialog open={Boolean(renamingFolder)} onClose={() => setRenamingFolder(null)} maxWidth="xs" fullWidth
+      <Dialog open={Boolean(renamingFolder)} onClose={() => { setRenamingFolder(null); setRenameError(null); }} maxWidth="xs" fullWidth
         slotProps={{ paper: { sx: { backgroundColor: "#1e293b", borderRadius: 3, border: "1px solid #334155" } } }}>
         <DialogTitle sx={{ color: "#f1f5f9", fontWeight: 700, pb: 1 }}>Rename Folder</DialogTitle>
         <DialogContent>
           <TextField
-            autoFocus
-            fullWidth
-            size="small"
+            autoFocus fullWidth size="small"
             value={renameName}
             onChange={(e) => setRenameName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && renameFolder()}
             sx={{ mt: 1, "& .MuiInputBase-input": { color: "#f1f5f9" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "#475569" } }}
           />
+          {renameError && <Typography sx={{ color: "#f87171", fontSize: "0.78rem", mt: 1 }}>{renameError}</Typography>}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setRenamingFolder(null)} sx={{ color: "#94a3b8", textTransform: "none" }}>Cancel</Button>
+          <Button onClick={() => { setRenamingFolder(null); setRenameError(null); }} sx={{ color: "#94a3b8", textTransform: "none" }}>Cancel</Button>
           <Button onClick={renameFolder} variant="contained" sx={{ backgroundColor: "#6366f1", textTransform: "none", borderRadius: 2 }}>Rename</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Rename file dialog */}
+      <Dialog open={Boolean(renamingFile)} onClose={() => { setRenamingFile(null); setRenameFileError(null); }} maxWidth="xs" fullWidth
+        slotProps={{ paper: { sx: { backgroundColor: "#1e293b", borderRadius: 3, border: "1px solid #334155" } } }}>
+        <DialogTitle sx={{ color: "#f1f5f9", fontWeight: 700, pb: 1 }}>Rename File</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus fullWidth size="small"
+            value={renameFileName}
+            onChange={(e) => setRenameFileName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && renameFile()}
+            sx={{ mt: 1, "& .MuiInputBase-input": { color: "#f1f5f9" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "#475569" } }}
+          />
+          {renameFileError && <Typography sx={{ color: "#f87171", fontSize: "0.78rem", mt: 1 }}>{renameFileError}</Typography>}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => { setRenamingFile(null); setRenameFileError(null); }} sx={{ color: "#94a3b8", textTransform: "none" }}>Cancel</Button>
+          <Button onClick={renameFile} variant="contained" sx={{ backgroundColor: "#6366f1", textTransform: "none", borderRadius: 2 }}>Rename</Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -440,7 +516,8 @@ function FolderCard({ folder, onEnter, onMenu }: { folder: FileFolder; onEnter: 
 }
 
 function FileCard({ file, onOpen, onMenu }: { file: UploadFile; onOpen: () => void; onMenu: (e: React.MouseEvent<HTMLElement>, type: "file" | "folder", item: UploadFile) => void }) {
-  const isImg = file.mimeType.startsWith("image/");
+  const [imgError, setImgError] = useState(false);
+  const isImg = file.mimeType.startsWith("image/") && !imgError;
   return (
     <Box
       onClick={onOpen}
@@ -469,6 +546,7 @@ function FileCard({ file, onOpen, onMenu }: { file: UploadFile; onOpen: () => vo
           alt={file.originalName}
           style={{ width: "100%", height: 120, objectFit: "cover", display: "block" }}
           loading="lazy"
+          onError={() => setImgError(true)}
         />
       ) : (
         <Box sx={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#f8fafc" }}>
@@ -537,6 +615,7 @@ function ListView({ folders, files, onEnterFolder, onOpenFile, onMenu }: {
               alt=""
               style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 4, flexShrink: 0 }}
               loading="lazy"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
             />
           ) : (
             <Box sx={{ width: 32, display: "flex", justifyContent: "center", flexShrink: 0 }}>
@@ -559,9 +638,10 @@ function ListView({ folders, files, onEnterFolder, onOpenFile, onMenu }: {
 
 // ── Move picker dialog ───────────────────────────────────────────────────────
 
-function MovePicker({ open, excludeId, onMove, onClose }: {
+function MovePicker({ open, excludeId, moveError, onMove, onClose }: {
   open: boolean;
   excludeId: string | null;
+  moveError: string | null;
   onMove: (folderId: string | null) => void;
   onClose: () => void;
 }) {
@@ -571,7 +651,10 @@ function MovePicker({ open, excludeId, onMove, onClose }: {
   const current = pickerStack[pickerStack.length - 1];
 
   useEffect(() => {
-    if (open) setPickerStack([{ id: null, name: "Files" }]);
+    if (open) {
+      setPickerStack([{ id: null, name: "Files" }]);
+      setPickerFolders([]); // clear stale data from previous open
+    }
   }, [open]);
 
   useEffect(() => {
@@ -637,12 +720,15 @@ function MovePicker({ open, excludeId, onMove, onClose }: {
           ))}
         </Box>
       </DialogContent>
-      <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} sx={{ color: "#94a3b8", textTransform: "none" }}>Cancel</Button>
-        <Button onClick={() => onMove(current.id)} variant="contained"
-          sx={{ backgroundColor: "#6366f1", "&:hover": { backgroundColor: "#4f46e5" }, textTransform: "none", borderRadius: 2 }}>
-          Move here
-        </Button>
+      <DialogActions sx={{ px: 3, py: 2, flexDirection: "column", alignItems: "stretch", gap: 1 }}>
+        {moveError && <Typography sx={{ color: "#f87171", fontSize: "0.78rem" }}>{moveError}</Typography>}
+        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1 }}>
+          <Button onClick={onClose} sx={{ color: "#94a3b8", textTransform: "none" }}>Cancel</Button>
+          <Button onClick={() => onMove(current.id)} variant="contained"
+            sx={{ backgroundColor: "#6366f1", "&:hover": { backgroundColor: "#4f46e5" }, textTransform: "none", borderRadius: 2 }}>
+            Move here
+          </Button>
+        </Box>
       </DialogActions>
     </Dialog>
   );

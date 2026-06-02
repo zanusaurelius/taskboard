@@ -2,21 +2,9 @@ import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import { getUserId } from "@/lib/get-user-id";
+import { getUserIdWithQueryToken } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR, THUMB_DIR, isImage } from "@/lib/file-utils";
-
-async function getUserIdWithQueryToken(request: Request): Promise<string | null> {
-  const url = new URL(request.url);
-  const queryToken = url.searchParams.get("token");
-  if (queryToken) {
-    const fakeReq = new Request(request.url, {
-      headers: { Authorization: `Bearer ${queryToken}` },
-    });
-    return getUserId(fakeReq);
-  }
-  return getUserId(request);
-}
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getUserIdWithQueryToken(request);
