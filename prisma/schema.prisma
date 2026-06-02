@@ -21,6 +21,7 @@ model User {
   folders           Folder[]
   projects          Project[]
   uploads           Upload[]
+  fileFolders       FileFolder[]
   attachments       Attachment[]
   dailyGoals        DailyGoal[]
   dailyReflections  DailyReflection[]
@@ -114,14 +115,38 @@ model Task {
   updatedAt      DateTime     @updatedAt
 }
 
-model Upload {
-  id        String   @id @default(cuid())
-  filename  String   @unique
-  mimeType  String
-  size      Int      @default(0)
+model FileFolder {
+  id        String       @id @default(cuid())
+  name      String
+  parentId  String?
+  parent    FileFolder?  @relation("FileFolderTree", fields: [parentId], references: [id])
+  children  FileFolder[] @relation("FileFolderTree")
+  uploads   Upload[]
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
+  user      User         @relation(fields: [userId], references: [id])
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([parentId])
+}
+
+model Upload {
+  id           String      @id @default(cuid())
+  filename     String      @unique
+  originalName String      @default("")
+  mimeType     String
+  size         Int         @default(0)
+  thumbnail    String?
+  fileFolderId String?
+  fileFolder   FileFolder? @relation(fields: [fileFolderId], references: [id])
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([fileFolderId])
 }
 
 model Attachment {

@@ -188,3 +188,96 @@ export async function uploadImage(uri: string, mimeType: string): Promise<string
     return null;
   }
 }
+
+// ── Files ─────────────────────────────────────────────────────────────────────
+
+export interface UploadFileMeta {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  thumbnail: string | null;
+  fileFolderId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FileFolderMeta {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count: { uploads: number; children: number };
+}
+
+export async function listFiles(folderId?: string | null): Promise<UploadFileMeta[]> {
+  const qs = folderId ? `?folderId=${folderId}` : '';
+  const result = await apiFetch<UploadFileMeta[]>(`/api/files${qs}`);
+  return isOk(result) ? result.data : [];
+}
+
+export async function deleteFile(id: string): Promise<boolean> {
+  const result = await apiFetch(`/api/files/${id}`, { method: 'DELETE' });
+  return result.ok;
+}
+
+export async function uploadFile(
+  uri: string,
+  name: string,
+  mimeType: string,
+  folderId?: string | null,
+): Promise<UploadFileMeta | null> {
+  const [baseUrl, token] = await Promise.all([getBaseUrl(), getToken()]);
+  if (!baseUrl) return null;
+
+  const formData = new FormData();
+  formData.append('file', { uri, type: mimeType, name } as unknown as Blob);
+  if (folderId) formData.append('folderId', folderId);
+
+  const headers = new Headers();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  try {
+    const res = await fetch(`${baseUrl}/api/files`, { method: 'POST', body: formData, headers });
+    if (!res.ok) return null;
+    return await res.json() as UploadFileMeta;
+  } catch {
+    return null;
+  }
+}
+
+export function fileUrl(id: string, baseUrl: string, token: string | null): string {
+  return `${baseUrl}/api/files/${id}${token ? `?token=${token}` : ''}`;
+}
+
+export function fileThumbnailUrl(id: string, baseUrl: string, token: string | null): string {
+  return `${baseUrl}/api/files/${id}/thumbnail${token ? `?token=${token}` : ''}`;
+}
+
+export async function listFileFolders(parentId?: string | null): Promise<FileFolderMeta[]> {
+  const qs = parentId ? `?parentId=${parentId}` : '';
+  const result = await apiFetch<FileFolderMeta[]>(`/api/file-folders${qs}`);
+  return isOk(result) ? result.data : [];
+}
+
+export async function createFileFolder(name: string, parentId?: string | null): Promise<FileFolderMeta | null> {
+  const result = await apiFetch<FileFolderMeta>('/api/file-folders', {
+    method: 'POST',
+    body: JSON.stringify({ name, parentId: parentId ?? null }),
+  });
+  return isOk(result) ? result.data : null;
+}
+
+export async function renameFileFolder(id: string, name: string): Promise<boolean> {
+  const result = await apiFetch(`/api/file-folders/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+  return result.ok;
+}
+
+export async function deleteFileFolder(id: string): Promise<boolean> {
+  const result = await apiFetch(`/api/file-folders/${id}`, { method: 'DELETE' });
+  return result.ok;
+}

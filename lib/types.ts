@@ -69,3 +69,23 @@ export interface Habit {
   position: number;
   completedToday: boolean;
 }
+
+export interface FileFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count: { uploads: number; children: number };
+}
+
+export interface UploadFile {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  thumbnail: string | null;
+  fileFolderId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
