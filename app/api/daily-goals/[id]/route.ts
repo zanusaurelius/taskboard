@@ -17,6 +17,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (text !== undefined && text !== null && typeof text === "string" && text.length > 500) {
     return NextResponse.json({ error: "text must be at most 500 characters" }, { status: 400 });
   }
+  if (date !== undefined && (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date))) {
+    return NextResponse.json({ error: "date must be YYYY-MM-DD" }, { status: 400 });
+  }
 
   const goal = await prisma.dailyGoal.update({
     where: { id },

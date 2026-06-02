@@ -65,28 +65,17 @@ export default auth(async (req) => {
   const isPublicPage = pathname === "/login" || pathname === "/register" || pathname === "/recover" || pathname === "/unlock";
   const isAuthApi    = pathname.startsWith("/api/auth");
 
-  // DB lock gate (production only — dev skips the unlock flow entirely).
-  // Cookie value = AUTH_SECRET fingerprint + per-boot nonce. The nonce is set
-  // by unlock() in lib/db-state.ts and lives in process.env for the lifetime
-  // of the server process. After any restart the nonce is gone, so stale
-  // cookies are automatically rejected and the user must re-unlock.
-  // Before the first unlock the sentinel "LOCKED" ensures no cookie matches.
-  const cookieToken = process.env.NODE_ENV === "production"
-    ? (process.env.AUTH_SECRET ?? "").replace(/[^A-Za-z0-9]/g, "").slice(0, 16)
-      + (process.env.NEXT_BOOT_NONCE ?? "LOCKED")
-    : "";
+  // DB lock gate — reads process.env.NEXT_DB_UNLOCKED set by the unlock() route
+  // handler. Both middleware and route handlers run in the same Node.js process in
+  // standalone mode, so process.env changes are immediately visible here. No cookie
+  // needed — this is purely in-process state, cleared on server restart.
   const isDbUnlocked = process.env.NODE_ENV !== "production"
-    || req.cookies.get("db_unlocked")?.value === cookieToken;
+    || process.env.NEXT_DB_UNLOCKED === "1";
 
   if (process.env.NODE_ENV === "production") {
-    // Bypass the lock gate for: auth endpoints, health check, and any request
-    // that already carries a valid Bearer token (mobile clients can't maintain
-    // the db_unlocked cookie — they authenticate via JWT instead).
-    // /api/auth/token is excluded from the cookie gate — it self-checks DB state
-    // via isDbUnlocked() and returns 423 itself if the DB is actually locked.
     const isDbApi = pathname === "/api/auth/db-status" || pathname === "/api/auth/db-unlock"
       || pathname === "/api/health" || pathname === "/api/auth/token";
-    if (!isDbUnlocked && !isDbApi && !bearerAuthenticated && pathname !== "/unlock") {
+    if (!isDbUnlocked && !isDbApi && pathname !== "/unlock") {
       if (pathname.startsWith("/api/")) {
         const res = NextResponse.json({ error: "Service unavailable" }, { status: 423 });
         applySecurityHeaders(res, nonce);
@@ -98,8 +87,7 @@ export default auth(async (req) => {
     }
   }
 
-  // Don't redirect authenticated users away from /unlock when the DB is locked —
-  // that would create an infinite loop (/ → /unlock → / → …).
+  // Don't redirect authenticated users away from /unlock when DB is locked.
   if (isAuthenticated && isPublicPage && (isDbUnlocked || pathname !== "/unlock")) {
     const res = NextResponse.redirect(externalUrl(req, "/"));
     applySecurityHeaders(res, nonce);

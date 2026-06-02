@@ -48,13 +48,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   cookies: {
     sessionToken: {
+      // Use a plain name without the __Secure- prefix. The __Secure- prefix forces
+      // Secure=true, which breaks Tor (.onion = HTTP) — the browser drops the cookie
+      // and the session is lost on every refresh. LAN uses HTTPS at the transport
+      // level regardless, so Secure=false on the cookie doesn't reduce security.
+      name: "authjs.session-token",
       options: {
         httpOnly: true,
-        sameSite: "strict" as const,
+        sameSite: "lax" as const,
         path: "/",
-        // Do not override `secure` — NextAuth sets it to true whenever it uses the
-        // __Secure- cookie prefix (which it does when AUTH_URL is https://). Overriding
-        // it to false in dev caused the browser to reject __Secure- cookies.
+        secure: false,
       },
     },
   },

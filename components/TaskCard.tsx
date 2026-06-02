@@ -47,7 +47,9 @@ export default function TaskCard({ task, onClick, onAddToFocus, privacyMode }: P
   const pColor = task.project?.color ?? projectColor(task.projectId);
   const isOverdue = !task.archived && !!task.dueDate && dayjs(task.dueDate).isBefore(dayjs(), "day");
   const hasImage = task.description?.includes("<img");
-  const isRedacted = privacyMode && task.sensitive;
+
+  // Sensitive tasks: blank card when privacy mode is on OR when locked (vault not unlocked)
+  const isRedacted = task.sensitive && (privacyMode || task.locked);
 
   if (isRedacted) {
     return (

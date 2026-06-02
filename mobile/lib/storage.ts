@@ -44,3 +44,26 @@ export async function clearAll(): Promise<void> {
     SecureStore.deleteItemAsync(VAULT_KEY_KEY),
   ]);
 }
+
+// ── App preferences ────────────────────────────────────────────────────────────
+
+const GOAL_LIMIT_KEY = 'taskboard_goal_limit';
+const AUTO_ARCHIVE_KEY = 'taskboard_auto_archive_days';
+
+export async function getGoalLimit(): Promise<number> {
+  const v = await SecureStore.getItemAsync(GOAL_LIMIT_KEY);
+  return v ? (parseInt(v, 10) || 3) : 3;
+}
+
+export async function setGoalLimit(n: number): Promise<void> {
+  return SecureStore.setItemAsync(GOAL_LIMIT_KEY, String(n));
+}
+
+export async function getAutoArchiveDays(): Promise<number> {
+  const v = await SecureStore.getItemAsync(AUTO_ARCHIVE_KEY);
+  return v ? (parseInt(v, 10) || 0) : 0;
+}
+
+export async function setAutoArchiveDays(n: number): Promise<void> {
+  return SecureStore.setItemAsync(AUTO_ARCHIVE_KEY, String(n));
+}

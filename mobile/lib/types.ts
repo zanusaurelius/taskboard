@@ -50,6 +50,7 @@ export interface Task {
   position: number;
   archived: boolean;
   sensitive: boolean;
+  locked: boolean;
   projectId: string;
   project?: Project;
   updatedAt: string;

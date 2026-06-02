@@ -18,7 +18,14 @@ export async function GET(request: Request) {
     include: { project: true },
     orderBy: { position: "asc" },
   });
-  return NextResponse.json(tasks);
+
+  return NextResponse.json(
+    tasks.map((t) =>
+      t.locked
+        ? { ...t, title: t.encTitle ? "" : t.title, description: t.encDescription ? null : t.description }
+        : t,
+    ),
+  );
 }
 
 export async function POST(request: Request) {
@@ -27,7 +34,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-  const { title, encTitle, description, encDescription, stage, priority, dueDate, projectId, position, sensitive } = body;
+  const { title, encTitle, description, encDescription, stage, priority, dueDate, projectId, position, sensitive, locked } = body;
   if ((!title?.trim() && !encTitle) || !projectId) {
     return NextResponse.json({ error: "title (or encTitle) and projectId are required" }, { status: 400 });
   }
@@ -57,6 +64,7 @@ export async function POST(request: Request) {
       projectId,
       position: position ?? 0,
       sensitive: sensitive === true,
+      locked: locked === true,
     },
     include: { project: true },
   });

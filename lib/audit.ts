@@ -10,7 +10,9 @@ export type AuditEvent =
   | "recover_success"
   | "recover_failure"
   | "rate_limit_exceeded"
-  | "api_token_issued";
+  | "api_token_issued"
+  | "vault_create"
+  | "vault_delete";
 
 export function audit(
   event: AuditEvent,

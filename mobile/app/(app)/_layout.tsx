@@ -3,15 +3,15 @@ import { View, Text, StyleSheet } from 'react-native';
 
 function TabIcon({ label, active }: { label: string; active: boolean }) {
   const icons: Record<string, string> = {
-    Notes: '📝',
     Board: '📋',
+    Notes: '📝',
     Journal: '📖',
     Settings: '⚙️',
   };
   return (
     <View style={styles.iconWrap}>
-      <Text style={styles.icon}>{icons[label]}</Text>
-      <Text style={[styles.label, active && styles.labelActive]}>{label}</Text>
+      <Text style={[styles.icon, active && styles.iconActive]}>{icons[label]}</Text>
+      <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
@@ -19,22 +19,24 @@ function TabIcon({ label, active }: { label: string; active: boolean }) {
 export default function AppLayout() {
   return (
     <Tabs
+      initialRouteName="board"
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
         tabBarShowLabel: false,
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon label="Notes" active={focused} />,
-        }}
-      />
+      <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen
         name="board"
         options={{
           tabBarIcon: ({ focused }) => <TabIcon label="Board" active={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="notes"
+        options={{
+          tabBarIcon: ({ focused }) => <TabIcon label="Notes" active={focused} />,
         }}
       />
       <Tabs.Screen
@@ -43,6 +45,7 @@ export default function AppLayout() {
           tabBarIcon: ({ focused }) => <TabIcon label="Journal" active={focused} />,
         }}
       />
+      <Tabs.Screen name="search" options={{ href: null }} />
       <Tabs.Screen
         name="settings"
         options={{
@@ -65,11 +68,16 @@ const styles = StyleSheet.create({
   },
   icon: {
     fontSize: 20,
+    color: 'rgba(255,255,255,0.45)',
+  },
+  iconActive: {
+    color: '#a5b4fc',
   },
   label: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.45)',
+    letterSpacing: -0.2,
   },
   labelActive: {
     color: '#a5b4fc',

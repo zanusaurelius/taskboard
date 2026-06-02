@@ -57,6 +57,7 @@ import VaultUnlockModal from "./VaultUnlockModal";
 dayjs.extend(relativeTime);
 
 const RichTextEditor = dynamic(() => import("./RichTextEditor"), { ssr: false });
+const AttachmentsPanel = dynamic(() => import("./AttachmentsPanel"), { ssr: false });
 
 type SortField = "updatedAt" | "createdAt" | "title";
 type SortDir = "desc" | "asc";
@@ -76,10 +77,11 @@ function noteTimestamp(iso: string) {
   if (h < 168) return d.format("ddd");
   return d.format("MMM D");
 }
-function matchesSearch(n: Note, q: string, decryptedTitle?: string) {
+function matchesSearch(n: Note, q: string, decryptedTitle?: string, decryptedContent?: string) {
   const lq = q.toLowerCase();
   const titleToSearch = decryptedTitle ?? n.title;
-  return titleToSearch.toLowerCase().includes(lq) || stripHtml(n.content).toLowerCase().includes(lq);
+  const contentToSearch = decryptedContent ?? stripHtml(n.content);
+  return titleToSearch.toLowerCase().includes(lq) || contentToSearch.toLowerCase().includes(lq);
 }
 
 interface ContextMenu { x: number; y: number; note: Note }
@@ -141,9 +143,13 @@ function NotesViewInner({ onCreateTask }: Props) {
   // ── Vault ──
   const vault = useVault();
   const { isUnlocked, isRevealed, revealToken, encrypt, decrypt, lockVault, hideVault } = vault;
-  // Always-current ref so pending actions don't capture stale encrypt after vault unlock
+  // Always-current refs so pending autosave/flush don't capture stale values
   const encryptRef = useRef(encrypt);
   encryptRef.current = encrypt;
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+  const isUnlockedRef = useRef(isUnlocked);
+  isUnlockedRef.current = isUnlocked;
 
   const handleCloseVault = () => {
     hideVault();
@@ -310,13 +316,21 @@ function NotesViewInner({ onCreateTask }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decryptedNotes]);
 
+  useEffect(() => {
+    const handler = () => handleNewNote();
+    window.addEventListener("notes:newnote", handler);
+    return () => window.removeEventListener("notes:newnote", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Auto-save ──
   const flush = (id: string, title: string, content: string) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    const note = notes.find(n => n.id === id);
-    if (note?.locked && isUnlocked) {
+    // Use refs so we always see the current note state, not the stale closure value
+    const note = notesRef.current.find(n => n.id === id);
+    if (note?.locked && isUnlockedRef.current) {
       (async () => {
-        const [encContent, encTitle] = await Promise.all([encrypt(content), encrypt(title || "Untitled")]);
+        const [encContent, encTitle] = await Promise.all([encryptRef.current(content), encryptRef.current(title || "Untitled")]);
         if (encContent && encTitle) {
           updateNote(id, { content: "", title: "", encContent: JSON.stringify(encContent), encTitle: JSON.stringify(encTitle) });
         }
@@ -327,19 +341,18 @@ function NotesViewInner({ onCreateTask }: Props) {
   };
 
   const scheduleAutosave = (id: string, title: string, content: string) => {
-    const note = notes.find(n => n.id === id);
-    if (note?.locked && isUnlocked) {
-      // encrypt before saving
+    // Use refs so the timer callback sees current note state when it fires
+    const note = notesRef.current.find(n => n.id === id);
+    if (note?.locked && isUnlockedRef.current) {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
-        const [encContent, encTitle] = await Promise.all([encrypt(content), encrypt(title || "Untitled")]);
+        const [encContent, encTitle] = await Promise.all([encryptRef.current(content), encryptRef.current(title || "Untitled")]);
         if (encContent && encTitle) {
           updateNote(id, { content: "", title: "", encContent: JSON.stringify(encContent), encTitle: JSON.stringify(encTitle) });
         }
       }, 800);
       return;
     }
-    // regular save
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => updateNote(id, { title, content }), 800);
   };
@@ -526,7 +539,7 @@ function NotesViewInner({ onCreateTask }: Props) {
             });
           }
         }
-        await updateNote(id, updates as Partial<Note>);
+        await updateNote(id, updates as Partial<Note>, revealToken ?? undefined);
       } else {
         await updateNote(id, { folderId });
       }
@@ -590,8 +603,14 @@ function NotesViewInner({ onCreateTask }: Props) {
       const toDelete = Array.from(selectedNoteIds).map(id => notes.find(n => n.id === id)).filter((n): n is Note => !!n);
       if (activeId && selectedNoteIds.has(activeId)) { setActiveId(null); setLocalTitle(""); setLocalContent(""); }
       setSelectedNoteIds(new Set());
-      // Regular notes → trash (recoverable); locked/hidden → hard-deleted immediately
-      await Promise.all(toDelete.map(note => deleteNote(note.id)));
+      // Locked/hidden notes get the 30-second undo window; regular notes go straight to trash
+      for (const note of toDelete) {
+        if (note.locked || note.hidden) {
+          startPendingDelete(note);
+        } else {
+          deleteNote(note.id);
+        }
+      }
       return;
     }
     const note = contextMenu.note;
@@ -630,7 +649,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         locked: false, hidden: false,
         content: dec?.content ?? "", title: dec?.title ?? note.title,
         encContent: null, encTitle: null,
-      } as Partial<Note>);
+      } as Partial<Note>, revealToken ?? undefined);
       setDecryptedNotes(prev => { const m = new Map(prev); m.delete(note.id); return m; });
       return;
     }
@@ -647,7 +666,7 @@ function NotesViewInner({ onCreateTask }: Props) {
           locked: true, content: "", title: "",
           encContent: JSON.stringify(encContent),
           encTitle: JSON.stringify(encTitle),
-        } as Partial<Note>);
+        } as Partial<Note>, revealToken ?? undefined);
         setHintDialog({ noteId: note.id }); setHintValue("");
       };
       setUnlockModalOpen({ open: true, mode: "unlock" });
@@ -663,7 +682,7 @@ function NotesViewInner({ onCreateTask }: Props) {
       content: "", title: "",
       encContent: JSON.stringify(encContent),
       encTitle: JSON.stringify(encTitle),
-    } as Partial<Note>);
+    } as Partial<Note>, revealToken ?? undefined);
     setHintDialog({ noteId: note.id }); setHintValue("");
   };
 
@@ -684,7 +703,7 @@ function NotesViewInner({ onCreateTask }: Props) {
       const targetNotes = notes.filter(n => selectedNoteIds.has(n.id));
       const allHidden = targetNotes.every(n => n.hidden);
       if (allHidden) {
-        await Promise.all(targetNotes.map(n => updateNote(n.id, { hidden: false } as Partial<Note>)));
+        await Promise.all(targetNotes.map(n => updateNote(n.id, { hidden: false } as Partial<Note>, revealToken ?? undefined)));
         return;
       }
       if (!vaultExists) { setSetupModalOpen(true); return; }
@@ -701,7 +720,7 @@ function NotesViewInner({ onCreateTask }: Props) {
               Object.assign(updates, { locked: true, content: "", title: "", encContent: JSON.stringify(encContent), encTitle: JSON.stringify(encTitle) });
             }
           }
-          await updateNote(n.id, updates);
+          await updateNote(n.id, updates, revealToken ?? undefined);
         }));
       };
       if (!isUnlocked) { pendingActionRef.current = doHideAll; setUnlockModalOpen({ open: true, mode: "unlock" }); return; }
@@ -710,7 +729,7 @@ function NotesViewInner({ onCreateTask }: Props) {
     }
 
     if (note.hidden) {
-      await updateNote(note.id, { hidden: false } as Partial<Note>);
+      await updateNote(note.id, { hidden: false } as Partial<Note>, revealToken ?? undefined);
       return;
     }
     if (!vaultExists) { setSetupModalOpen(true); return; }
@@ -726,7 +745,7 @@ function NotesViewInner({ onCreateTask }: Props) {
             Object.assign(updates, { locked: true, content: "", title: "", encContent: JSON.stringify(encContent), encTitle: JSON.stringify(encTitle) });
           }
         }
-        await updateNote(note.id, updates);
+        await updateNote(note.id, updates, revealToken ?? undefined);
       };
       setUnlockModalOpen({ open: true, mode: "unlock" });
       return;
@@ -741,7 +760,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         Object.assign(updates, { locked: true, content: "", title: "", encContent: JSON.stringify(encContent), encTitle: JSON.stringify(encTitle) });
       }
     }
-    await updateNote(note.id, updates);
+    await updateNote(note.id, updates, revealToken ?? undefined);
   };
 
   // ── Folder management ──
@@ -810,9 +829,9 @@ function NotesViewInner({ onCreateTask }: Props) {
             content: dec?.content ?? "",
             title: dec?.title ?? note.title,
             encContent: null, encTitle: null,
-          } as Partial<Note>);
+          } as Partial<Note>, revealToken ?? undefined);
         } else {
-          await updateNote(note.id, { hidden: false } as Partial<Note>);
+          await updateNote(note.id, { hidden: false } as Partial<Note>, revealToken ?? undefined);
         }
       }));
       return;
@@ -882,7 +901,7 @@ function NotesViewInner({ onCreateTask }: Props) {
     if (!matchFolder) return false;
     if (!search) return true;
     const dec = decryptedNotes.get(n.id);
-    return matchesSearch(n, search, dec?.title);
+    return matchesSearch(n, search, dec?.title, dec?.content !== undefined ? stripHtml(dec.content) : undefined);
   });
 
   // Stable sort: only reorder when IDs, pinned state, or sort settings change.
@@ -1358,6 +1377,7 @@ function NotesViewInner({ onCreateTask }: Props) {
             </Box>
             <Box sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2, sm: 3 }, flex: 1, overflowY: "auto" }}>
               <RichTextEditor key={editorKey} value={localContent} onChange={handleContentChange} minHeight={400} />
+              {activeId && !activeNote?.locked && <AttachmentsPanel noteId={activeId} />}
             </Box>
           </>
         )}

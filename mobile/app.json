@@ -14,8 +14,13 @@
       "react-native-quick-crypto",
       ["expo-build-properties", {
         "android": {
-          "usesCleartextTraffic": true
+          "usesCleartextTraffic": true,
+          "ndkVersion": "28.0.12433566"
         }
+      }],
+      ["expo-image-picker", {
+        "photosPermission": "Allow Taskboard to attach photos to notes and tasks.",
+        "cameraPermission": "Allow Taskboard to take photos to attach to notes and tasks."
       }]
     ],
     "ios": {
@@ -28,7 +33,8 @@
         "backgroundColor": "#0f172a"
       },
       "package": "com.taskboard.app",
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "favicon": "./assets/favicon.png"

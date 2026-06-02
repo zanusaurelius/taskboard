@@ -1,7 +1,16 @@
 id: taskboard
 title: "Taskboard Notes"
-version: "0.1.4"
-release-notes: "Privacy Mode for tasks (hide sensitive cards at a glance); fix journal autosave overwriting in-progress text"
+version: "0.3.0"
+release-notes: >
+  Major update: unified mobile and desktop feature set. Mobile app gains folder
+  system for notes, note autosave, star/pin/sort/trash, vault lock/unlock UI,
+  hidden notes (10-tap reveal), privacy mode on board, due dates and project
+  labels on task cards, project rename/color, Archive All Done, stage color
+  customization, inline Daily Focus goal editing, move-to-next-day, goal
+  reordering, task undo deletion, global search, keyboard shortcuts (C/B/N/J/S/?),
+  and full task editor parity (description, due date, duplicate, archive, delete,
+  privacy toggle). Desktop gains global search overlay (Cmd+K or /) and keyboard
+  shortcuts.
 license: MIT
 wrapper-repo: "https://github.com/start9labs/taskboard"
 upstream-repo: "https://github.com/start9labs/taskboard"
@@ -86,10 +95,11 @@ backup:
       - duplicity
       - create
       - /mnt/backup
-      - /app/db
+      - /app/data
     mounts:
       BACKUP: /mnt/backup
-      db: /app/db
+      db: /app/data/db
+      uploads: /app/data/uploads
   restore:
     type: docker
     image: compat
@@ -99,9 +109,10 @@ backup:
       - duplicity
       - restore
       - /mnt/backup
-      - /app/db
+      - /app/data
     mounts:
       BACKUP: /mnt/backup
-      db: /app/db
+      db: /app/data/db
+      uploads: /app/data/uploads
 
 dependencies: {}

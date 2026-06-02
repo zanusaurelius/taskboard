@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/auth";
+import { getUserId } from "@/lib/get-user-id";
 import bcrypt from "bcryptjs";
 import { unlink } from "fs/promises";
 import { join } from "path";
@@ -9,9 +9,8 @@ import { audit } from "@/lib/audit";
 import { MAX_USERNAME_LEN, MAX_PASSWORD_LEN } from "@/lib/constants";
 
 export async function PATCH(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!await checkRateLimit(`account:${userId}`, 10, 15 * 60 * 1000)) {
     audit("rate_limit_exceeded", { userId, ip: getClientIp(request), detail: "account" });
@@ -73,9 +72,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = session.user.id;
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!await checkRateLimit(`account:${userId}`, 10, 15 * 60 * 1000)) {
     audit("rate_limit_exceeded", { userId, ip: getClientIp(request), detail: "account_delete" });
@@ -104,7 +102,7 @@ export async function DELETE(request: Request) {
     uploads.map((u) => unlink(join(process.cwd(), "data", "uploads", u.filename)))
   );
 
-  // Delete data in dependency order
+  // Delete data in dependency order (child rows first to avoid FK constraint violations)
   const projects = await prisma.project.findMany({ where: { userId }, select: { id: true } });
   const projectIds = projects.map((p) => p.id);
 
@@ -113,6 +111,9 @@ export async function DELETE(request: Request) {
   await prisma.upload.deleteMany({ where: { userId } });
   await prisma.folder.deleteMany({ where: { userId } });
   await prisma.project.deleteMany({ where: { userId } });
+  await prisma.dailyGoal.deleteMany({ where: { userId } });
+  await prisma.dailyReflection.deleteMany({ where: { userId } });
+  await prisma.habit.deleteMany({ where: { userId } }); // HabitCompletion rows cascade
   await prisma.user.delete({ where: { id: userId } });
 
   audit("account_delete", { userId, ip: getClientIp(request) });

@@ -21,6 +21,7 @@ model User {
   folders           Folder[]
   projects          Project[]
   uploads           Upload[]
+  attachments       Attachment[]
   dailyGoals        DailyGoal[]
   dailyReflections  DailyReflection[]
   habits            Habit[]
@@ -56,25 +57,26 @@ model Folder {
 }
 
 model Note {
-  id         String   @id @default(cuid())
-  title      String   @default("")
-  content    String   @default("")
-  pinned     Boolean  @default(false)
-  starred    Boolean  @default(false)
-  hidden     Boolean  @default(false)
-  locked     Boolean  @default(false)
-  hint       String?
-  encContent String?
-  encTitle   String?
-  folderId   String?
-  folder     Folder?  @relation(fields: [folderId], references: [id])
-  projectId  String?
-  project    Project? @relation(fields: [projectId], references: [id])
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  deletedAt  DateTime?
+  id          String       @id @default(cuid())
+  title       String       @default("")
+  content     String       @default("")
+  pinned      Boolean      @default(false)
+  starred     Boolean      @default(false)
+  hidden      Boolean      @default(false)
+  locked      Boolean      @default(false)
+  hint        String?
+  encContent  String?
+  encTitle    String?
+  folderId    String?
+  folder      Folder?      @relation(fields: [folderId], references: [id])
+  projectId   String?
+  project     Project?     @relation(fields: [projectId], references: [id])
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  attachments Attachment[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
 }
 
 model NoteVault {
@@ -92,22 +94,24 @@ model NoteVault {
 }
 
 model Task {
-  id             String    @id @default(cuid())
+  id             String       @id @default(cuid())
   title          String
   encTitle       String?
   description    String?
   encDescription String?
-  stage          String    @default("todo")
+  stage          String       @default("todo")
   priority       String?
   dueDate        String?
-  position       Float     @default(0)
-  archived       Boolean   @default(false)
-  sensitive      Boolean   @default(false)
+  position       Float        @default(0)
+  archived       Boolean      @default(false)
+  sensitive      Boolean      @default(false)
+  locked         Boolean      @default(false)
   doneAt         DateTime?
   projectId      String
-  project        Project   @relation(fields: [projectId], references: [id])
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  project        Project      @relation(fields: [projectId], references: [id])
+  attachments    Attachment[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
 model Upload {
@@ -118,6 +122,25 @@ model Upload {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  filename     String   @unique
+  originalName String
+  mimeType     String
+  size         Int
+  noteId       String?
+  note         Note?    @relation(fields: [noteId], references: [id])
+  taskId       String?
+  task         Task?    @relation(fields: [taskId], references: [id])
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([noteId])
+  @@index([taskId])
+  @@index([userId])
 }
 
 model RateLimit {
@@ -176,6 +199,7 @@ model HabitCompletion {
   createdAt DateTime @default(now())
 
   @@unique([habitId, date])
+  @@index([habitId])
 }
 
 model DailyReflection {

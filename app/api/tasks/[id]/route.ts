@@ -48,7 +48,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
   }
 
-  const { title, encTitle, description, encDescription, stage, priority, dueDate, projectId, position, archived, sensitive } = body;
+  const { title, encTitle, description, encDescription, stage, priority, dueDate, projectId, position, archived, sensitive, locked } = body;
 
   if (title !== undefined && typeof title === "string" && title.length > MAX_TASK_TITLE_LEN) {
     return NextResponse.json({ error: `Title must be at most ${MAX_TASK_TITLE_LEN} characters` }, { status: 400 });
@@ -71,17 +71,27 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ...(description !== undefined && { description }),
       ...(encDescription !== undefined && { encDescription }),
       ...(stage !== undefined && { stage }),
-      ...(stage !== undefined && { doneAt: stage === "done" ? new Date() : null }),
+      ...(stage !== undefined && {
+        // Only stamp doneAt when transitioning into done; preserve it if already done
+        doneAt: stage === "done"
+          ? (existing.stage !== "done" ? new Date() : existing.doneAt)
+          : null,
+      }),
       ...(priority !== undefined && { priority }),
       ...(dueDate !== undefined && { dueDate }),
       ...(projectId !== undefined && { projectId }),
       ...(position !== undefined && { position }),
       ...(archived !== undefined && { archived }),
       ...(sensitive !== undefined && { sensitive }),
+      ...(locked !== undefined && { locked }),
     },
     include: { project: true },
   });
-  return NextResponse.json(task);
+
+  const response = task.locked
+    ? { ...task, title: task.encTitle ? "" : task.title, description: task.encDescription ? null : task.description }
+    : task;
+  return NextResponse.json(response);
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {

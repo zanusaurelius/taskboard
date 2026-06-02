@@ -58,6 +58,8 @@ export async function POST(request: Request) {
       title: body.title ?? "",
       content: body.content ?? "",
       userId,
+      ...(body.encTitle ? { encTitle: body.encTitle } : {}),
+      ...(body.encContent ? { encContent: body.encContent } : {}),
       ...(body.projectId ? { projectId: body.projectId } : {}),
       ...(body.folderId ? { folderId: body.folderId } : {}),
     },

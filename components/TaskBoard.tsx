@@ -33,9 +33,12 @@ import {
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 
 import { useTaskBoardStore } from "@/lib/store";
+import { useVault } from "@/lib/vault-context";
 import { Task, Project } from "@/lib/types";
 import TaskCard from "./TaskCard";
 import TaskModal from "./TaskModal";
+import VaultUnlockModal from "./VaultUnlockModal";
+import VaultSetupModal from "./VaultSetupModal";
 import dynamic from "next/dynamic";
 const DailyFocus = dynamic(() => import("./DailyFocus"), { ssr: false });
 
@@ -197,6 +200,7 @@ interface TaskBoardProps {
 
 export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: TaskBoardProps = {}) {
   const isMobile = useMediaQuery("(max-width: 860px)");
+  const { isUnlocked: vaultIsUnlocked, lockVault, hideVault } = useVault();
   const { tasks, projects, fetchAll, createTask, updateTask, deleteTask, createProject, updateProject, deleteProject, permanentDeleteProject, archiveAllDone } = useTaskBoardStore();
 
   const [localTasks, setLocalTasks] = useState<Task[]>([]);
@@ -231,6 +235,11 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   } | null>(null);
   const [deletionQueue, setDeletionQueue] = useState<DeletionEntry[]>([]);
   const [focusSnackbar, setFocusSnackbar] = useState(false);
+  const [pendingFocusGoalId, setPendingFocusGoalId] = useState<string | null>(null);
+  const [vaultUnlockOpen, setVaultUnlockOpen] = useState(false);
+  const [vaultSetupOpen, setVaultSetupOpen] = useState(false);
+  const [vaultExists, setVaultExists] = useState(false);
+  const [hasWebAuthn, setHasWebAuthn] = useState(false);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const newProjectInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -281,6 +290,42 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   useEffect(() => { fetchAll(showArchived, showArchivedProjects); }, [fetchAll, showArchived, showArchivedProjects]);
 
   useEffect(() => {
+    fetch("/api/notes/vault")
+      .then((r) => r.json())
+      .then((d) => {
+        setVaultExists(!!d.exists);
+        if (d.exists) {
+          try {
+            const creds = JSON.parse(d.webAuthnCredentials ?? "[]");
+            setHasWebAuthn(Array.isArray(creds) && creds.length > 0);
+          } catch { /* ignore */ }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // When vault auto-locks (inactivity timer), restore privacy mode
+  useEffect(() => {
+    if (!vaultIsUnlocked) setPrivacyMode(true);
+  }, [vaultIsUnlocked]);
+
+  const handlePrivacyModeToggle = () => {
+    if (privacyMode) {
+      // Trying to reveal — open vault unlock if there are locked tasks, else plain toggle
+      if (vaultExists && tasks.some((t) => t.locked)) {
+        setVaultUnlockOpen(true);
+      } else {
+        setPrivacyMode(false);
+      }
+    } else {
+      // Hiding again — lock vault and restore privacy
+      lockVault();
+      hideVault();
+      setPrivacyMode(true);
+    }
+  };
+
+  useEffect(() => {
     const days = parseInt(localStorage.getItem("autoArchiveDays") ?? "0", 10);
     if (!days) return;
     fetch("/api/tasks/auto-archive", {
@@ -295,6 +340,13 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeId === null) setLocalTasks(tasks); }, [tasks, activeId]);
+
+  useEffect(() => {
+    const handler = () => openCreate("todo");
+    window.addEventListener("taskboard:newtask", handler);
+    return () => window.removeEventListener("taskboard:newtask", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   useEffect(() => {
     if (!pendingNoteTask) return;
@@ -321,7 +373,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     if (pendingTaskIds.has(t.id)) return false;
     if (projectFilter.length > 0 && !projectFilter.includes(t.projectId)) return false;
     if (stageFilter.length > 0 && !stageFilter.includes(t.stage)) return false;
-    if (searchText && !t.title.toLowerCase().includes(searchText.toLowerCase())) return false;
+    if (searchText && !t.title.toLowerCase().includes(searchText.trim().toLowerCase())) return false;
     return true;
   });
 
@@ -382,17 +434,59 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     setDefaultStage(stage);
     setModalOpen(true);
   };
-  const openEdit = (task: Task) => { setEditingTask(task); setModalOpen(true); };
+  const openEdit = (task: Task) => {
+    if (task.locked) return; // blank card — not interactive; unlock via Privacy Mode chip
+    setEditingTask(task);
+    setModalOpen(true);
+  };
 
-  const handleSave = async (fields: Partial<Task>) => {
+  // Ref keeps the latest executeSave available to the vault-unlock effect without stale closures
+  const pendingSaveRef = useRef<Partial<Task> | null>(null);
+  const executeSaveRef = useRef<(fields: Partial<Task>) => Promise<void>>(async () => {});
+
+  const executeSave = async (fields: Partial<Task>) => {
     if (editingTask) {
       await updateTask(editingTask.id, fields);
     } else {
       const stageTasks = tasks.filter((t) => t.stage === fields.stage);
       const maxPos = stageTasks.length > 0 ? Math.max(...stageTasks.map((t) => t.position)) : 0;
       await createTask({ ...fields, position: maxPos + 1000 });
+      if (pendingFocusGoalId) {
+        await fetch(`/api/daily-goals/${pendingFocusGoalId}`, { method: "DELETE" });
+        window.dispatchEvent(new Event("dailyfocus:refresh"));
+        setPendingFocusGoalId(null);
+      }
     }
     setModalOpen(false);
+  };
+  executeSaveRef.current = executeSave;
+
+  // After vault unlock, fire any save that was waiting for it.
+  // This useEffect runs after AppShell's useEffect (parent before child in React's commit order),
+  // so store.masterKey is already set by the time this fires.
+  useEffect(() => {
+    if (!vaultIsUnlocked || !pendingSaveRef.current) return;
+    const fields = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    executeSaveRef.current(fields);
+  }, [vaultIsUnlocked]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSave = async (fields: Partial<Task>) => {
+    if (fields.sensitive) {
+      if (!vaultExists) {
+        // No vault yet — prompt to create one first
+        pendingSaveRef.current = fields;
+        setVaultSetupOpen(true);
+        return;
+      }
+      if (!vaultIsUnlocked) {
+        // Vault exists but locked — require unlock before encrypting
+        pendingSaveRef.current = fields;
+        setVaultUnlockOpen(true);
+        return;
+      }
+    }
+    await executeSave(fields);
   };
 
   const handleDuplicate = async () => {
@@ -503,6 +597,20 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     window.dispatchEvent(new Event("dailyfocus:refresh"));
   };
 
+  const handleCreateFromFocus = (goalTitle: string, goalId: string) => {
+    if (projects.filter((p) => !p.archived).length === 0) {
+      setPendingTaskStage("todo");
+      setNewProjectOpen(true);
+      return;
+    }
+    setEditingTask(null);
+    setDefaultStage("todo");
+    setModalDefaultTitle(goalTitle);
+    setModalDefaultDescription("");
+    setPendingFocusGoalId(goalId);
+    setModalOpen(true);
+  };
+
   const handleRename = async () => {
     if (!renamingProject || !renameValue.trim()) return;
     await updateProject(renamingProject.id, { name: renameValue.trim(), color: renameColor });
@@ -535,7 +643,22 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
         <Typography sx={{ fontWeight: 700, fontSize: "1rem", color: "#1e293b", letterSpacing: "-0.2px" }}>
           Task Board
         </Typography>
-        <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.5 } }}>
+        <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.5 }, alignItems: "center" }}>
+          <Tooltip title="Search everything  ⌘K" placement="bottom" arrow>
+            <IconButton
+              size="small"
+              onClick={() => window.dispatchEvent(new CustomEvent("globalsearch:open"))}
+              sx={{
+                color: "#64748b",
+                border: "1px solid #e2e8f0",
+                borderRadius: 1.5,
+                p: 0.75,
+                "&:hover": { backgroundColor: "#f1f5f9", color: "#1e293b", borderColor: "#cbd5e1" },
+              }}
+            >
+              <SearchIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
           <Button
             size="small"
             startIcon={<AddIcon />}
@@ -554,24 +677,26 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
             }}>
             <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Project</Box>
           </Button>
-          <Button
-            size="small"
-            startIcon={<AddIcon />}
-            variant="contained"
-            onClick={() => openCreate("todo")}
-            sx={{
-              background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              textTransform: "none",
-              borderRadius: 2,
-              px: { xs: 1, sm: 2 },
-              minWidth: 0,
-              boxShadow: "0 2px 8px rgba(99,102,241,0.4)",
-              "&:hover": { background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)" },
-            }}>
-            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Task</Box>
-          </Button>
+          <Tooltip title="New Task" placement="bottom" arrow>
+            <Button
+              size="small"
+              startIcon={<AddIcon />}
+              variant="contained"
+              onClick={() => openCreate("todo")}
+              sx={{
+                background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                textTransform: "none",
+                borderRadius: 2,
+                px: { xs: 1, sm: 2 },
+                minWidth: 0,
+                boxShadow: "0 2px 8px rgba(99,102,241,0.4)",
+                "&:hover": { background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)" },
+              }}>
+              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Task</Box>
+            </Button>
+          </Tooltip>
         </Box>
       </Box>
 
@@ -579,7 +704,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
       <Box sx={{ flex: 1, p: { xs: 1.5, sm: 3 }, display: "flex", flexDirection: "column", overflowX: isMobile ? "hidden" : "auto" }}>
 
         {/* ── Daily Focus ── */}
-        <DailyFocus tasks={tasks} />
+        <DailyFocus tasks={tasks} onCreateBoardTask={handleCreateFromFocus} />
 
         {/* ── Filter bar ── */}
         <Box sx={{
@@ -709,7 +834,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
             <Chip
               label={privacyMode ? "Privacy Mode On" : "Privacy Mode"}
               size="small"
-              onClick={() => setPrivacyMode((v) => !v)}
+              onClick={handlePrivacyModeToggle}
               sx={{ ...filterChipSx(privacyMode, "#64748b"), ml: "auto" }}
             />
             <Chip
@@ -866,6 +991,27 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
         </DndContext>
       </Box>
 
+      {/* ── Vault setup modal (shown when user marks a task sensitive but has no vault) ── */}
+      <VaultSetupModal
+        open={vaultSetupOpen}
+        onClose={() => { setVaultSetupOpen(false); pendingSaveRef.current = null; }}
+        onSuccess={() => {
+          setVaultSetupOpen(false);
+          setVaultExists(true);
+          // Vault was just created — now unlock it so we can encrypt the pending save
+          if (pendingSaveRef.current) setVaultUnlockOpen(true);
+        }}
+      />
+
+      {/* ── Vault unlock modal (for locked sensitive tasks) ── */}
+      <VaultUnlockModal
+        open={vaultUnlockOpen}
+        onClose={() => { setVaultUnlockOpen(false); pendingSaveRef.current = null; }}
+        onSuccess={() => { setVaultUnlockOpen(false); setPrivacyMode(false); }}
+        mode="unlock"
+        hasWebAuthn={hasWebAuthn}
+      />
+
       {/* ── Task modal ── */}
       <TaskModal
         open={modalOpen}
@@ -873,6 +1019,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
           setModalOpen(false);
           setModalDefaultTitle("");
           setModalDefaultDescription("");
+          setPendingFocusGoalId(null);
         }}
         onSave={handleSave}
         onDelete={editingTask ? handleDelete : undefined}

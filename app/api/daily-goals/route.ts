@@ -24,8 +24,12 @@ export async function GET(request: Request) {
     const today = /^\d{4}-\d{2}-\d{2}$/.test(todayParam)
       ? todayParam
       : new Date().toISOString().slice(0, 10);
+    // Only look back 7 days — goals older than that are too stale to carry over.
+    const cutoff = new Date(today + "T12:00:00");
+    cutoff.setDate(cutoff.getDate() - 7);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
     const recent = await prisma.dailyGoal.findFirst({
-      where: { userId, date: { lt: today }, completed: false },
+      where: { userId, date: { lt: today, gte: cutoffStr }, completed: false },
       orderBy: { date: "desc" },
       select: { date: true },
     });
@@ -69,20 +73,25 @@ export async function POST(request: Request) {
   }
 
   const maxGoals = typeof limit === "number" && limit >= 1 && limit <= 20 ? limit : 10;
-  const count = await prisma.dailyGoal.count({ where: { userId, date } });
-  if (count >= maxGoals) {
+
+  // Count + create in a transaction to prevent concurrent requests exceeding the limit
+  const goal = await prisma.$transaction(async (tx) => {
+    const count = await tx.dailyGoal.count({ where: { userId, date } });
+    if (count >= maxGoals) return null;
+    return tx.dailyGoal.create({
+      data: {
+        text: hasPlaintext ? text.trim() : "",
+        ...(encText !== undefined && { encText }),
+        taskId: taskId ?? null,
+        date,
+        position: position ?? count,
+        userId,
+      },
+    });
+  });
+
+  if (!goal) {
     return NextResponse.json({ error: `Maximum ${maxGoals} goals per day` }, { status: 400 });
   }
-
-  const goal = await prisma.dailyGoal.create({
-    data: {
-      text: hasPlaintext ? text.trim() : "",
-      ...(encText !== undefined && { encText }),
-      taskId: taskId ?? null,
-      date,
-      position: position ?? count,
-      userId,
-    },
-  });
   return NextResponse.json(goal, { status: 201 });
 }

@@ -47,16 +47,14 @@ export function isDbUnlocked(): boolean {
 
 export function unlock(hexKey: string): void {
   global.__dbKey = hexKey;
-  // Set a per-boot nonce in the process environment. The middleware reads this
-  // to build the expected db_unlocked cookie value. Because process.env is
-  // shared across the Node.js process, a stale cookie from before the last
-  // restart will never match (the nonce is different), forcing re-unlock.
-  process.env.NEXT_BOOT_NONCE = randomBytes(8).toString("hex");
+  // Signal to middleware (same Node.js process, shared process.env) that the DB
+  // is unlocked. No cookie needed — middleware reads this flag directly.
+  process.env.NEXT_DB_UNLOCKED = "1";
 }
 
 export function lockDb(): void {
   global.__dbKey = undefined;
-  delete process.env.NEXT_BOOT_NONCE;
+  delete process.env.NEXT_DB_UNLOCKED;
 }
 
 // Constant-time passphrase verification against the in-memory key.

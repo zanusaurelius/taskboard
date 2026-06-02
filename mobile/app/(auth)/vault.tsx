@@ -21,16 +21,18 @@ export default function VaultUnlockScreen() {
     setLoading(false);
 
     if (result === 'ok') {
-      router.replace('/(app)');
+      router.replace('/(app)/board');
     } else if (result === 'not_configured') {
       setError('Vault not set up. Open the web app and configure your vault first.');
+    } else if (result === 'locked') {
+      setError('Vault locked while unlocking (app went to background). Try again.');
     } else {
       setError('Wrong password — check and try again.');
     }
   };
 
   return (
-    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.root} behavior="padding">
       <View style={styles.card}>
         <Text style={styles.icon}>🔒</Text>
         <Text style={styles.title}>Unlock your vault</Text>

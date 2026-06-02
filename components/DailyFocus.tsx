@@ -9,6 +9,8 @@ import Tooltip from "@mui/material/Tooltip";
 import Button from "@mui/material/Button";
 import Autocomplete from "@mui/material/Autocomplete";
 import Collapse from "@mui/material/Collapse";
+import Snackbar from "@mui/material/Snackbar";
+import Alert from "@mui/material/Alert";
 import AddIcon from "@mui/icons-material/Add";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
@@ -21,6 +23,7 @@ import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import ReplyIcon from "@mui/icons-material/Reply";
 import {
   DndContext,
   closestCenter,
@@ -61,9 +64,10 @@ const getGoalLimit = () => {
 
 interface DailyFocusProps {
   tasks: Task[];
+  onCreateBoardTask?: (title: string, goalId: string) => void;
 }
 
-export default function DailyFocus({ tasks }: DailyFocusProps) {
+export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps) {
   const vault = useVault();
 
   const vaultEncrypt = async (text: string): Promise<{ encText: string; text: string } | { text: string }> => {
@@ -109,6 +113,7 @@ export default function DailyFocus({ tasks }: DailyFocusProps) {
 
   const [extraSlots, setExtraSlots] = useState(0);
   const [addingGoalSlot, setAddingGoalSlot] = useState<number | null>(null);
+  const [sentBackSnackbar, setSentBackSnackbar] = useState(false);
   const [goalInput, setGoalInput] = useState("");
   const [goalTask, setGoalTask] = useState<Task | null>(null);
 
@@ -322,11 +327,14 @@ export default function DailyFocus({ tasks }: DailyFocusProps) {
     for (let i = 0; i < carryOver.length; i++) {
       const g = carryOver[i];
       const encFields = await vaultEncrypt(g.text);
-      await fetch("/api/daily-goals", {
+      const res = await fetch("/api/daily-goals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...encFields, taskId: g.taskId, date: today, position: goals.length + i, limit }),
       });
+      if (!res.ok) continue;
+      // Delete the original so it no longer appears as "unfinished from yesterday"
+      await fetch(`/api/daily-goals/${g.id}`, { method: "DELETE" });
     }
     setCarryOver([]);
     await fetchGoals();
@@ -351,21 +359,21 @@ export default function DailyFocus({ tasks }: DailyFocusProps) {
 
   const handleToggleHabit = async (habit: Habit) => {
     if (habit.completedToday) {
-      await fetch(`/api/habits/${habit.id}/complete?date=${today}`, { method: "DELETE" });
-      setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: false } : h));
+      const res = await fetch(`/api/habits/${habit.id}/complete?date=${today}`, { method: "DELETE" });
+      if (res.ok) setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: false } : h));
     } else {
-      await fetch(`/api/habits/${habit.id}/complete`, {
+      const res = await fetch(`/api/habits/${habit.id}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: today }),
       });
-      setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: true } : h));
+      if (res.ok) setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: true } : h));
     }
   };
 
   const handleDeleteHabit = async (id: string) => {
-    await fetch(`/api/habits/${id}`, { method: "DELETE" });
-    setHabits((prev) => prev.filter((h) => h.id !== id));
+    const res = await fetch(`/api/habits/${id}`, { method: "DELETE" });
+    if (res.ok) setHabits((prev) => prev.filter((h) => h.id !== id));
   };
 
   const flashSaved = useCallback(() => {
@@ -541,6 +549,18 @@ export default function DailyFocus({ tasks }: DailyFocusProps) {
         </IconButton>
       </Box>
 
+      <Snackbar
+        open={sentBackSnackbar}
+        autoHideDuration={2000}
+        onClose={() => setSentBackSnackbar(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert onClose={() => setSentBackSnackbar(false)} severity="info" variant="filled"
+          sx={{ borderRadius: 2, fontWeight: 600, fontSize: "0.875rem" }}>
+          Sent to board
+        </Alert>
+      </Snackbar>
+
       <Collapse in={!collapsed}>
         <Box sx={{ px: 3, py: 2.5, display: "flex", flexDirection: "column", gap: 2.5 }}>
 
@@ -672,6 +692,11 @@ export default function DailyFocus({ tasks }: DailyFocusProps) {
                       onDeleteGoal={() => handleDeleteGoal(goal.id)}
                       onEditGoal={handleEditGoal}
                       onMoveToNextDay={dayOffset < MAX_FUTURE ? () => handleMoveToNextDay(goal.id) : undefined}
+                      onSendToBoard={goal.taskId
+                        ? async () => { await handleDeleteGoal(goal.id); setSentBackSnackbar(true); }
+                        : onCreateBoardTask
+                          ? () => onCreateBoardTask(goal.text, goal.id)
+                          : undefined}
                       canAdd={false}
                     />
                   ))}
@@ -835,6 +860,7 @@ interface GoalSlotProps {
   onDeleteGoal: () => void;
   onEditGoal: (id: string, text: string) => Promise<void>;
   onMoveToNextDay?: () => void;
+  onSendToBoard?: () => void;
   canAdd: boolean;
   // drag-and-drop
   dragHandleListeners?: SyntheticListenerMap;
@@ -845,7 +871,7 @@ interface GoalSlotProps {
 function GoalSlot({
   slot, goal, isAdding, goalInput, goalTask, availableTasks, goalInputRef,
   onStartAdd, onCancelAdd, onGoalInputChange, onGoalTaskChange,
-  onAddGoal, onToggleGoal, onDeleteGoal, onEditGoal, onMoveToNextDay, canAdd,
+  onAddGoal, onToggleGoal, onDeleteGoal, onEditGoal, onMoveToNextDay, onSendToBoard, canAdd,
   dragHandleListeners, dragHandleAttributes, isDragging,
 }: GoalSlotProps) {
   const numberLabel = `${slot + 1}`;
@@ -984,6 +1010,15 @@ function GoalSlot({
             </IconButton>
           </Tooltip>
         )}
+        {!goal.completed && !isEditing && onSendToBoard && (
+          <Tooltip title="Send to board" placement="top">
+            <IconButton className="goal-action" size="small" onClick={onSendToBoard}
+              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "#cbd5e1",
+                "&:hover": { color: "#6366f1" } }}>
+              <ReplyIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Tooltip>
+        )}
         {!isEditing && (
           <Tooltip title="Remove" placement="top">
             <IconButton className="goal-action" size="small" onClick={onDeleteGoal}
@@ -1011,7 +1046,8 @@ function GoalSlot({
           <Autocomplete
             freeSolo
             options={availableTasks}
-            getOptionLabel={(o) => (typeof o === "string" ? o : o.title)}
+            getOptionLabel={(o) => (typeof o === "string" ? o : (o.title || (o.locked || o.encTitle ? "🔒 Locked task" : "")))}
+            getOptionDisabled={(o) => typeof o !== "string" && !o.title && !!(o.locked || o.encTitle)}
             value={goalTask}
             inputValue={goalInput}
             onInputChange={(_, v) => onGoalInputChange(v)}
@@ -1043,16 +1079,22 @@ function GoalSlot({
               />
             )}
             sx={{ flex: 1 }}
-            renderOption={(props, option) => (
-              <Box component="li" {...props} sx={{ fontSize: "0.85rem" }}>
-                <Box sx={{ display: "flex", flexDirection: "column" }}>
-                  <Typography sx={{ fontSize: "0.85rem", fontWeight: 500 }}>{option.title}</Typography>
-                  {option.project && (
-                    <Typography sx={{ fontSize: "0.72rem", color: "#94a3b8" }}>{option.project.name}</Typography>
-                  )}
+            renderOption={(props, option) => {
+              const isLocked = !option.title && !!(option.locked || option.encTitle);
+              return (
+                <Box component="li" {...props} sx={{ fontSize: "0.85rem", opacity: isLocked ? 0.65 : 1 }}>
+                  <Box sx={{ display: "flex", flexDirection: "column" }}>
+                    <Typography sx={{ fontSize: "0.85rem", fontWeight: 500, color: isLocked ? "#94a3b8" : "inherit" }}>
+                      {isLocked ? "🔒 Locked task" : option.title}
+                    </Typography>
+                    {isLocked
+                      ? <Typography sx={{ fontSize: "0.7rem", color: "#64748b" }}>Unlock vault to link this task</Typography>
+                      : option.project && <Typography sx={{ fontSize: "0.72rem", color: "#94a3b8" }}>{option.project.name}</Typography>
+                    }
+                  </Box>
                 </Box>
-              </Box>
-            )}
+              );
+            }}
           />
         </Box>
         <Box sx={{ display: "flex", gap: 0.75, justifyContent: "flex-end" }}>

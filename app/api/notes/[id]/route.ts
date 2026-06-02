@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/get-user-id";
+import { verifyRevealToken } from "@/lib/vault-session";
 import { unlink } from "fs/promises";
 import { join } from "path";
 import { MAX_NOTE_TITLE_LEN, MAX_NOTE_CONTENT_LEN } from "@/lib/constants";
@@ -31,7 +32,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: noteId } = await params;
   const note = await getOwnedNote(noteId, userId);
-  if (!note) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!note || note.deletedAt) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Hidden notes require a valid vault reveal token
+  if (note.hidden) {
+    const revealToken = request.headers.get("x-reveal-token") ?? "";
+    const revealed = revealToken ? verifyRevealToken(userId, revealToken) : false;
+    if (!revealed) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   if (note.locked) return NextResponse.json({ ...note, content: "", title: note.encTitle ? "" : note.title });
   return NextResponse.json(note);
 }
@@ -43,12 +52,25 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id: noteId } = await params;
 
     const existing = await getOwnedNote(noteId, userId);
-    if (!existing) {
+    if (!existing || existing.deletedAt) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     const body = await request.json().catch(() => null);
     if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+
+    // Modifying vault-protected fields requires a valid reveal token.
+    // Also required when writing enc fields on an already-locked note — prevents
+    // an authenticated session from corrupting vault content without the vault key.
+    const touchingVaultFields = body.locked !== undefined || body.hidden !== undefined;
+    const touchingEncOnLockedNote = (body.encContent !== undefined || body.encTitle !== undefined) && existing.locked;
+    if (touchingVaultFields || touchingEncOnLockedNote) {
+      const revealToken = request.headers.get("x-reveal-token") ?? "";
+      const revealed = revealToken ? verifyRevealToken(userId, revealToken) : false;
+      if (!revealed) {
+        return NextResponse.json({ error: "Vault token required" }, { status: 403 });
+      }
+    }
 
     // Conflict detection: if the client tells us when it last saw this note and the
     // server version is newer, stop and let the client decide how to resolve it.

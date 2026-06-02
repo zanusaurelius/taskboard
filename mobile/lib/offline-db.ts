@@ -1,25 +1,31 @@
 import * as SQLite from 'expo-sqlite';
 
 let _db: SQLite.SQLiteDatabase | null = null;
+let _dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-async function db(): Promise<SQLite.SQLiteDatabase> {
-  if (_db) return _db;
-  _db = await SQLite.openDatabaseAsync('offline.db');
-  await _db.execAsync(`
-    CREATE TABLE IF NOT EXISTS pending_ops (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      method      TEXT    NOT NULL,
-      path        TEXT    NOT NULL,
-      body        TEXT,
-      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-      retry_count INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS last_synced (
-      key   TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-  `);
-  return _db;
+function db(): Promise<SQLite.SQLiteDatabase> {
+  if (_db) return Promise.resolve(_db);
+  if (!_dbPromise) {
+    _dbPromise = SQLite.openDatabaseAsync('offline.db').then(async (d) => {
+      await d.execAsync(`
+        CREATE TABLE IF NOT EXISTS pending_ops (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          method      TEXT    NOT NULL,
+          path        TEXT    NOT NULL,
+          body        TEXT,
+          created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+          retry_count INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS last_synced (
+          key   TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+      `);
+      _db = d;
+      return d;
+    });
+  }
+  return _dbPromise;
 }
 
 export interface PendingOp {
@@ -32,13 +38,18 @@ export interface PendingOp {
 }
 
 export async function enqueue(method: string, path: string, body?: object): Promise<void> {
-  const d = await db();
-  await d.runAsync(
-    'INSERT INTO pending_ops (method, path, body) VALUES (?, ?, ?)',
-    method,
-    path,
-    body !== undefined ? JSON.stringify(body) : null,
-  );
+  try {
+    const d = await db();
+    await d.runAsync(
+      'INSERT INTO pending_ops (method, path, body) VALUES (?, ?, ?)',
+      method,
+      path,
+      body !== undefined ? JSON.stringify(body) : null,
+    );
+  } catch (e) {
+    console.error('[offline-db] enqueue failed:', e);
+    throw e;
+  }
 }
 
 export async function dequeue(id: number): Promise<void> {

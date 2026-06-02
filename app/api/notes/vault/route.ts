@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/get-user-id";
+import { audit } from "@/lib/audit";
+import { getClientIp } from "@/lib/rateLimit";
 
 // GET — return vault config (encrypted blobs) so client can derive master key
 export async function GET(request: Request) {
@@ -50,6 +52,7 @@ export async function POST(request: Request) {
         verifier,
       },
     });
+    audit("vault_create", { userId, ip: getClientIp(request) });
     return NextResponse.json({ ok: true, id: vault.id }, { status: 201 });
   } catch (e) {
     console.error("Vault create error:", e);
@@ -74,5 +77,6 @@ export async function DELETE(request: Request) {
     prisma.noteVault.delete({ where: { userId } }),
   ]);
 
+  audit("vault_delete", { userId, ip: getClientIp(request) });
   return new NextResponse(null, { status: 204 });
 }

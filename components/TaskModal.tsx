@@ -27,6 +27,7 @@ import CloseFullscreenIcon from "@mui/icons-material/CloseFullscreen";
 import { Task, Project } from "@/lib/types";
 
 const RichTextEditor = dynamic(() => import("./RichTextEditor"), { ssr: false });
+const AttachmentsPanel = dynamic(() => import("./AttachmentsPanel"), { ssr: false });
 
 const STAGES = [
   { value: "todo",        label: "To Do" },
@@ -189,6 +190,7 @@ export default function TaskModal({
             onChange={setDesc}
             minHeight={descMinHeight}
           />
+          <AttachmentsPanel taskId={task?.id} disabled={!task?.id} />
         </Box>
 
         <Box sx={{ display: "flex", gap: 2 }}>

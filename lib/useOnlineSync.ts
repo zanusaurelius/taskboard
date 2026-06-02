@@ -9,6 +9,7 @@ export function useOnlineSync() {
   );
   const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(false);
   const flushingRef = useRef(false);
 
   useEffect(() => {
@@ -26,15 +27,17 @@ export function useOnlineSync() {
       if (n === 0) return;
       flushingRef.current = true;
       setSyncing(true);
+      setSyncError(false);
       try {
-        await flushWriteQueue();
+        const result = await flushWriteQueue();
+        if (result.errors > 0) setSyncError(true);
       } finally {
         flushingRef.current = false;
         setSyncing(false);
         getQueueLength().then(setPendingCount).catch(() => {});
       }
     };
-    const onOffline = () => setIsOnline(false);
+    const onOffline = () => { setIsOnline(false); setSyncError(false); };
 
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
@@ -44,5 +47,5 @@ export function useOnlineSync() {
     };
   }, []);
 
-  return { isOnline, pendingCount, syncing };
+  return { isOnline, pendingCount, syncing, syncError };
 }

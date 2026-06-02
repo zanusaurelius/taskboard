@@ -59,4 +59,5 @@ prisma/dev.db-wal
 /public/uploads/
 
 # start9 packaging — exclude docker image tarballs (large binary artifacts)
-docker-images/taskboard.s9pk
+docker-images/
+taskboard.s9pk

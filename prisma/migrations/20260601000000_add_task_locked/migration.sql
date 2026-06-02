@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Task" ADD COLUMN "locked" BOOLEAN NOT NULL DEFAULT false;

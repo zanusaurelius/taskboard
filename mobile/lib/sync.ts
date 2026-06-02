@@ -5,6 +5,8 @@ import { getToken } from './storage';
 
 const MAX_RETRY = 5;
 
+let isFlushing = false;
+
 export type ConflictHandler = (op: {
   method: string;
   path: string;
@@ -12,6 +14,16 @@ export type ConflictHandler = (op: {
 }, serverItem: unknown) => void;
 
 export async function flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: number; failed: number }> {
+  if (isFlushing) return { flushed: 0, failed: 0 };
+  isFlushing = true;
+  try {
+    return await _flushQueue(onConflict);
+  } finally {
+    isFlushing = false;
+  }
+}
+
+async function _flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: number; failed: number }> {
   const token = await getToken();
   if (!token) return { flushed: 0, failed: 0 };
 
@@ -26,7 +38,14 @@ export async function flushQueue(onConflict?: ConflictHandler): Promise<{ flushe
       continue;
     }
 
-    const body = op.body ? (JSON.parse(op.body) as object) : undefined;
+    let body: object | undefined;
+    try {
+      body = op.body ? (JSON.parse(op.body) as object) : undefined;
+    } catch {
+      await dequeue(op.id);
+      failed++;
+      continue;
+    }
     const result = await apiFetch(op.path, {
       method: op.method,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -40,6 +59,13 @@ export async function flushQueue(onConflict?: ConflictHandler): Promise<{ flushe
       // Network error — stop flushing, will retry when back online
       await incrementRetry(op.id);
       break;
+    } else if (!isOk(result) && (result.status === 401 || result.status === 423)) {
+      // Auth expired or DB locked — stop flushing, preserve ops for after re-auth/unlock
+      break;
+    } else if (!isOk(result) && result.status >= 500) {
+      // Transient server error — retry later, don't discard the op
+      await incrementRetry(op.id);
+      break;
     } else {
       await dequeue(op.id);
       if (!isOk(result)) failed++;
@@ -49,6 +75,7 @@ export async function flushQueue(onConflict?: ConflictHandler): Promise<{ flushe
 
   return { flushed, failed };
 }
+
 
 /** Subscribe to connectivity changes; calls onOnline whenever connectivity is restored. */
 export function watchConnectivity(onOnline: () => void): () => void {

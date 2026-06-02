@@ -68,7 +68,7 @@ interface TaskBoardStore {
   fetchTrash: () => Promise<void>;
   createNote: () => Promise<Note>;
   duplicateNote: (id: string) => Promise<Note>;
-  updateNote: (id: string, fields: Partial<Note>) => Promise<void>;
+  updateNote: (id: string, fields: Partial<Note>, revealToken?: string) => Promise<void>;
   deleteNote: (id: string) => Promise<boolean>;
   restoreNote: (id: string) => Promise<void>;
   permanentDeleteNote: (id: string) => Promise<void>;
@@ -85,7 +85,15 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
 
   setMasterKey: async (key) => {
     set({ masterKey: key });
-    if (!key) return;
+    if (!key) {
+      // Vault locked — redact locked tasks in-memory (mirrors what the server returns)
+      set((s) => ({
+        tasks: s.tasks.map((t) =>
+          t.locked ? { ...t, title: "", description: null } : t,
+        ),
+      }));
+      return;
+    }
     const { tasks, projects, folders } = get();
     const [decTasks, decProjects, decFolders] = await Promise.all([
       Promise.all(tasks.map((t) => decryptTask(t, key))),
@@ -126,6 +134,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!res.ok) throw new Error(`Failed to create folder (${res.status})`);
     const raw: Folder = await res.json();
     const folder = masterKey ? await decryptFolder(raw, masterKey) : raw;
     set((s) => ({ folders: [...s.folders, folder].sort((a, b) => a.name.localeCompare(b.name)) }));
@@ -146,6 +155,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!res.ok) throw new Error(`Failed to update folder (${res.status})`);
     const raw: Folder = await res.json();
     const folder = masterKey ? await decryptFolder(raw, masterKey) : raw;
     set((s) => ({
@@ -165,6 +175,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!res.ok) throw new Error(`Failed to patch folder (${res.status})`);
     const raw: Folder = await res.json();
     const folder = masterKey ? await decryptFolder(raw, masterKey) : raw;
     set((s) => ({
@@ -173,7 +184,8 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
   },
 
   deleteFolder: async (id) => {
-    await fetch(`/api/folders/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/folders/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`Failed to delete folder (${res.status})`);
     set((s) => ({
       folders: s.folders.filter((f) => f.id !== id),
       notes: s.notes.map((n) => n.folderId === id ? { ...n, folderId: null } : n),
@@ -185,6 +197,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       fetch(`/api/tasks${includeArchivedTasks ? "?includeArchived=true" : ""}`),
       fetch(`/api/projects${includeArchivedProjects ? "?includeArchived=true" : ""}`),
     ]);
+    if (!tasksRes.ok || !projectsRes.ok) return;
     let [tasks, projects]: [Task[], Project[]] = await Promise.all([tasksRes.json(), projectsRes.json()]);
     const { masterKey } = get();
     if (masterKey) {
@@ -199,7 +212,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
   createTask: async (fields) => {
     const { masterKey } = get();
     const body: Record<string, unknown> = { ...fields };
-    if (masterKey) {
+    if (masterKey && fields.sensitive) {
       if (fields.title) {
         body.encTitle = await encField(fields.title, masterKey);
         body.title = "";
@@ -208,12 +221,14 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
         body.encDescription = await encField(fields.description, masterKey);
         body.description = null;
       }
+      body.locked = true;
     }
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!res.ok) throw new Error(`Failed to create task (${res.status})`);
     const raw: Task = await res.json();
     const task = masterKey ? await decryptTask(raw, masterKey) : raw;
     set((s) => ({ tasks: [...s.tasks, task] }));
@@ -223,7 +238,13 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
   updateTask: async (id, fields) => {
     const { masterKey } = get();
     const body: Record<string, unknown> = { ...fields };
-    if (masterKey) {
+    if (fields.sensitive === false) {
+      // Removing vault protection: clear encryption regardless of vault state
+      body.locked = false;
+      body.encTitle = null;
+      body.encDescription = null;
+    } else if (masterKey && fields.sensitive) {
+      // Sensitive task with vault unlocked: encrypt content and lock
       if (typeof fields.title === "string") {
         body.encTitle = await encField(fields.title, masterKey);
         body.title = "";
@@ -232,12 +253,14 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
         body.encDescription = await encField(fields.description, masterKey);
         body.description = null;
       }
+      body.locked = true;
     }
     const res = await fetch(`/api/tasks/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!res.ok) throw new Error(`Failed to update task (${res.status})`);
     const raw: Task = await res.json();
     const task = masterKey ? await decryptTask(raw, masterKey) : raw;
     set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? task : t)) }));
@@ -245,7 +268,8 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
   },
 
   deleteTask: async (id) => {
-    await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`Failed to delete task (${res.status})`);
     set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
   },
 
@@ -263,6 +287,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!res.ok) throw new Error(`Failed to create project (${res.status})`);
     const raw: Project = await res.json();
     const project = masterKey ? await decryptProject(raw, masterKey) : raw;
     set((s) => ({ projects: [...s.projects, project].sort((a, b) => a.name.localeCompare(b.name)) }));
@@ -281,6 +306,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (!res.ok) throw new Error(`Failed to update project (${res.status})`);
     const raw: Project = await res.json();
     const project = masterKey ? await decryptProject(raw, masterKey) : raw;
     set((s) => ({
@@ -292,12 +318,14 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
   },
 
   deleteProject: async (id) => {
-    await fetch(`/api/projects/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`Failed to delete project (${res.status})`);
     set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, archived: true } : p)) }));
   },
 
   permanentDeleteProject: async (id) => {
-    await fetch(`/api/projects/${id}?permanent=true`, { method: "DELETE" });
+    const res = await fetch(`/api/projects/${id}?permanent=true`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`Failed to permanently delete project (${res.status})`);
     set((s) => ({
       projects: s.projects.filter((p) => p.id !== id),
       tasks: s.tasks.filter((t) => t.projectId !== id),
@@ -306,20 +334,21 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
 
   archiveAllDone: async () => {
     const doneTasks = get().tasks.filter((t) => t.stage === "done" && !t.archived);
-    await Promise.all(
+    const results = await Promise.all(
       doneTasks.map((t) =>
         fetch(`/api/tasks/${t.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ archived: true }),
-        })
+        }).then((res) => ({ id: t.id, ok: res.ok }))
       )
     );
-    set((s) => ({
-      tasks: s.tasks.map((t) =>
-        t.stage === "done" && !t.archived ? { ...t, archived: true } : t
-      ),
-    }));
+    const archivedIds = new Set(results.filter((r) => r.ok).map((r) => r.id));
+    if (archivedIds.size > 0) {
+      set((s) => ({
+        tasks: s.tasks.map((t) => archivedIds.has(t.id) ? { ...t, archived: true } : t),
+      }));
+    }
   },
 
   fetchNotes: async (revealToken?: string) => {
@@ -350,7 +379,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
 
     // src.title is the in-memory decrypted title (or empty if encrypted + locked)
     // src.encTitle holds the blob — re-encrypt for the copy
-    const body: Record<string, unknown> = { folderId: src.folderId };
+    const body: Record<string, unknown> = { folderId: src.folderId, projectId: src.projectId };
     if (masterKey && (src.encTitle || src.encContent)) {
       const plainTitle = src.title || (src.encTitle ? (await decField(src.encTitle, masterKey) ?? "") : "");
       const plainContent = src.content || (src.encContent ? (await decField(src.encContent, masterKey) ?? "") : "");
@@ -402,7 +431,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
     return note;
   },
 
-  updateNote: async (id, fields) => {
+  updateNote: async (id, fields, revealToken?: string) => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       const now = new Date().toISOString();
       set((s) => ({
@@ -413,9 +442,11 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       await enqueueOp({ type: "update-note", noteId: id, fields: fields as Record<string, unknown> });
       return;
     }
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (revealToken) headers["x-reveal-token"] = revealToken;
     const res = await fetch(`/api/notes/${id}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(fields),
     });
     if (!res.ok) {
@@ -454,6 +485,7 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
 
   restoreNote: async (id) => {
     const res = await fetch(`/api/notes/${id}/restore`, { method: "POST" });
+    if (!res.ok) throw new Error(`Failed to restore note (${res.status})`);
     const note: Note = await res.json();
     set((s) => ({
       trashNotes: s.trashNotes.filter((n) => n.id !== id),

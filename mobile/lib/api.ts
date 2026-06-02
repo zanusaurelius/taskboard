@@ -55,17 +55,14 @@ export async function apiFetch<T = unknown>(
       return { ok: false, conflict: false, status: 423, error: 'Database locked' };
     }
 
-    if (res.status === 409) {
-      const body = await res.json().catch(() => ({}));
-      if (body.conflict) {
-        return { ok: false, conflict: true, serverItem: body.serverItem as T };
-      }
-    }
-
     if (res.status === 204) return { ok: true, data: null as T };
 
     const text = await res.text();
     const data = text ? JSON.parse(text) : null;
+
+    if (res.status === 409 && data?.conflict) {
+      return { ok: false, conflict: true, serverItem: data.serverItem as T };
+    }
 
     if (!res.ok) {
       return { ok: false, conflict: false, status: res.status, error: data?.error ?? 'Request failed' };
@@ -131,18 +128,63 @@ export async function unlockDb(
   passphrase: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const url = baseUrl.replace(/\/$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60_000);
   try {
     const res = await fetch(`${url}/api/auth/db-unlock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ passphrase }),
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       return { ok: false, error: body.error ?? 'Unlock failed' };
     }
     return { ok: true };
   } catch {
+    clearTimeout(timer);
     return { ok: false, error: 'Cannot connect to server' };
+  }
+}
+
+export interface AttachmentMeta {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+}
+
+export async function listAttachments(noteId?: string, taskId?: string): Promise<AttachmentMeta[]> {
+  const query = noteId ? `noteId=${noteId}` : `taskId=${taskId}`;
+  const result = await apiFetch<AttachmentMeta[]>(`/api/attachments?${query}`);
+  return isOk(result) ? result.data : [];
+}
+
+export async function deleteAttachment(id: string): Promise<boolean> {
+  const result = await apiFetch(`/api/attachments/${id}`, { method: 'DELETE' });
+  return result.ok;
+}
+
+export async function uploadImage(uri: string, mimeType: string): Promise<string | null> {
+  const [baseUrl, token] = await Promise.all([getBaseUrl(), getToken()]);
+  if (!baseUrl) return null;
+
+  const ext = mimeType.split('/')[1] ?? 'jpg';
+  const formData = new FormData();
+  formData.append('file', { uri, type: mimeType, name: `upload.${ext}` } as unknown as Blob);
+
+  const headers = new Headers();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  try {
+    const res = await fetch(`${baseUrl}/api/upload`, { method: 'POST', body: formData, headers });
+    if (!res.ok) return null;
+    const { url } = await res.json() as { url: string };
+    return url;
+  } catch {
+    return null;
   }
 }

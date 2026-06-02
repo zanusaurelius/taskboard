@@ -65,6 +65,12 @@ const labelSx = {
   textTransform: "uppercase" as const, letterSpacing: 1.1, mb: 0.75,
 };
 
+const viewAllSx = {
+  fontSize: "0.7rem", fontWeight: 600, color: "#818cf8",
+  cursor: "pointer", ml: 1, userSelect: "none" as const,
+  "&:hover": { color: "#6366f1", textDecoration: "underline" },
+};
+
 export default function JournalView() {
   const vault = useVault();
   const isMobile = useMediaQuery("(max-width: 599px)");
@@ -81,6 +87,7 @@ export default function JournalView() {
   const [editGratitude, setEditGratitude] = useState("");
   const [editBody, setEditBody] = useState("");
   const [saved, setSaved] = useState(false);
+  const [focusField, setFocusField] = useState<"note" | "gratitude" | "body" | null>(null);
 
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gratTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,9 +115,18 @@ export default function JournalView() {
       setEditBody(todayEntry?.body ?? "");
     }
     setLoading(false);
-  }, [today, vault]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today, vault.decrypt, vault.masterKey]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
+  // C shortcut → jump to today's entry
+  useEffect(() => {
+    const handler = () => { setSelectedDate(today); setMobilePanel("detail"); };
+    window.addEventListener("journal:newentry", handler);
+    return () => window.removeEventListener("journal:newentry", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today]);
 
   // Load editing fields when the selected date changes.
   // `entries` is included so this re-runs on initial data load, but the ref
@@ -134,6 +150,13 @@ export default function JournalView() {
     const rawEncNote = note.trim() ? await vault.encrypt(note) : null;
     const rawEncGratitude = gratitude.trim() ? await vault.encrypt(gratitude) : null;
     const rawEncBody = body.trim() ? await vault.encrypt(body) : null;
+    // If vault is active but encryption returned null (vault locked mid-edit), abort rather
+    // than saving plaintext and silently de-encrypting the entry on the server.
+    if (vault.masterKey) {
+      if (note.trim() && !rawEncNote) return;
+      if (gratitude.trim() && !rawEncGratitude) return;
+      if (body.trim() && !rawEncBody) return;
+    }
     const encNote = rawEncNote ? JSON.stringify(rawEncNote) : null;
     const encGratitude = rawEncGratitude ? JSON.stringify(rawEncGratitude) : null;
     const encBody = rawEncBody ? JSON.stringify(rawEncBody) : null;
@@ -169,7 +192,8 @@ export default function JournalView() {
       if (exists) return prev.map((e) => e.date === selectedDate ? { ...e, ...payload } : e);
       return [payload, ...prev].sort((a, b) => b.date.localeCompare(a.date));
     });
-  }, [selectedDate, flashSaved, vault]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, flashSaved, vault.encrypt, vault.masterKey]);
 
   const handleNote = (v: string) => {
     setEditNote(v);
@@ -323,7 +347,7 @@ export default function JournalView() {
             <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Journal</Typography>
           </Box>
         )}
-        {!loading && (
+        {!loading && focusField === null && (
           <Box sx={{ maxWidth: 860, px: { xs: 2, sm: 4 }, py: { xs: 2, sm: 4 }, display: "flex", flexDirection: "column", gap: 3 }}>
 
             {/* Date header */}
@@ -345,7 +369,10 @@ export default function JournalView() {
 
             {/* Better tomorrow */}
             <Box>
-              <Typography sx={labelSx}>One thing to do better tomorrow</Typography>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
+                <Typography sx={{ ...labelSx, mb: 0 }}>One thing to do better tomorrow</Typography>
+                <Box component="span" sx={viewAllSx} onClick={() => setFocusField("note")}>View all →</Box>
+              </Box>
               <TextField
                 fullWidth multiline minRows={1} maxRows={4}
                 placeholder="Write one thing you can improve tomorrow…"
@@ -360,7 +387,10 @@ export default function JournalView() {
 
             {/* Grateful for */}
             <Box>
-              <Typography sx={labelSx}>One thing I&apos;m grateful for</Typography>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
+                <Typography sx={{ ...labelSx, mb: 0 }}>One thing I&apos;m grateful for</Typography>
+                <Box component="span" sx={viewAllSx} onClick={() => setFocusField("gratitude")}>View all →</Box>
+              </Box>
               <TextField
                 fullWidth multiline minRows={1} maxRows={4}
                 placeholder="Write one thing you're grateful for today…"
@@ -375,7 +405,10 @@ export default function JournalView() {
 
             {/* Free-write journal */}
             <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
-              <Typography sx={labelSx}>Journal</Typography>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
+                <Typography sx={{ ...labelSx, mb: 0 }}>Journal</Typography>
+                <Box component="span" sx={viewAllSx} onClick={() => setFocusField("body")}>View all →</Box>
+              </Box>
               <TextField
                 fullWidth multiline minRows={12}
                 placeholder="Write anything on your mind…"
@@ -399,6 +432,70 @@ export default function JournalView() {
 
           </Box>
         )}
+
+        {/* ── Stream view ── */}
+        {!loading && focusField !== null && (() => {
+          const fieldLabel =
+            focusField === "note" ? "One thing to do better tomorrow" :
+            focusField === "gratitude" ? "One thing I'm grateful for" :
+            "Journal";
+          const streamItems = entries
+            .filter((e) => !!(focusField === "note" ? e.note : focusField === "gratitude" ? e.gratitude : e.body)?.trim())
+            .sort((a, b) => b.date.localeCompare(a.date));
+          return (
+            <Box sx={{ maxWidth: 860, px: { xs: 2, sm: 4 }, py: { xs: 2, sm: 4 }, display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* Back button */}
+              <Box
+                sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, cursor: "pointer", width: "fit-content" }}
+                onClick={() => setFocusField(null)}
+              >
+                <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "#6366f1", "&:hover": { textDecoration: "underline" } }}>
+                  ← Back to entry
+                </Typography>
+              </Box>
+
+              {/* Heading */}
+              <Typography sx={{ fontWeight: 800, fontSize: "1.15rem", color: "#1e293b", lineHeight: 1.3 }}>
+                {fieldLabel} — all entries
+              </Typography>
+
+              {/* Items */}
+              {streamItems.length === 0 ? (
+                <Typography sx={{ fontSize: "0.88rem", color: "#94a3b8", mt: 1 }}>
+                  No entries yet for this field.
+                </Typography>
+              ) : (
+                <Box sx={{ display: "flex", flexDirection: "column" }}>
+                  {streamItems.map((entry, idx) => {
+                    const content = (focusField === "note" ? entry.note : focusField === "gratitude" ? entry.gratitude : entry.body) ?? "";
+                    return (
+                      <Box key={entry.date}>
+                        <Box
+                          sx={{
+                            py: 2, px: 2, backgroundColor: "#f8fafc", borderRadius: 2,
+                            cursor: "pointer",
+                            "&:hover": { backgroundColor: "rgba(99,102,241,0.05)" },
+                          }}
+                          onClick={() => { setSelectedDate(entry.date); setFocusField(null); if (isMobile) setMobilePanel("detail"); }}
+                        >
+                          <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "#1e293b", mb: 0.5 }}>
+                            {formatDayFull(entry.date)}
+                          </Typography>
+                          <Typography sx={{ fontSize: "0.9rem", color: "#475569", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                            {content}
+                          </Typography>
+                        </Box>
+                        {idx < streamItems.length - 1 && (
+                          <Box sx={{ borderBottom: "1px solid #e2e8f0", mx: 2 }} />
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              )}
+            </Box>
+          );
+        })()}
 
         {/* Empty state when nothing selected */}
         {!loading && !selectedDate && (

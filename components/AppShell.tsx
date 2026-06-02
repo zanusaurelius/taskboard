@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Tooltip from "@mui/material/Tooltip";
+import Dialog from "@mui/material/Dialog";
 import Avatar from "@mui/material/Avatar";
 import CircularProgress from "@mui/material/CircularProgress";
 import DashboardIcon from "@mui/icons-material/Dashboard";
@@ -21,6 +22,8 @@ import SettingsView from "./SettingsView";
 import VaultSetupModal from "./VaultSetupModal";
 import VaultUnlockModal from "./VaultUnlockModal";
 import E2EMigration from "./E2EMigration";
+import E2EReversal from "./E2EReversal";
+import GlobalSearch from "./GlobalSearch";
 import { useReminders } from "@/lib/useReminders";
 import { useOnlineSync } from "@/lib/useOnlineSync";
 import { VaultProvider, useVault } from "@/lib/vault-context";
@@ -74,7 +77,7 @@ function NavItem({ icon, label, active, onClick }: NavItemProps) {
 function AppShellInner() {
   const { data: session } = useSession();
   const router = useRouter();
-  const { masterKey } = useVault();
+  const { masterKey, isUnlocked: vaultIsUnlocked, lockVault, hideVault } = useVault();
   const setMasterKey = useTaskBoardStore((s) => s.setMasterKey);
   const [view, setView] = useState<View>(() => {
     if (typeof window === "undefined") return "board";
@@ -82,12 +85,18 @@ function AppShellInner() {
     return (saved === "board" || saved === "notes" || saved === "journal" || saved === "settings") ? saved : "board";
   });
   useReminders();
-  const { isOnline, pendingCount, syncing } = useOnlineSync();
+  const { isOnline, pendingCount, syncing, syncError } = useOnlineSync();
 
   // Vault gate state
   const [vaultState, setVaultState] = useState<VaultState>("loading");
   const [hasWebAuthn, setHasWebAuthn] = useState(false);
-  const [migrationDone, setMigrationDone] = useState(false);
+  const [migrationDone, setMigrationDone] = useState(() =>
+    typeof window !== "undefined" && !!localStorage.getItem("e2e_migration_v1")
+  );
+  // Initialize from localStorage so E2EReversal never mounts again after it's run once.
+  const [reversalDone, setReversalDone] = useState(() =>
+    typeof window !== "undefined" && !!localStorage.getItem("e2e_reversal_v2")
+  );
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -95,42 +104,103 @@ function AppShellInner() {
     }
   }, []);
 
-  // Check db unlock state
+  // Check db unlock state once on mount
   useEffect(() => {
     fetch("/api/auth/db-status")
       .then((r) => r.json())
       .then((d) => { if (d.state !== "unlocked") router.push("/unlock"); })
       .catch(() => {});
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Check vault setup state on mount
+  // Check vault setup state on mount — just gather hasWebAuthn for Notes section use.
   useEffect(() => {
     fetch("/api/notes/vault")
       .then((r) => r.json())
       .then((d) => {
-        if (!d.exists) {
-          setVaultState("not-setup");
-        } else {
+        if (d.exists) {
           try {
             const creds = JSON.parse(d.webAuthnCredentials ?? "[]");
             setHasWebAuthn(Array.isArray(creds) && creds.length > 0);
           } catch { /* ignore */ }
-          setVaultState("locked");
         }
+        setVaultState("unlocked");
       })
-      .catch(() => setVaultState("locked"));
+      .catch(() => setVaultState("unlocked"));
   }, []);
 
-  // When vault key becomes available, push it into the store to decrypt loaded data
+  // Sync vault master key into the store (both when set and when cleared)
+  const prevMasterKeyRef = useRef<Uint8Array | null>(null);
   useEffect(() => {
+    const prev = prevMasterKeyRef.current;
+    prevMasterKeyRef.current = masterKey;
     if (masterKey) {
       setMasterKey(masterKey);
       if (vaultState === "locked") setVaultState("unlocked");
+    } else if (prev !== null) {
+      // Vault just locked — redact locked tasks in the store
+      setMasterKey(null);
     }
   }, [masterKey, setMasterKey, vaultState]);
 
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  // Keep a ref so the keyboard handler always sees the current view without re-registering
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Cmd/Ctrl combos
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === "k") { e.preventDefault(); setSearchOpen(true); }
+        return;
+      }
+      // Single-key shortcuts — ignore when typing in an input/textarea/editor
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isEditable = (e.target as HTMLElement)?.isContentEditable;
+      if (tag === "INPUT" || tag === "TEXTAREA" || isEditable) return;
+
+      switch (e.key) {
+        case "c": {
+          // Context-aware create
+          const v = viewRef.current;
+          if (v === "board")   window.dispatchEvent(new CustomEvent("taskboard:newtask"));
+          else if (v === "notes")   window.dispatchEvent(new CustomEvent("notes:newnote"));
+          else if (v === "journal") window.dispatchEvent(new CustomEvent("journal:newentry"));
+          break;
+        }
+        case "b": navigate("board"); break;
+        case "n": navigate("notes"); break;
+        case "j": navigate("journal"); break;
+        case "s": navigate("settings"); break;
+        case "/": e.preventDefault(); setSearchOpen(true); break;
+        case "?": setShortcutsOpen((v) => !v); break;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Open global search via custom event
+  useEffect(() => {
+    const handler = () => setSearchOpen(true);
+    window.addEventListener("globalsearch:open", handler);
+    return () => window.removeEventListener("globalsearch:open", handler);
+  }, []);
+
   const [pendingNoteTask, setPendingNoteTask] = useState<{ title: string; description: string } | null>(null);
-  const navigate = (v: View) => { setView(v); localStorage.setItem("currentView", v); };
+  const navigate = (v: View) => {
+    if (v !== view) {
+      lockVault();
+      hideVault();
+    }
+    setView(v);
+    localStorage.setItem("currentView", v);
+  };
   const handleCreateTaskFromNote = (title: string, description: string) => {
     setPendingNoteTask({ title, description });
     navigate("board");
@@ -149,36 +219,10 @@ function AppShellInner() {
     );
   }
 
-  if (vaultState === "not-setup") {
-    return (
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", backgroundColor: "#0f172a" }}>
-        <VaultSetupModal
-          open
-          onClose={() => {}}
-          onSuccess={() => setVaultState("locked")}
-        />
-      </Box>
-    );
-  }
-
-  if (vaultState === "locked") {
-    return (
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", backgroundColor: "#0f172a" }}>
-        <VaultUnlockModal
-          open
-          onClose={() => {}}
-          onSuccess={() => setVaultState("unlocked")}
-          mode="unlock"
-          hasWebAuthn={hasWebAuthn}
-        />
-      </Box>
-    );
-  }
-
   // Migration check — runs once after first unlock, before showing app
   if (!migrationDone) {
     return (
-      <E2EMigration onComplete={() => setMigrationDone(true)} />
+      <E2EMigration onComplete={() => { localStorage.setItem("e2e_migration_v1", "1"); setMigrationDone(true); }} />
     );
   }
 
@@ -186,6 +230,16 @@ function AppShellInner() {
 
   return (
     <Box sx={{ display: "flex", height: "100vh", overflow: "hidden", backgroundColor: "#f1f5f9" }}>
+      {/* Silent background reversal — decrypts all non-vault data once after vault unlocks */}
+      {!reversalDone && <E2EReversal onComplete={(didRun) => { setReversalDone(true); if (didRun) window.location.reload(); }} />}
+
+      <GlobalSearch
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onNavigate={(view) => { navigate(view); setSearchOpen(false); }}
+      />
+
+      <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       {/* ── Sidebar (hidden on mobile, replaced by bottom nav) ── */}
       <Box sx={{
@@ -247,11 +301,11 @@ function AppShellInner() {
       {/* ── Main content ── */}
       <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-        {(!isOnline || syncing || pendingCount > 0) && (
+        {(!isOnline || syncing || pendingCount > 0 || syncError) && (
           <Box sx={{
             display: "flex", alignItems: "center", gap: 1,
             px: 2, py: 0.6,
-            backgroundColor: syncing ? "#1e3a5f" : "#7c3200",
+            backgroundColor: syncError ? "#7f1d1d" : syncing ? "#1e3a5f" : "#7c3200",
             color: "#fff",
             fontSize: "0.75rem",
             fontWeight: 500,
@@ -262,9 +316,11 @@ function AppShellInner() {
               : <WifiOffIcon sx={{ fontSize: 14 }} />}
             {syncing
               ? "Syncing changes..."
-              : pendingCount > 0
-                ? `Offline — ${pendingCount} change${pendingCount === 1 ? "" : "s"} pending`
-                : "Offline"}
+              : syncError
+                ? `Sync failed — ${pendingCount} change${pendingCount === 1 ? "" : "s"} could not be saved`
+                : pendingCount > 0
+                  ? `Offline — ${pendingCount} change${pendingCount === 1 ? "" : "s"} pending`
+                  : "Offline"}
           </Box>
         )}
 
@@ -299,6 +355,68 @@ function AppShellInner() {
         </Box>
       </Box>
     </Box>
+  );
+}
+
+// ── Keyboard shortcuts reference modal ───────────────────────────────────────
+
+const SHORTCUTS = [
+  { group: "Create", items: [
+    { key: "C", description: "New task (on Board)" },
+    { key: "C", description: "New note (on Notes)" },
+    { key: "C", description: "New entry (on Journal)" },
+  ]},
+  { group: "Navigate", items: [
+    { key: "B", description: "Go to Board" },
+    { key: "N", description: "Go to Notes" },
+    { key: "J", description: "Go to Journal" },
+    { key: "S", description: "Go to Settings" },
+  ]},
+  { group: "Search", items: [
+    { key: "/", description: "Search everything" },
+    { key: "⌘K", description: "Search everything" },
+  ]},
+  { group: "Other", items: [
+    { key: "?", description: "Toggle this reference" },
+  ]},
+];
+
+function KeyboardShortcutsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
+      slotProps={{ paper: { sx: { backgroundColor: "#1e293b", borderRadius: 3, border: "1px solid #334155" } } }}>
+      <Box sx={{ px: 3, py: 3 }}>
+        <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "#f1f5f9", mb: 2.5 }}>
+          Keyboard Shortcuts
+        </Typography>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {SHORTCUTS.map(({ group, items }) => (
+            <Box key={group}>
+              <Typography sx={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 1, mb: 0.75 }}>
+                {group}
+              </Typography>
+              {items.map(({ key, description }, i) => (
+                <Box key={i} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 0.6 }}>
+                  <Typography sx={{ fontSize: "0.875rem", color: "#94a3b8" }}>{description}</Typography>
+                  <Box sx={{
+                    px: 1.25, py: 0.35, ml: 2, flexShrink: 0,
+                    backgroundColor: "#0f172a", border: "1px solid #475569",
+                    borderRadius: 1, fontFamily: "monospace",
+                    fontSize: "0.8rem", fontWeight: 600, color: "#e2e8f0",
+                    letterSpacing: 0.3,
+                  }}>
+                    {key}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          ))}
+        </Box>
+        <Typography sx={{ fontSize: "0.72rem", color: "#475569", mt: 2.5, lineHeight: 1.5 }}>
+          Single-key shortcuts only fire when you&apos;re not typing in a field.
+        </Typography>
+      </Box>
+    </Dialog>
   );
 }
 

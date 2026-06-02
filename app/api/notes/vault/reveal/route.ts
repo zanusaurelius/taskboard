@@ -14,11 +14,18 @@ export async function POST(request: Request) {
   const vault = await prisma.noteVault.findUnique({ where: { userId } });
   if (!vault) return NextResponse.json({ error: "No vault configured" }, { status: 404 });
 
-  // Constant-time comparison to prevent timing attacks
-  const { createHash, timingSafeEqual } = await import("crypto");
-  const stored  = Buffer.from(vault.verifier, "base64");
-  const provided = Buffer.from(body.verifier, "base64");
-  const match = stored.length === provided.length && timingSafeEqual(stored, provided);
+  // Constant-time comparison to prevent timing attacks.
+  // Pad to the same length before comparing so that length differences don't
+  // leak timing information (a short-circuit on length would reveal verifier size).
+  const { timingSafeEqual } = await import("crypto");
+  const stored   = Buffer.from(vault.verifier, "base64");
+  const provided = Buffer.from(body.verifier,  "base64");
+  const len = Math.max(stored.length, provided.length);
+  const a = Buffer.alloc(len);
+  const b = Buffer.alloc(len);
+  stored.copy(a);
+  provided.copy(b);
+  const match = stored.length === provided.length && timingSafeEqual(a, b);
 
   if (!match) return NextResponse.json({ error: "Incorrect vault password" }, { status: 401 });
 

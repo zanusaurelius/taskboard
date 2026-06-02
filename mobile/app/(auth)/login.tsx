@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { login, checkDbStatus, unlockDb } from '@/lib/api';
+import { DeviceEventEmitter } from 'react-native';
 import { getBaseUrl, setBaseUrl, clearAll } from '@/lib/storage';
 
 type Step = 'loading' | 'server' | 'db-unlock' | 'credentials';
@@ -39,6 +40,7 @@ export default function LoginScreen() {
     setLoading(false);
     if (status === 'error') { setError('Could not reach server — check the URL and try again'); return; }
     await setBaseUrl(url);
+    setServerUrl(url); // keep state in sync with the normalized value used in subsequent steps
     setStep(status === 'locked' || status === 'setup' ? 'db-unlock' : 'credentials');
   };
 
@@ -69,7 +71,8 @@ export default function LoginScreen() {
       setError(result.error ?? 'Login failed');
       return;
     }
-    router.replace('/(app)');
+    DeviceEventEmitter.emit('auth:login');
+    router.replace('/(app)/board');
   };
 
   const handleChangeServer = () => {
@@ -105,7 +108,7 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}

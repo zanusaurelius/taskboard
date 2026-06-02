@@ -18,15 +18,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "text must be at most 200 characters" }, { status: 400 });
   }
 
-  const habit = await prisma.habit.update({
-    where: { id },
-    data: {
-      ...(text !== undefined && { text }),
-      ...(encText !== undefined && { encText }),
-      ...(position !== undefined && { position }),
-    },
-  });
-  return NextResponse.json({ ...habit, completedToday: false });
+  const [habit, completion] = await Promise.all([
+    prisma.habit.update({
+      where: { id },
+      data: {
+        ...(text !== undefined && { text }),
+        ...(encText !== undefined && { encText }),
+        ...(position !== undefined && { position }),
+      },
+    }),
+    prisma.habitCompletion.findFirst({
+      where: { habitId: id, date: new Date().toISOString().slice(0, 10) },
+    }),
+  ]);
+  return NextResponse.json({ ...habit, completedToday: !!completion });
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {

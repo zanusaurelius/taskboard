@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
+let _rlCounter = 0;
+
 export async function checkRateLimit(key: string, limit: number, windowMs: number): Promise<boolean> {
   try {
     const cutoff = new Date(Date.now() - windowMs);
@@ -12,8 +14,8 @@ export async function checkRateLimit(key: string, limit: number, windowMs: numbe
 
     await prisma.rateLimit.create({ data: { key } });
 
-    // Probabilistic cleanup — ~1% of requests purge expired rows
-    if (Math.random() < 0.01) {
+    // Deterministic cleanup every 100 calls — purge expired rows to bound table growth
+    if (++_rlCounter % 100 === 0) {
       prisma.rateLimit.deleteMany({ where: { hit: { lt: cutoff } } }).catch(() => {});
     }
 

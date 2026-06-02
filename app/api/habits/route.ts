@@ -21,6 +21,7 @@ export async function GET(request: Request) {
     habits.map((h) => ({
       id: h.id,
       text: h.text,
+      encText: h.encText,
       position: h.position,
       completedToday: Array.isArray(h.completions) && h.completions.length > 0,
     }))

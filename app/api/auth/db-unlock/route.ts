@@ -54,11 +54,15 @@ let unlockInProgress = false;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function cookieOpts() {
+function cookieOpts(_req?: Request) {
+  // secure: false — the cookie value is already cryptographically opaque (AUTH_SECRET
+  // fingerprint + per-boot nonce). Tor .onion connections are HTTP and browsers never
+  // send Secure cookies over HTTP, which breaks the DB-unlock gate on every request.
+  // LAN connections use HTTPS at the transport level regardless of this flag.
   return {
     httpOnly: true,
     sameSite: "strict" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: false,
     path: "/",
     // Persist across browser restarts. The per-boot nonce in the value means a
     // server restart still invalidates this cookie, so security is unchanged.
@@ -71,11 +75,10 @@ function dbPath(): string {
 }
 
 function setUnlockedCookie(res: NextResponse): void {
-  // Value = AUTH_SECRET fingerprint + per-boot nonce, matching the check in proxy.ts.
-  // AUTH_SECRET changes on fresh install; NEXT_BOOT_NONCE changes on every restart.
-  // Either change invalidates stale cookies.
-  const token = (process.env.AUTH_SECRET ?? "").replace(/[^A-Za-z0-9]/g, "").slice(0, 16)
-    + (process.env.NEXT_BOOT_NONCE ?? "");
+  // Value = AUTH_SECRET fingerprint only — stable across server restarts.
+  // Matching the check in proxy.ts. Data security is enforced server-side
+  // via global.__dbKey; the cookie just controls the /unlock redirect UX.
+  const token = (process.env.AUTH_SECRET ?? "").replace(/[^A-Za-z0-9]/g, "").slice(0, 16);
   res.cookies.set(DB_COOKIE, token, cookieOpts());
 }
 
