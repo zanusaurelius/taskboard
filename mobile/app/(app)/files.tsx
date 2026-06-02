@@ -11,6 +11,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import {
   listFiles, listFileFolders, uploadFile, deleteFile,
   createFileFolder, renameFileFolder, deleteFileFolder,
+  moveFile, moveFolderTo,
   fileUrl, fileThumbnailUrl,
   type UploadFileMeta, type FileFolderMeta,
 } from '@/lib/api';
@@ -58,6 +59,13 @@ export default function FilesScreen() {
 
   // Upload picker modal
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
+
+  // Move picker modal
+  const [moveTarget, setMoveTarget] = useState<{ type: 'file' | 'folder'; item: UploadFileMeta | FileFolderMeta } | null>(null);
+  const [moveModalVisible, setMoveModalVisible] = useState(false);
+  const [movePickerStack, setMovePickerStack] = useState<BreadcrumbEntry[]>([{ id: null, name: 'Files' }]);
+  const [movePickerFolders, setMovePickerFolders] = useState<FileFolderMeta[]>([]);
+  const [movePickerLoading, setMovePickerLoading] = useState(false);
 
   useEffect(() => {
     Promise.all([getBaseUrl(), getToken()]).then(([url, tok]) => {
@@ -124,6 +132,41 @@ export default function FilesScreen() {
     setRenamingFolder(folder);
     setFolderName(folder.name);
     setFolderModalVisible(true);
+  };
+
+  const openMovePicker = (type: 'file' | 'folder', item: UploadFileMeta | FileFolderMeta) => {
+    setMoveTarget({ type, item });
+    setMovePickerStack([{ id: null, name: 'Files' }]);
+    setMoveModalVisible(true);
+  };
+
+  const loadMovePickerFolders = useCallback(async (parentId: string | null) => {
+    setMovePickerLoading(true);
+    const qs = parentId ? `?parentId=${parentId}` : '';
+    const folders = await listFileFolders(parentId);
+    setMovePickerFolders(folders);
+    setMovePickerLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (moveModalVisible) {
+      const current = movePickerStack[movePickerStack.length - 1];
+      loadMovePickerFolders(current.id);
+    }
+  }, [moveModalVisible, movePickerStack, loadMovePickerFolders]);
+
+  const handleMove = async (folderId: string | null) => {
+    if (!moveTarget) return;
+    const ok = moveTarget.type === 'folder'
+      ? await moveFolderTo(moveTarget.item.id, folderId)
+      : await moveFile(moveTarget.item.id, folderId);
+    if (ok) {
+      setMoveModalVisible(false);
+      setMoveTarget(null);
+      load();
+    } else {
+      Alert.alert('Move failed', 'Could not move the item. It may be a circular folder reference.');
+    }
   };
 
   const pickFromLibrary = async () => {
@@ -254,6 +297,7 @@ export default function FilesScreen() {
                   onPress={() => enterFolder(f)}
                   onLongPress={() => Alert.alert(f.name, '', [
                     { text: 'Rename', onPress: () => handleRenameFolder(f) },
+                    { text: 'Move to…', onPress: () => openMovePicker('folder', f) },
                     { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFolder(f) },
                     { text: 'Cancel', style: 'cancel' },
                   ])}
@@ -274,6 +318,7 @@ export default function FilesScreen() {
               <TouchableOpacity
                 style={styles.listRow}
                 onLongPress={() => Alert.alert(f.originalName, '', [
+                  { text: 'Move to…', onPress: () => openMovePicker('file', f) },
                   { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFile(f) },
                   { text: 'Cancel', style: 'cancel' },
                 ])}
@@ -319,6 +364,7 @@ export default function FilesScreen() {
                           onPress={() => enterFolder(f)}
                           onLongPress={() => Alert.alert(f.name, '', [
                             { text: 'Rename', onPress: () => handleRenameFolder(f) },
+                            { text: 'Move to…', onPress: () => openMovePicker('folder', f) },
                             { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFolder(f) },
                             { text: 'Cancel', style: 'cancel' },
                           ])}
@@ -345,6 +391,7 @@ export default function FilesScreen() {
                       key={file.id}
                       style={styles.gridCell}
                       onLongPress={() => Alert.alert(file.originalName, '', [
+                        { text: 'Move to…', onPress: () => openMovePicker('file', file) },
                         { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFile(file) },
                         { text: 'Cancel', style: 'cancel' },
                       ])}
@@ -359,6 +406,7 @@ export default function FilesScreen() {
                       key={file.id}
                       style={[styles.gridCell, styles.gridCellDoc]}
                       onLongPress={() => Alert.alert(file.originalName, '', [
+                        { text: 'Move to…', onPress: () => openMovePicker('file', file) },
                         { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFile(file) },
                         { text: 'Cancel', style: 'cancel' },
                       ])}
@@ -395,6 +443,55 @@ export default function FilesScreen() {
               <Text style={styles.uploadCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
+        </Pressable>
+      </Modal>
+
+      {/* Move picker modal */}
+      <Modal visible={moveModalVisible} transparent animationType="slide" onRequestClose={() => setMoveModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setMoveModalVisible(false)}>
+          <Pressable style={styles.moveSheet} onPress={() => {}}>
+            <View style={styles.moveSheetHeader}>
+              <Text style={styles.moveSheetTitle}>Move to…</Text>
+              {movePickerStack.length > 1 && (
+                <TouchableOpacity onPress={() => setMovePickerStack((s) => s.slice(0, -1))}>
+                  <Text style={styles.moveSheetBack}>← Back</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {/* Breadcrumb */}
+            <Text style={styles.moveSheetBreadcrumb} numberOfLines={1}>
+              {movePickerStack.map((e) => e.name).join(' / ')}
+            </Text>
+            {movePickerLoading ? (
+              <ActivityIndicator style={{ marginVertical: 24 }} color="#6366f1" />
+            ) : (
+              <FlatList
+                data={movePickerFolders.filter((f) => moveTarget?.type === 'folder' ? f.id !== moveTarget.item.id : true)}
+                keyExtractor={(f) => f.id}
+                style={{ maxHeight: 280 }}
+                ListEmptyComponent={<Text style={styles.moveSheetEmpty}>No subfolders here</Text>}
+                renderItem={({ item: f }) => (
+                  <TouchableOpacity
+                    style={styles.moveSheetRow}
+                    onPress={() => setMovePickerStack((s) => [...s, { id: f.id, name: f.name }])}
+                  >
+                    <Text style={styles.moveSheetRowIcon}>📁</Text>
+                    <Text style={styles.moveSheetRowName} numberOfLines={1}>{f.name}</Text>
+                    <Text style={styles.moveSheetRowChevron}>›</Text>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+            <TouchableOpacity
+              style={styles.moveHereBtn}
+              onPress={() => handleMove(movePickerStack[movePickerStack.length - 1].id)}
+            >
+              <Text style={styles.moveHereBtnText}>Move here</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.uploadCancel} onPress={() => setMoveModalVisible(false)}>
+              <Text style={styles.uploadCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -476,6 +573,19 @@ const styles = StyleSheet.create({
   uploadOptionText: { color: '#e2e8f0', fontSize: 16 },
   uploadCancel: { marginTop: 16, alignItems: 'center' },
   uploadCancelText: { color: '#94a3b8', fontSize: 15, fontWeight: '600' },
+  // Move sheet
+  moveSheet: { backgroundColor: '#1e293b', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
+  moveSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  moveSheetTitle: { color: '#f1f5f9', fontSize: 16, fontWeight: '700' },
+  moveSheetBack: { color: '#6366f1', fontSize: 14, fontWeight: '600' },
+  moveSheetBreadcrumb: { color: '#64748b', fontSize: 12, marginBottom: 12 },
+  moveSheetRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  moveSheetRowIcon: { fontSize: 20, width: 32 },
+  moveSheetRowName: { flex: 1, color: '#e2e8f0', fontSize: 15 },
+  moveSheetRowChevron: { color: '#475569', fontSize: 20, marginLeft: 8 },
+  moveSheetEmpty: { color: '#475569', fontSize: 14, paddingVertical: 20, textAlign: 'center' },
+  moveHereBtn: { marginTop: 16, backgroundColor: '#6366f1', borderRadius: 10, paddingVertical: 13, alignItems: 'center' },
+  moveHereBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   folderModal: { backgroundColor: '#1e293b', borderRadius: 16, padding: 24, marginHorizontal: 32, marginTop: 'auto', marginBottom: 'auto' },
   folderModalTitle: { color: '#f1f5f9', fontSize: 16, fontWeight: '700', marginBottom: 16, textAlign: 'center' },
   folderInput: { backgroundColor: '#0f172a', color: '#f1f5f9', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, borderWidth: 1, borderColor: '#334155' },

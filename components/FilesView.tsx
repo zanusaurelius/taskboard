@@ -73,6 +73,7 @@ export default function FilesView() {
   // Context menu
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuTarget, setMenuTarget] = useState<{ type: "file" | "folder"; item: UploadFile | FileFolder } | null>(null);
+  const [movePickerOpen, setMovePickerOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,6 +155,23 @@ export default function FilesView() {
       : `/api/files/${menuTarget.item.id}`;
     await fetch(url, { method: "DELETE" });
     setMenuAnchor(null);
+    setMenuTarget(null);
+    load();
+  };
+
+  const startMove = () => {
+    setMenuAnchor(null);
+    setMovePickerOpen(true);
+  };
+
+  const moveItem = async (folderId: string | null) => {
+    if (!menuTarget) return;
+    const url = menuTarget.type === "folder"
+      ? `/api/file-folders/${menuTarget.item.id}`
+      : `/api/files/${menuTarget.item.id}`;
+    const body = menuTarget.type === "folder" ? { parentId: folderId } : { folderId };
+    await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    setMovePickerOpen(false);
     setMenuTarget(null);
     load();
   };
@@ -286,11 +304,23 @@ export default function FilesView() {
             Rename
           </MenuItem>
         )}
+        <MenuItem onClick={startMove}>
+          <DriveFileMoveIcon fontSize="small" sx={{ mr: 1, color: "#64748b" }} />
+          Move to…
+        </MenuItem>
         <MenuItem onClick={deleteItem} sx={{ color: "#dc2626" }}>
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
           {menuTarget?.type === "folder" ? "Delete folder" : "Delete file"}
         </MenuItem>
       </Menu>
+
+      {/* Move picker */}
+      <MovePicker
+        open={movePickerOpen}
+        excludeId={menuTarget?.type === "folder" ? menuTarget.item.id : null}
+        onMove={moveItem}
+        onClose={() => { setMovePickerOpen(false); setMenuTarget(null); }}
+      />
 
       {/* New folder dialog */}
       <Dialog open={newFolderOpen} onClose={() => setNewFolderOpen(false)} maxWidth="xs" fullWidth
@@ -524,5 +554,96 @@ function ListView({ folders, files, onEnterFolder, onOpenFile, onMenu }: {
         </Box>
       ))}
     </Box>
+  );
+}
+
+// ── Move picker dialog ───────────────────────────────────────────────────────
+
+function MovePicker({ open, excludeId, onMove, onClose }: {
+  open: boolean;
+  excludeId: string | null;
+  onMove: (folderId: string | null) => void;
+  onClose: () => void;
+}) {
+  const [pickerStack, setPickerStack] = useState<BreadcrumbEntry[]>([{ id: null, name: "Files" }]);
+  const [pickerFolders, setPickerFolders] = useState<FileFolder[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const current = pickerStack[pickerStack.length - 1];
+
+  useEffect(() => {
+    if (open) setPickerStack([{ id: null, name: "Files" }]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setPickerLoading(true);
+    const qs = current.id ? `?parentId=${current.id}` : "";
+    fetch(`/api/file-folders${qs}`)
+      .then((r) => r.json())
+      .then((d) => setPickerFolders(d))
+      .finally(() => setPickerLoading(false));
+  }, [open, current.id]);
+
+  const displayFolders = excludeId ? pickerFolders.filter((f) => f.id !== excludeId) : pickerFolders;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth
+      slotProps={{ paper: { sx: { backgroundColor: "#1e293b", borderRadius: 3, border: "1px solid #334155" } } }}>
+      <DialogTitle sx={{ color: "#f1f5f9", fontWeight: 700, pb: 0.5 }}>Move to…</DialogTitle>
+      <DialogContent sx={{ px: 0, pb: 0 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, px: 3, py: 1, flexWrap: "wrap" }}>
+          {pickerStack.map((entry, i) => (
+            <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              {i > 0 && <Typography sx={{ color: "#475569", fontSize: "0.8rem" }}>/</Typography>}
+              <Typography
+                onClick={() => i < pickerStack.length - 1 && setPickerStack((s) => s.slice(0, i + 1))}
+                sx={{
+                  fontSize: "0.82rem",
+                  fontWeight: i === pickerStack.length - 1 ? 700 : 500,
+                  color: i === pickerStack.length - 1 ? "#e2e8f0" : "#6366f1",
+                  cursor: i < pickerStack.length - 1 ? "pointer" : "default",
+                  "&:hover": i < pickerStack.length - 1 ? { textDecoration: "underline" } : {},
+                }}
+              >
+                {entry.name}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+        <Box sx={{ borderTop: "1px solid #334155", minHeight: 160, maxHeight: 280, overflowY: "auto" }}>
+          {pickerLoading ? (
+            <Box sx={{ display: "flex", justifyContent: "center", pt: 3 }}>
+              <CircularProgress size={24} sx={{ color: "#6366f1" }} />
+            </Box>
+          ) : displayFolders.length === 0 ? (
+            <Typography sx={{ color: "#475569", fontSize: "0.85rem", px: 3, py: 3 }}>No subfolders here</Typography>
+          ) : displayFolders.map((f) => (
+            <Box
+              key={f.id}
+              onClick={() => setPickerStack((s) => [...s, { id: f.id, name: f.name }])}
+              sx={{
+                display: "flex", alignItems: "center", gap: 1.5,
+                px: 3, py: 1.25, cursor: "pointer",
+                borderBottom: "1px solid rgba(255,255,255,0.04)",
+                "&:hover": { backgroundColor: "rgba(255,255,255,0.05)" },
+              }}
+            >
+              <FolderIcon sx={{ fontSize: 20, color: "#fbbf24", flexShrink: 0 }} />
+              <Typography sx={{ flex: 1, color: "#e2e8f0", fontSize: "0.875rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {f.name}
+              </Typography>
+              <Typography sx={{ color: "#475569", fontSize: "1rem" }}>›</Typography>
+            </Box>
+          ))}
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={onClose} sx={{ color: "#94a3b8", textTransform: "none" }}>Cancel</Button>
+        <Button onClick={() => onMove(current.id)} variant="contained"
+          sx={{ backgroundColor: "#6366f1", "&:hover": { backgroundColor: "#4f46e5" }, textTransform: "none", borderRadius: 2 }}>
+          Move here
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }

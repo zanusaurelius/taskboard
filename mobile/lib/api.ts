@@ -281,3 +281,19 @@ export async function deleteFileFolder(id: string): Promise<boolean> {
   const result = await apiFetch(`/api/file-folders/${id}`, { method: 'DELETE' });
   return result.ok;
 }
+
+export async function moveFile(id: string, folderId: string | null): Promise<boolean> {
+  const result = await apiFetch(`/api/files/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ folderId }),
+  });
+  return result.ok;
+}
+
+export async function moveFolderTo(id: string, parentId: string | null): Promise<boolean> {
+  const result = await apiFetch(`/api/file-folders/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ parentId }),
+  });
+  return result.ok;
+}
