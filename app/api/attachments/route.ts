@@ -1,35 +1,14 @@
 import { NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import { existsSync } from "fs";
+import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { randomBytes } from "crypto";
 import { getUserId } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { detectFileType, ensureFileDirs, UPLOAD_DIR } from "@/lib/file-utils";
 
 const MAX_BYTES = 50 * 1024 * 1024; // 50 MB per file
 const QUOTA_BYTES = parseInt(process.env.UPLOAD_QUOTA_BYTES ?? "") || 500 * 1024 * 1024;
-
-const ALLOWED: Record<string, { mime: string; magic: (b: Buffer) => boolean }> = {
-  pdf:  { mime: "application/pdf",                                                                      magic: (b) => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 },
-  docx: { mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",             magic: (b) => b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04 },
-  xlsx: { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",                   magic: (b) => b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04 },
-  pptx: { mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",           magic: (b) => b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04 },
-  odt:  { mime: "application/vnd.oasis.opendocument.text",                                             magic: (b) => b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04 },
-  ods:  { mime: "application/vnd.oasis.opendocument.spreadsheet",                                      magic: (b) => b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04 },
-  jpg:  { mime: "image/jpeg",                                                                           magic: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
-  png:  { mime: "image/png",                                                                            magic: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 },
-  gif:  { mime: "image/gif",                                                                            magic: (b) => b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38 },
-  webp: { mime: "image/webp",                                                                           magic: (b) => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50 },
-};
-
-function detectType(buf: Buffer, originalName: string): { mime: string; ext: string } | null {
-  const ext = originalName.split(".").pop()?.toLowerCase() ?? "";
-  const allowed = ALLOWED[ext];
-  if (!allowed) return null;
-  if (!allowed.magic(buf)) return null;
-  return { mime: allowed.mime, ext };
-}
 
 export async function GET(request: Request) {
   const userId = await getUserId(request);
@@ -83,10 +62,10 @@ export async function POST(request: Request) {
   const buffer = Buffer.from(bytes);
   if (buffer.length > MAX_BYTES) return NextResponse.json({ error: "File exceeds 50 MB limit" }, { status: 413 });
 
-  const detected = detectType(buffer, file.name);
+  const detected = detectFileType(buffer, file.name);
   if (!detected) {
     return NextResponse.json(
-      { error: "File type not supported. Allowed: PDF, DOCX, XLSX, PPTX, ODT, ODS, and images." },
+      { error: "File type not supported. Allowed: images, PDF, Office docs, text, and zip." },
       { status: 415 },
     );
   }
@@ -111,8 +90,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Storage quota exceeded" }, { status: 413 });
   }
 
-  const uploadDir = join(process.cwd(), "data", "uploads");
-  if (!existsSync(uploadDir)) await mkdir(uploadDir, { recursive: true });
+  await ensureFileDirs();
 
   // Retry on filename collision (astronomically rare but @@unique would throw)
   let filename: string | undefined;
@@ -123,20 +101,26 @@ export async function POST(request: Request) {
   }
   if (!filename) return NextResponse.json({ error: "Upload failed (filename conflict)" }, { status: 500 });
 
-  await writeFile(join(uploadDir, filename), buffer);
+  await writeFile(join(UPLOAD_DIR, filename), buffer);
 
-  const attachment = await prisma.attachment.create({
-    data: {
-      filename,
-      originalName: file.name,
-      mimeType: detected.mime,
-      size: buffer.length,
-      userId,
-      noteId: noteId ?? undefined,
-      taskId: taskId ?? undefined,
-    },
-    select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true },
-  });
+  let attachment;
+  try {
+    attachment = await prisma.attachment.create({
+      data: {
+        filename,
+        originalName: file.name,
+        mimeType: detected.mime,
+        size: buffer.length,
+        userId,
+        noteId: noteId ?? undefined,
+        taskId: taskId ?? undefined,
+      },
+      select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true },
+    });
+  } catch {
+    await unlink(join(UPLOAD_DIR, filename)).catch(() => {});
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+  }
 
   return NextResponse.json(attachment, { status: 201 });
 }

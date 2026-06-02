@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, TextInput,
   StyleSheet, ActivityIndicator, RefreshControl,
-  Alert, Modal, Image, Pressable, Platform,
+  Alert, Modal, Image, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -50,10 +50,11 @@ export default function FilesScreen() {
   const [baseUrl, setBaseUrl] = useState('');
   const [token, setToken] = useState<string | null>(null);
 
-  // Folder creation modal
+  // Folder creation / rename modal (shared)
   const [folderModalVisible, setFolderModalVisible] = useState(false);
   const [folderName, setFolderName] = useState('');
   const [folderCreating, setFolderCreating] = useState(false);
+  const [renamingFolder, setRenamingFolder] = useState<FileFolderMeta | null>(null);
 
   // Upload picker modal
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
@@ -93,10 +94,15 @@ export default function FilesScreen() {
   const handleCreateFolder = async () => {
     if (!folderName.trim()) return;
     setFolderCreating(true);
-    await createFileFolder(folderName.trim(), currentFolder.id);
+    if (renamingFolder) {
+      await renameFileFolder(renamingFolder.id, folderName.trim());
+    } else {
+      await createFileFolder(folderName.trim(), currentFolder.id);
+    }
     setFolderCreating(false);
     setFolderModalVisible(false);
     setFolderName('');
+    setRenamingFolder(null);
     load();
   };
 
@@ -115,17 +121,9 @@ export default function FilesScreen() {
   };
 
   const handleRenameFolder = (folder: FileFolderMeta) => {
-    Alert.prompt(
-      'Rename Folder',
-      '',
-      async (newName) => {
-        if (!newName?.trim()) return;
-        await renameFileFolder(folder.id, newName.trim());
-        load();
-      },
-      'plain-text',
-      folder.name,
-    );
+    setRenamingFolder(folder);
+    setFolderName(folder.name);
+    setFolderModalVisible(true);
   };
 
   const pickFromLibrary = async () => {
@@ -255,7 +253,7 @@ export default function FilesScreen() {
                   style={styles.listRow}
                   onPress={() => enterFolder(f)}
                   onLongPress={() => Alert.alert(f.name, '', [
-                    { text: 'Rename', onPress: () => Platform.OS === 'ios' ? handleRenameFolder(f) : undefined },
+                    { text: 'Rename', onPress: () => handleRenameFolder(f) },
                     { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFolder(f) },
                     { text: 'Cancel', style: 'cancel' },
                   ])}
@@ -320,7 +318,7 @@ export default function FilesScreen() {
                           style={styles.folderCard}
                           onPress={() => enterFolder(f)}
                           onLongPress={() => Alert.alert(f.name, '', [
-                            { text: 'Rename', onPress: () => Platform.OS === 'ios' ? handleRenameFolder(f) : undefined },
+                            { text: 'Rename', onPress: () => handleRenameFolder(f) },
                             { text: 'Delete', style: 'destructive', onPress: () => handleDeleteFolder(f) },
                             { text: 'Cancel', style: 'cancel' },
                           ])}
@@ -400,11 +398,11 @@ export default function FilesScreen() {
         </Pressable>
       </Modal>
 
-      {/* New folder modal */}
-      <Modal visible={folderModalVisible} transparent animationType="fade" onRequestClose={() => setFolderModalVisible(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setFolderModalVisible(false)}>
+      {/* New folder / rename modal */}
+      <Modal visible={folderModalVisible} transparent animationType="fade" onRequestClose={() => { setFolderModalVisible(false); setRenamingFolder(null); }}>
+        <Pressable style={styles.modalOverlay} onPress={() => { setFolderModalVisible(false); setRenamingFolder(null); }}>
           <Pressable style={styles.folderModal} onPress={() => {}}>
-            <Text style={styles.folderModalTitle}>New Folder</Text>
+            <Text style={styles.folderModalTitle}>{renamingFolder ? 'Rename Folder' : 'New Folder'}</Text>
             <TextInput
               style={styles.folderInput}
               placeholder="Folder name"
@@ -415,13 +413,13 @@ export default function FilesScreen() {
               onSubmitEditing={handleCreateFolder}
             />
             <View style={styles.folderModalBtns}>
-              <TouchableOpacity onPress={() => setFolderModalVisible(false)} style={styles.folderModalCancel}>
+              <TouchableOpacity onPress={() => { setFolderModalVisible(false); setRenamingFolder(null); }} style={styles.folderModalCancel}>
                 <Text style={styles.folderModalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleCreateFolder} style={styles.folderModalCreate} disabled={folderCreating}>
                 {folderCreating
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.folderModalCreateText}>Create</Text>}
+                  : <Text style={styles.folderModalCreateText}>{renamingFolder ? 'Rename' : 'Create'}</Text>}
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -430,8 +428,6 @@ export default function FilesScreen() {
     </SafeAreaView>
   );
 }
-
-const CELL_SIZE = '33.33%';
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f172a' },
@@ -461,7 +457,7 @@ const styles = StyleSheet.create({
   chevron: { color: '#475569', fontSize: 20 },
   // Grid view
   gridRow: { flexDirection: 'row', paddingHorizontal: 2 },
-  gridCell: { width: CELL_SIZE as unknown as number, aspectRatio: 1, padding: 1 },
+  gridCell: { flex: 1, aspectRatio: 1, padding: 1 },
   gridThumb: { flex: 1, borderRadius: 2 },
   gridCellDoc: { backgroundColor: '#1e293b', margin: 1, borderRadius: 6, padding: 8, alignItems: 'center', justifyContent: 'center' },
   gridDocIcon: { fontSize: 28 },

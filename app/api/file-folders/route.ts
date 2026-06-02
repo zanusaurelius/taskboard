@@ -7,12 +7,12 @@ export async function GET(request: Request) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
-  const parentId = searchParams.get("parentId"); // null = root-level folders
+  const parentId = searchParams.get("parentId"); // null or "" = root-level folders
 
   const folders = await prisma.fileFolder.findMany({
     where: {
       userId,
-      parentId: parentId ?? null,
+      parentId: parentId || null, // coerce "" to null so root folders always show
     },
     orderBy: { name: "asc" },
     select: {

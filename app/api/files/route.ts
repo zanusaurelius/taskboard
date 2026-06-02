@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
+import { writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { randomBytes } from "crypto";
 import { getUserId } from "@/lib/get-user-id";
@@ -91,26 +91,32 @@ export async function POST(request: Request) {
 
   await writeFile(join(UPLOAD_DIR, filename), buffer);
 
-  const upload = await prisma.upload.create({
-    data: {
-      filename,
-      originalName: file.name,
-      mimeType: detected.mime,
-      size: buffer.length,
-      userId,
-      fileFolderId: folderId,
-    },
-    select: {
-      id: true,
-      originalName: true,
-      mimeType: true,
-      size: true,
-      thumbnail: true,
-      fileFolderId: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  let upload;
+  try {
+    upload = await prisma.upload.create({
+      data: {
+        filename,
+        originalName: file.name,
+        mimeType: detected.mime,
+        size: buffer.length,
+        userId,
+        fileFolderId: folderId,
+      },
+      select: {
+        id: true,
+        originalName: true,
+        mimeType: true,
+        size: true,
+        thumbnail: true,
+        fileFolderId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  } catch {
+    await unlink(join(UPLOAD_DIR, filename)).catch(() => {});
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+  }
 
   return NextResponse.json(upload, { status: 201 });
 }

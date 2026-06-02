@@ -21,6 +21,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (parentId === id) return NextResponse.json({ error: "Cannot move folder into itself" }, { status: 400 });
     const parent = await prisma.fileFolder.findFirst({ where: { id: parentId, userId } });
     if (!parent) return NextResponse.json({ error: "Parent folder not found" }, { status: 404 });
+    // Walk the ancestor chain to ensure `id` is not already an ancestor of `parentId`
+    let cursor: string | null = parentId;
+    const visited = new Set<string>();
+    while (cursor) {
+      if (visited.has(cursor)) break; // Existing cycle in DB — stop walking
+      visited.add(cursor);
+      const anc: { parentId: string | null } | null = await prisma.fileFolder.findFirst({ where: { id: cursor, userId }, select: { parentId: true } });
+      if (!anc) break;
+      if (anc.parentId === id) return NextResponse.json({ error: "Cannot move a folder into its own descendant" }, { status: 400 });
+      cursor = anc.parentId;
+    }
   }
 
   const updated = await prisma.fileFolder.update({

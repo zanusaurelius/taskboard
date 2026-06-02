@@ -32,9 +32,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const buffer = await readFile(filePath);
 
   const inlineMimes = ["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "video/mp4", "video/quicktime", "audio/mpeg", "audio/mp4", "text/plain", "text/markdown"];
+  // RFC 5987: encode filename to prevent header injection via " \r \n in originalName
+  const safeName = encodeURIComponent(upload.originalName ?? "file");
   const disposition = inlineMimes.includes(upload.mimeType)
-    ? `inline; filename="${upload.originalName}"`
-    : `attachment; filename="${upload.originalName}"`;
+    ? `inline; filename*=UTF-8''${safeName}`
+    : `attachment; filename*=UTF-8''${safeName}`;
 
   return new Response(buffer, {
     headers: {
