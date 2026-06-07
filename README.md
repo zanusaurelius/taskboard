@@ -2,10 +2,6 @@
 
 A self-hosted productivity app with a Kanban task board, rich-text notes, daily journal, habit tracker, and file gallery. Runs as a single Docker container — your data stays on your hardware.
 
-<!-- Replace the lines below with your actual screenshot URLs after uploading to GitHub -->
-<!-- ![Board view](https://your-screenshot-url) -->
-<!-- ![Mobile view](https://your-screenshot-url) -->
-
 ## Features
 
 - **Kanban board** — drag-and-drop tasks across To Do / In Progress / Blocked / Done, with priorities, due dates, and per-project color coding
