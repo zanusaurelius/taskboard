@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Taskboard
 
-## Getting Started
+A self-hosted productivity app with a Kanban task board, rich-text notes, daily journal, habit tracker, and file gallery. Runs as a single Docker container — your data stays on your hardware.
 
-First, run the development server:
+<!-- Replace the lines below with your actual screenshot URLs after uploading to GitHub -->
+<!-- ![Board view](https://your-screenshot-url) -->
+<!-- ![Mobile view](https://your-screenshot-url) -->
+
+## Features
+
+- **Kanban board** — drag-and-drop tasks across To Do / In Progress / Blocked / Done, with priorities, due dates, and per-project color coding
+- **Rich-text notes** — full formatting, folder organization, pin/star, and per-note or per-project grouping
+- **Daily journal** — one entry per day with a body, gratitude line, and a note to your future self
+- **Habit tracker** — daily habits with streak history displayed on the board
+- **Daily focus** — top goals for the day, linked to tasks or free-form
+- **File gallery** — upload and browse files in a folder tree with grid/list view
+- **Global search** — search across tasks, notes, and files in one place
+- **React Native mobile app** — iOS and Android, offline-capable with background sync
+- **Theming** — light, dark, and system modes on both web and mobile
+
+## Tech stack
+
+| Layer | Tech |
+|---|---|
+| Web frontend | Next.js 16, React 19, MUI v6 |
+| Mobile | React Native (Expo) |
+| Backend | Next.js API routes |
+| Database | SQLite via Prisma + better-sqlite3 |
+| Auth | NextAuth (JWT sessions) + bcrypt |
+| Deployment | Docker, self-hostable on any Linux server |
+
+## Running locally
 
 ```bash
+# Install dependencies
+npm install
+
+# Set up the database
+npx prisma migrate deploy
+
+# Start the dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) and create an account.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Seed demo data
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To populate an account with example projects, tasks, notes, journal entries, habits, and files:
 
-## Learn More
+```bash
+# Seeds the first user in the database
+npx tsx prisma/seed.ts
 
-To learn more about Next.js, take a look at the following resources:
+# Seed a specific user (will create it if it doesn't exist)
+npx tsx prisma/seed.ts demo
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Wipe and re-seed
+npx tsx prisma/seed.ts demo --force
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Docker deployment
 
-## Deploy on Vercel
+```bash
+docker build -t taskboard .
+docker run -p 3000:3000 \
+  -v taskboard-db:/app/prisma \
+  -v taskboard-uploads:/app/data \
+  -e AUTH_SECRET=your-secret-here \
+  taskboard
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`AUTH_SECRET` must be at least 32 characters. Generate one with `openssl rand -hex 32`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Data is stored in two volumes — the SQLite database and uploaded files — and both survive container updates.
+
+## Mobile app
+
+The React Native app lives in `mobile/`. It connects to your self-hosted server over the network — enter your server URL at the login screen.
+
+```bash
+cd mobile
+npm install
+
+# Run on Android emulator
+npx expo run:android
+
+# Run on iOS simulator
+npx expo run:ios
+```
+
+## Environment variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `AUTH_SECRET` | Secret for signing session tokens | required |
+| `DATABASE_URL` | Path to SQLite database | `file:./dev.db` |
+| `UPLOAD_QUOTA_BYTES` | Per-user file storage limit | 10 GB |
+
+## License
+
+MIT
