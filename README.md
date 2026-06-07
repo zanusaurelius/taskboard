@@ -6,8 +6,9 @@ A self-hosted productivity app with a Kanban task board, rich-text notes, daily 
 <img width="1900" height="922" alt="Screenshot 2026-06-06 at 8 45 47 PM" src="https://github.com/user-attachments/assets/0e988046-4984-4bfd-9b89-503cdb854977" />
 <img width="1909" height="930" alt="Screenshot 2026-06-06 at 8 46 07 PM" src="https://github.com/user-attachments/assets/fe5d0147-7de8-4d81-9d2a-facf73f42dd0" />
 <img width="300" height="670" alt="Screenshot_1780792913" src="https://github.com/user-attachments/assets/2de174b0-7d0f-47bf-becd-b32879bd4f1d" />
-<img width="300" height="670" alt="Screenshot_1780793010" src="https://github.com/user-attachments/assets/f0313e83-93e8-4c38-a0bd-e3fdd34a869a" />
+<img width="300" height="669" alt="Screenshot_1780792962" src="https://github.com/user-attachments/assets/1bb3c607-3676-450b-ae57-61a5513a6232" />
 <img width="300" height="670" alt="Screenshot_1780793002" src="https://github.com/user-attachments/assets/f6321ab6-8653-43ec-8e4d-691a27167dbe" />
+<img width="300" height="670" alt="Screenshot_1780793010" src="https://github.com/user-attachments/assets/f0313e83-93e8-4c38-a0bd-e3fdd34a869a" />
 
 ## Features
 
