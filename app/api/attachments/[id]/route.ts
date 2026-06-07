@@ -11,10 +11,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const attachment = await prisma.attachment.findFirst({ where: { id, userId } });
+  const attachment = await prisma.attachment.findFirst({
+    where: { id, userId },
+    select: { id: true, filename: true, originalName: true, mimeType: true, size: true, uploadId: true },
+  });
   if (!attachment) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const filePath = join(UPLOAD_DIR, attachment.filename);
+  // Linked attachments serve from the Upload's file on disk
+  let filePath: string;
+  if (attachment.uploadId) {
+    const upload = await prisma.upload.findFirst({
+      where: { id: attachment.uploadId, userId, deletedAt: null },
+    });
+    if (!upload) return NextResponse.json({ error: "File not found" }, { status: 404 });
+    filePath = join(UPLOAD_DIR, upload.filename);
+  } else {
+    filePath = join(UPLOAD_DIR, attachment.filename);
+  }
+
   if (!existsSync(filePath)) return NextResponse.json({ error: "File not found" }, { status: 404 });
 
   const buffer = await readFile(filePath);
@@ -40,13 +54,19 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const attachment = await prisma.attachment.findFirst({ where: { id, userId } });
+  const attachment = await prisma.attachment.findFirst({
+    where: { id, userId },
+    select: { id: true, filename: true, uploadId: true },
+  });
   if (!attachment) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await prisma.attachment.delete({ where: { id } });
 
-  const filePath = join(UPLOAD_DIR, attachment.filename);
-  await unlink(filePath).catch(() => {});
+  // Only delete the physical file for non-linked attachments
+  if (!attachment.uploadId) {
+    const filePath = join(UPLOAD_DIR, attachment.filename);
+    await unlink(filePath).catch(() => {});
+  }
 
   return new Response(null, { status: 204 });
 }

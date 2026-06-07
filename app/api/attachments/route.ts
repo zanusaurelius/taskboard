@@ -31,9 +31,13 @@ export async function GET(request: Request) {
   }
 
   const attachments = await prisma.attachment.findMany({
-    where: noteId ? { noteId, userId } : { taskId, userId },
+    where: {
+      ...(noteId ? { noteId, userId } : { taskId, userId }),
+      // Exclude linked attachments whose source upload has been soft-deleted
+      OR: [{ uploadId: null }, { upload: { deletedAt: null } }],
+    },
     orderBy: { createdAt: "asc" },
-    select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true },
+    select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadId: true },
   });
 
   return NextResponse.json(attachments);
@@ -47,14 +51,59 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Rate limit exceeded." }, { status: 429 });
   }
 
+  const contentType = request.headers.get("content-type") ?? "";
+
+  // ── JSON path: link an existing Upload as an Attachment ──────────────────────
+  if (contentType.includes("application/json")) {
+    const body = await request.json() as { uploadId?: string; noteId?: string; taskId?: string };
+    const { uploadId, noteId, taskId } = body;
+
+    if (!uploadId) return NextResponse.json({ error: "uploadId is required" }, { status: 400 });
+    if (!noteId && !taskId) return NextResponse.json({ error: "noteId or taskId is required" }, { status: 400 });
+
+    const upload = await prisma.upload.findFirst({ where: { id: uploadId, userId, deletedAt: null } });
+    if (!upload) return NextResponse.json({ error: "Upload not found" }, { status: 404 });
+
+    if (noteId) {
+      const note = await prisma.note.findFirst({ where: { id: noteId, userId, deletedAt: null } });
+      if (!note) return NextResponse.json({ error: "Note not found" }, { status: 404 });
+    }
+    if (taskId) {
+      const task = await prisma.task.findFirst({ where: { id: taskId, project: { userId } } });
+      if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    // No quota check — bytes already counted in the Upload record.
+    // Use a link: prefix so this filename can never collide with a real file in UPLOAD_DIR.
+    const linkFilename = `link:${randomBytes(16).toString("hex")}`;
+
+    const attachment = await prisma.attachment.create({
+      data: {
+        filename: linkFilename,
+        originalName: upload.originalName,
+        mimeType: upload.mimeType,
+        size: upload.size,
+        userId,
+        noteId: noteId ?? undefined,
+        taskId: taskId ?? undefined,
+        uploadId,
+      },
+      select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadId: true },
+    });
+
+    return NextResponse.json(attachment, { status: 201 });
+  }
+
+  // ── FormData path: upload a new file ─────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formData = await request.formData() as any;
   const file = formData.get("file") as File | null;
   const noteId = formData.get("noteId") as string | null;
   const taskId = formData.get("taskId") as string | null;
 
+  if (!noteId && !taskId) return NextResponse.json({ error: "noteId or taskId is required" }, { status: 400 });
+
   if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
-  if (!noteId && !taskId) return NextResponse.json({ error: "noteId or taskId required" }, { status: 400 });
 
   if (file.size > MAX_BYTES) return NextResponse.json({ error: "File exceeds 50 MB limit" }, { status: 413 });
 
@@ -80,9 +129,9 @@ export async function POST(request: Request) {
     if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Quota check (uploads + attachments combined)
+  // Quota check (uploads + attachments combined; exclude soft-deleted uploads)
   const [uploadUsage, attachUsage] = await Promise.all([
-    prisma.upload.aggregate({ where: { userId }, _sum: { size: true } }),
+    prisma.upload.aggregate({ where: { userId, deletedAt: null }, _sum: { size: true } }),
     prisma.attachment.aggregate({ where: { userId }, _sum: { size: true } }),
   ]);
   const totalBytes = (uploadUsage._sum.size ?? 0) + (attachUsage._sum.size ?? 0);
@@ -115,7 +164,7 @@ export async function POST(request: Request) {
         noteId: noteId ?? undefined,
         taskId: taskId ?? undefined,
       },
-      select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true },
+      select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadId: true },
     });
   } catch {
     await unlink(join(UPLOAD_DIR, filename)).catch(() => {});

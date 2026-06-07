@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { apiFetch, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
-import type { Task, Note, DailyReflection } from '@/lib/types';
+import type { Task, Note, DailyReflection, UploadFileMeta } from '@/lib/types';
+import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 const stripHtml = (html: string) => html.replace(/<[^>]+>/g, '');
 
@@ -26,14 +27,18 @@ interface SearchResults {
   tasks: Task[];
   notes: Note[];
   journal: DecryptedReflection[];
+  files: UploadFileMeta[];
 }
 
 export default function SearchScreen() {
   const router = useRouter();
   const { decrypt } = useVault();
+  const colors = useThemeColors();
+  const styles = makeStyles(colors);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResults | null>(null);
   const [searching, setSearching] = useState(false);
+  const [offline, setOffline] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchSeqRef = useRef(0);
   const inputRef = useRef<TextInput>(null);
@@ -49,11 +54,17 @@ export default function SearchScreen() {
     setSearching(true);
     const lq = q.toLowerCase();
 
-    const [tasksRes, notesRes, journalRes] = await Promise.all([
+    const [tasksRes, notesRes, journalRes, filesRes] = await Promise.all([
       apiFetch<Task[]>('/api/tasks'),
       apiFetch<Note[]>('/api/notes'),
       apiFetch<DailyReflection[]>('/api/daily-reflections'),
+      apiFetch<UploadFileMeta[]>('/api/files?all=true'),
     ]);
+
+    const allFailed = [tasksRes, notesRes, journalRes, filesRes].every(
+      (r) => !r.ok && (r as { status?: number }).status === 0
+    );
+    if (seq === searchSeqRef.current) setOffline(allFailed);
 
     // Tasks — decrypt encTitle if needed, filter client-side
     let tasks: Task[] = [];
@@ -98,9 +109,15 @@ export default function SearchScreen() {
       );
     }
 
+    // Filter files by name
+    let files: UploadFileMeta[] = [];
+    if (isOk(filesRes)) {
+      files = filesRes.data.filter((f) => f.originalName.toLowerCase().includes(lq));
+    }
+
     // Discard if a newer search has started since this one was launched
     if (seq !== searchSeqRef.current) return;
-    setResults({ tasks, notes, journal });
+    setResults({ tasks, notes, journal, files });
     setSearching(false);
   }, [decrypt]);
 
@@ -119,17 +136,22 @@ export default function SearchScreen() {
   }, [query, runSearch]);
 
   const hasResults = results && (
-    results.tasks.length > 0 || results.notes.length > 0 || results.journal.length > 0
+    results.tasks.length > 0 || results.notes.length > 0 || results.journal.length > 0 || results.files.length > 0
   );
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
+      {offline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>⚠ Can't reach server — results may be incomplete.</Text>
+        </View>
+      )}
       {/* Header */}
       <View style={styles.header}>
         <TextInput
           ref={inputRef}
           style={styles.searchInput}
-          placeholder="Search tasks, notes, journal…"
+          placeholder="Search tasks, notes, journal, files…"
           placeholderTextColor="#475569"
           value={query}
           onChangeText={setQuery}
@@ -240,45 +262,71 @@ export default function SearchScreen() {
             })}
           </View>
         )}
+
+        {/* Files section */}
+        {!searching && results && results.files.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionHeader}>FILES ({results.files.length})</Text>
+            {results.files.map((file) => (
+              <TouchableOpacity
+                key={file.id}
+                style={styles.card}
+                activeOpacity={0.7}
+                onPress={() => router.push(
+                  file.fileFolderId
+                    ? { pathname: '/(app)/files', params: { openFolderId: file.fileFolderId } }
+                    : '/(app)/files'
+                )}
+              >
+                <Text style={styles.cardTitle} numberOfLines={1}>{file.originalName}</Text>
+                <Text style={styles.cardDate}>{file.mimeType.split('/')[1]?.toUpperCase() ?? 'FILE'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10,
-    borderBottomWidth: 1, borderColor: '#1e293b',
-  },
-  searchInput: {
-    flex: 1,
-    backgroundColor: '#1e293b', borderRadius: 10, borderWidth: 1, borderColor: '#334155',
-    color: '#f1f5f9', fontSize: 16, paddingHorizontal: 14, paddingVertical: 11,
-  },
-  cancelBtn: { paddingHorizontal: 4, paddingVertical: 6 },
-  cancelText: { color: '#6366f1', fontSize: 16, fontWeight: '600' },
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 80 },
-  hintWrap: { alignItems: 'center', paddingTop: 60 },
-  hintText: { color: '#475569', fontSize: 15, textAlign: 'center', paddingHorizontal: 32 },
-  section: { paddingHorizontal: 16, paddingTop: 20, gap: 8 },
-  sectionHeader: {
-    color: '#475569', fontSize: 10, fontWeight: '800',
-    textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 4,
-  },
-  card: {
-    backgroundColor: '#1e293b', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#334155', gap: 5,
-  },
-  cardTitle: { color: '#f1f5f9', fontSize: 15, fontWeight: '700' },
-  cardSnippet: { color: '#94a3b8', fontSize: 13, lineHeight: 18 },
-  cardDate: { color: '#475569', fontSize: 11 },
-  cardMeta: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  cardMetaText: { color: '#64748b', fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
-  priorityText: { fontWeight: '700' },
-  priorityHigh: { color: '#ef4444' },
-  priorityMed: { color: '#f59e0b' },
-  priorityLow: { color: '#22c55e' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    offlineBanner: { backgroundColor: '#7c2d12', paddingHorizontal: 16, paddingVertical: 8 },
+    offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
+    header: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10,
+      borderBottomWidth: 1, borderColor: c.border,
+    },
+    searchInput: {
+      flex: 1,
+      backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      color: c.tx, fontSize: 16, paddingHorizontal: 14, paddingVertical: 11,
+    },
+    cancelBtn: { paddingHorizontal: 4, paddingVertical: 6 },
+    cancelText: { color: '#6366f1', fontSize: 16, fontWeight: '600' },
+    scroll: { flex: 1 },
+    scrollContent: { paddingBottom: 80 },
+    hintWrap: { alignItems: 'center', paddingTop: 60 },
+    hintText: { color: c.tx2, fontSize: 15, textAlign: 'center', paddingHorizontal: 32 },
+    section: { paddingHorizontal: 16, paddingTop: 20, gap: 8 },
+    sectionHeader: {
+      color: c.tx2, fontSize: 10, fontWeight: '800',
+      textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 4,
+    },
+    card: {
+      backgroundColor: c.surface, borderRadius: 12, padding: 14,
+      borderWidth: 1, borderColor: c.cardBorder, gap: 5,
+    },
+    cardTitle: { color: c.tx, fontSize: 15, fontWeight: '700' },
+    cardSnippet: { color: c.tx2, fontSize: 13, lineHeight: 18 },
+    cardDate: { color: c.tx4, fontSize: 11 },
+    cardMeta: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+    cardMetaText: { color: c.tx3, fontSize: 11, fontWeight: '600', textTransform: 'capitalize' },
+    priorityText: { fontWeight: '700' },
+    priorityHigh: { color: '#ef4444' },
+    priorityMed: { color: '#f59e0b' },
+    priorityLow: { color: '#22c55e' },
+  });
+}

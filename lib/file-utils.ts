@@ -21,6 +21,17 @@ interface AllowedType {
 // ftyp container check (MP4, MOV, HEIC, M4A all use ISO Base Media File Format)
 const isFtyp = (b: Buffer) => b.length > 11 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70;
 
+// Text content heuristic: fewer than 5% non-printable bytes
+function isLikelyText(b: Buffer): boolean {
+  const sample = b.slice(0, Math.min(512, b.length));
+  if (sample.length === 0) return true;
+  let nonPrintable = 0;
+  for (const byte of sample) {
+    if (byte !== 9 && byte !== 10 && byte !== 13 && (byte < 32 || byte === 127)) nonPrintable++;
+  }
+  return nonPrintable / sample.length < 0.05;
+}
+
 const ALLOWED: Record<string, AllowedType> = {
   // Images
   jpg:  { mime: "image/jpeg",    kind: "image",    magic: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
@@ -44,8 +55,8 @@ const ALLOWED: Record<string, AllowedType> = {
   pptx: { mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation", kind: "document", magic: (b) => b[0] === 0x50 && b[1] === 0x4b },
   odt:  { mime: "application/vnd.oasis.opendocument.text",        kind: "document", magic: (b) => b[0] === 0x50 && b[1] === 0x4b },
   ods:  { mime: "application/vnd.oasis.opendocument.spreadsheet", kind: "document", magic: (b) => b[0] === 0x50 && b[1] === 0x4b },
-  txt:  { mime: "text/plain",    kind: "text" },
-  md:   { mime: "text/markdown", kind: "text" },
+  txt:  { mime: "text/plain",    kind: "text", magic: isLikelyText },
+  md:   { mime: "text/markdown", kind: "text", magic: isLikelyText },
   // Archives
   zip:  { mime: "application/zip", kind: "archive", magic: (b) => b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04 },
 };
@@ -58,10 +69,22 @@ export interface DetectedFile {
 
 export function detectFileType(buffer: Buffer, originalName: string): DetectedFile | null {
   const ext = originalName.split(".").pop()?.toLowerCase() ?? "";
-  const type = ALLOWED[ext];
-  if (!type) return null;
-  if (type.magic && !type.magic(buffer)) return null;
-  return { mime: type.mime, ext, kind: type.kind };
+  const extType = ALLOWED[ext];
+
+  // Fast path: extension is known and magic bytes confirm it.
+  if (extType && (!extType.magic || extType.magic(buffer))) {
+    return { mime: extType.mime, ext, kind: extType.kind };
+  }
+
+  // Fallback: extension unknown or magic mismatch (e.g. iOS transcodes HEIC → JPEG
+  // but keeps the original .heic filename).  Scan all non-text binary magic checks.
+  for (const [k, type] of Object.entries(ALLOWED)) {
+    if (type.kind !== "text" && type.magic && type.magic(buffer)) {
+      return { mime: type.mime, ext: k, kind: type.kind };
+    }
+  }
+
+  return null;
 }
 
 export function isImage(mimeType: string) {

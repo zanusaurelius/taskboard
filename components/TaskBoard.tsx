@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -66,7 +66,7 @@ function DeletionToast({ entry, onUndo }: { entry: DeletionEntry; onUndo: () => 
 
   return (
     <Box sx={{
-      backgroundColor: "#1e293b",
+      backgroundColor: "var(--surface)",
       borderRadius: 2,
       p: 2,
       minWidth: 320,
@@ -76,10 +76,10 @@ function DeletionToast({ entry, onUndo }: { entry: DeletionEntry; onUndo: () => 
     }}>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.25 }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ color: "#f8fafc", fontSize: "0.875rem", fontWeight: 600, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <Typography sx={{ color: "var(--tx)", fontSize: "0.875rem", fontWeight: 600, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             Deleting &ldquo;{entry.label}&rdquo;
           </Typography>
-          <Typography sx={{ color: "#94a3b8", fontSize: "0.78rem" }}>
+          <Typography sx={{ color: "var(--tx-2)", fontSize: "0.78rem" }}>
             Permanently removed in {remaining}s
           </Typography>
         </Box>
@@ -167,6 +167,12 @@ function hashId(id: string): number {
 const autoColor = (id: string) => PROJECT_COLORS[hashId(id) % PROJECT_COLORS.length];
 const projectColor = (p: { id: string; color?: string | null }) => p.color ?? autoColor(p.id);
 
+function decodeEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ");
+}
+
 function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
     <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 2 }}>
@@ -177,7 +183,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
           sx={{
             width: 28, height: 28, borderRadius: "50%",
             backgroundColor: c, cursor: "pointer", flexShrink: 0,
-            border: value === c ? "3px solid #1e293b" : "3px solid transparent",
+            border: value === c ? "3px solid var(--tx)" : "3px solid transparent",
             boxShadow: value === c ? `0 0 0 2px ${c}` : "none",
             transition: "all 0.1s ease",
             "&:hover": { transform: "scale(1.15)" },
@@ -209,6 +215,11 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [defaultStage, setDefaultStage] = useState<Task["stage"]>("todo");
   const [stageColors, setStageColors] = useState<Record<string, string>>(loadStageColors);
+  useEffect(() => {
+    fetch("/api/settings/stage-colors").then(r => r.ok ? r.json() : null).then(data => {
+      if (data && Object.keys(data).length > 0) setStageColors(prev => ({ ...prev, ...data }));
+    }).catch(() => {});
+  }, []);
   const [stageColorAnchor, setStageColorAnchor] = useState<HTMLElement | null>(null);
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
   const [modalDefaultTitle, setModalDefaultTitle] = useState("");
@@ -235,6 +246,8 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   } | null>(null);
   const [deletionQueue, setDeletionQueue] = useState<DeletionEntry[]>([]);
   const [focusSnackbar, setFocusSnackbar] = useState(false);
+  const [archiveError, setArchiveError] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [pendingFocusGoalId, setPendingFocusGoalId] = useState<string | null>(null);
   const [vaultUnlockOpen, setVaultUnlockOpen] = useState(false);
   const [vaultSetupOpen, setVaultSetupOpen] = useState(false);
@@ -287,7 +300,9 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     setDeletionQueue((prev) => prev.filter((e) => e.id !== id));
   }, []);
 
-  useEffect(() => { fetchAll(showArchived, showArchivedProjects); }, [fetchAll, showArchived, showArchivedProjects]);
+  useEffect(() => {
+    fetchAll(showArchived, showArchivedProjects).then((ok) => { if (!ok) setFetchError(true); });
+  }, [fetchAll, showArchived, showArchivedProjects]);
 
   useEffect(() => {
     fetch("/api/notes/vault")
@@ -312,7 +327,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   const handlePrivacyModeToggle = () => {
     if (privacyMode) {
       // Trying to reveal — open vault unlock if there are locked tasks, else plain toggle
-      if (vaultExists && tasks.some((t) => t.locked)) {
+      if (vaultExists && tasks.some((t) => t.sensitive)) {
         setVaultUnlockOpen(true);
       } else {
         setPrivacyMode(false);
@@ -336,8 +351,10 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
       if (res.ok) {
         const { count } = await res.json();
         if (count > 0) fetchAll(showArchived, showArchivedProjects);
+      } else {
+        setArchiveError(true);
       }
-    });
+    }).catch(() => setArchiveError(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (activeId === null) setLocalTasks(tasks); }, [tasks, activeId]);
 
@@ -369,13 +386,21 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   const pendingProjectIds = new Set(deletionQueue.filter((e) => e.type === "project").map((e) => e.itemId));
   const pendingTaskIds = new Set(deletionQueue.filter((e) => e.type === "task").map((e) => e.itemId));
 
-  const visibleTasks = localTasks.filter((t) => {
+  const visibleTasks = useMemo(() => localTasks.filter((t) => {
     if (pendingTaskIds.has(t.id)) return false;
     if (projectFilter.length > 0 && !projectFilter.includes(t.projectId)) return false;
     if (stageFilter.length > 0 && !stageFilter.includes(t.stage)) return false;
-    if (searchText && !t.title.toLowerCase().includes(searchText.trim().toLowerCase())) return false;
+    if (searchText) {
+      const q = searchText.trim().toLowerCase();
+      const inTitle = t.title.toLowerCase().includes(q);
+      const plainDesc = t.description
+        ? decodeEntities(t.description.replace(/<[^>]*>/g, " ")).toLowerCase()
+        : "";
+      const inDesc = plainDesc.includes(q);
+      if (!inTitle && !inDesc) return false;
+    }
     return true;
-  });
+  }), [localTasks, pendingTaskIds, projectFilter, stageFilter, searchText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tasksForStage = (stage: Task["stage"]) =>
     visibleTasks.filter((t) => t.stage === stage).sort((a, b) => {
@@ -421,7 +446,19 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     const idx = colTasks.findIndex((t) => t.id === moved.id);
     const prevPos = colTasks[idx - 1] ? (tasks.find((t) => t.id === colTasks[idx - 1].id)?.position ?? 0) : 0;
     const nextPos = colTasks[idx + 1] ? (tasks.find((t) => t.id === colTasks[idx + 1].id)?.position ?? prevPos + 2000) : prevPos + 2000;
-    updateTask(moved.id, { stage: moved.stage, position: (prevPos + nextPos) / 2 });
+    const newPos = (prevPos + nextPos) / 2;
+
+    // If positions have converged too close, renormalize the whole column to multiples of 1000
+    if (nextPos - prevPos < 0.5) {
+      const stageTasks = colTasks.map((t, i) => ({ id: t.id, position: (i + 1) * 1000 }));
+      const movedEntry = stageTasks[idx];
+      stageTasks.forEach((t) => {
+        if (t.id === moved.id) updateTask(t.id, { stage: moved.stage, position: movedEntry.position });
+        else updateTask(t.id, { stage: moved.stage, position: t.position });
+      });
+      return;
+    }
+    updateTask(moved.id, { stage: moved.stage, position: newPos });
   };
 
   const openCreate = (stage: Task["stage"]) => {
@@ -435,7 +472,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     setModalOpen(true);
   };
   const openEdit = (task: Task) => {
-    if (task.locked) return; // blank card — not interactive; unlock via Privacy Mode chip
+    if (task.locked && !vaultIsUnlocked) return; // locked task — must unlock vault first
     setEditingTask(task);
     setModalOpen(true);
   };
@@ -523,8 +560,14 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
       setModalOpen(false);
       scheduleDeletion(editingTask.title, "task", editingTask.id, () => deleteTask(editingTask.id));
     } else {
-      await deleteTask(editingTask.id);
-      setModalOpen(false);
+      try {
+        await deleteTask(editingTask.id);
+        setModalOpen(false);
+      } catch {
+        // deleteTask already removed from UI optimistically in store; error means server failed
+        // re-fetch to restore state
+        fetchAll();
+      }
     }
   };
 
@@ -624,23 +667,24 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     const updated = { ...stageColors, [stageId]: color };
     setStageColors(updated);
     localStorage.setItem("stageColors", JSON.stringify(updated));
+    fetch("/api/settings/stage-colors", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updated) }).catch(() => {});
   };
 
   const toggleStageFilter = (id: Task["stage"]) =>
     setStageFilter((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
   return (
-    <Box sx={{ minHeight: "100%", backgroundColor: "#f1f5f9", display: "flex", flexDirection: "column" }}>
+    <Box sx={{ minHeight: "100%", backgroundColor: "var(--bg)", display: "flex", flexDirection: "column" }}>
 
       {/* ── Top action bar ── */}
       <Box sx={{
-        backgroundColor: "#fff",
-        borderBottom: "1px solid #e2e8f0",
+        backgroundColor: "var(--surface)",
+        borderBottom: "1px solid var(--border)",
         px: { xs: 1.5, sm: 3 }, py: 1.5,
         display: "flex", alignItems: "center", justifyContent: "space-between",
         flexShrink: 0,
       }}>
-        <Typography sx={{ fontWeight: 700, fontSize: "1rem", color: "#1e293b", letterSpacing: "-0.2px" }}>
+        <Typography sx={{ fontWeight: 700, fontSize: "1rem", color: "var(--tx)", letterSpacing: "-0.2px" }}>
           Task Board
         </Typography>
         <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.5 }, alignItems: "center" }}>
@@ -649,11 +693,11 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
               size="small"
               onClick={() => window.dispatchEvent(new CustomEvent("globalsearch:open"))}
               sx={{
-                color: "#64748b",
-                border: "1px solid #e2e8f0",
+                color: "var(--tx-3)",
+                border: "1px solid var(--border)",
                 borderRadius: 1.5,
                 p: 0.75,
-                "&:hover": { backgroundColor: "#f1f5f9", color: "#1e293b", borderColor: "#cbd5e1" },
+                "&:hover": { backgroundColor: "var(--surface-hover)", color: "var(--tx)", borderColor: "var(--border-2)" },
               }}
             >
               <SearchIcon sx={{ fontSize: 18 }} />
@@ -665,15 +709,15 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
             onClick={() => setNewProjectOpen(true)}
             variant="outlined"
             sx={{
-              color: "#475569",
-              borderColor: "#cbd5e1",
+              color: "var(--tx-2)",
+              borderColor: "var(--border-2)",
               fontSize: "0.85rem",
               fontWeight: 600,
               textTransform: "none",
               borderRadius: 2,
               px: { xs: 1, sm: 2 },
               minWidth: 0,
-              "&:hover": { borderColor: "#94a3b8", backgroundColor: "#f8fafc" },
+              "&:hover": { borderColor: "var(--tx-4)", backgroundColor: "var(--surface-2)" },
             }}>
             <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Project</Box>
           </Button>
@@ -708,7 +752,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
 
         {/* ── Filter bar ── */}
         <Box sx={{
-          backgroundColor: "#fff",
+          backgroundColor: "var(--surface)",
           borderRadius: 2.5,
           boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
           p: { xs: 1.5, sm: 3 },
@@ -724,7 +768,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ fontSize: 20, color: "#94a3b8" }} />
+                    <SearchIcon sx={{ fontSize: 20, color: "var(--tx-4)" }} />
                   </InputAdornment>
                 ),
               },
@@ -734,21 +778,21 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
               "& .MuiOutlinedInput-root": {
                 borderRadius: 2,
                 fontSize: "0.95rem",
-                backgroundColor: "#f8fafc",
-                "& fieldset": { borderColor: "#e2e8f0" },
-                "&:hover fieldset": { borderColor: "#cbd5e1" },
+                backgroundColor: "var(--surface-2)",
+                "& fieldset": { borderColor: "var(--border)" },
+                "&:hover fieldset": { borderColor: "var(--border-2)" },
                 "&.Mui-focused fieldset": { borderColor: "#6366f1" },
               },
               "& input": { py: "10px" },
             }}
           />
 
-          <Divider sx={{ borderColor: "#f1f5f9", mb: 2.5 }} />
+          <Divider sx={{ borderColor: "var(--border)", mb: 2.5 }} />
 
           {/* Projects row */}
           <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 2 }}>
             <Typography sx={{
-              color: "#94a3b8", fontWeight: 800, fontSize: "0.7rem",
+              color: "var(--tx-4)", fontWeight: 800, fontSize: "0.7rem",
               textTransform: "uppercase", letterSpacing: 1.2,
               flexShrink: 0, minWidth: 70, lineHeight: "30px",
             }}>
@@ -780,7 +824,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                     />
                     <IconButton className="proj-edit" size="small"
                       onClick={() => { setRenamingProject(p); setRenameValue(p.name); setRenameColor(p.color ?? autoColor(p.id)); }}
-                      sx={{ opacity: 0, p: 0.4, flexShrink: 0, transition: "opacity 0.15s", color: "#94a3b8", "&:hover": { color: "#475569" } }}>
+                      sx={{ opacity: 0, p: 0.4, flexShrink: 0, transition: "opacity 0.15s", color: "var(--tx-4)", "&:hover": { color: "var(--tx-2)" } }}>
                       <EditIcon sx={{ fontSize: 14 }} />
                     </IconButton>
                   </Box>
@@ -796,12 +840,12 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                   />
                   <IconButton size="small" title="Restore project"
                     onClick={() => updateProject(p.id, { archived: false })}
-                    sx={{ p: 0.4, flexShrink: 0, color: "#94a3b8", "&:hover": { color: "#22c55e", backgroundColor: "#f0fdf4" } }}>
+                    sx={{ p: 0.4, flexShrink: 0, color: "var(--tx-4)", "&:hover": { color: "#22c55e", backgroundColor: "#f0fdf4" } }}>
                     <RestoreIcon sx={{ fontSize: 15 }} />
                   </IconButton>
                   <IconButton size="small" title="Delete permanently"
                     onClick={() => handlePermanentDeleteProject(p.id, p.name)}
-                    sx={{ p: 0.4, flexShrink: 0, color: "#94a3b8", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
+                    sx={{ p: 0.4, flexShrink: 0, color: "var(--tx-4)", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
                     <DeleteForeverIcon sx={{ fontSize: 15 }} />
                   </IconButton>
                 </Box>
@@ -818,7 +862,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
           {/* Stages row */}
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, flexWrap: "wrap" }}>
             <Typography sx={{
-              color: "#94a3b8", fontWeight: 800, fontSize: "0.7rem",
+              color: "var(--tx-2)", fontWeight: 800, fontSize: "0.7rem",
               textTransform: "uppercase", letterSpacing: 1.2, minWidth: 70,
             }}>
               Stages
@@ -959,7 +1003,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
             transformOrigin={{ vertical: "top", horizontal: "left" }}
             slotProps={{ paper: { sx: { p: 1.5, borderRadius: 2, boxShadow: "0 8px 24px rgba(0,0,0,0.14)" } } }}
           >
-            <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, mb: 1 }}>
+            <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 0.8, mb: 1 }}>
               Stage color
             </Typography>
             <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", maxWidth: 180 }}>
@@ -970,7 +1014,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                     sx={{
                       width: 26, height: 26, borderRadius: "50%", backgroundColor: c,
                       cursor: "pointer", flexShrink: 0,
-                      border: active ? "3px solid #1e293b" : "3px solid transparent",
+                      border: active ? "3px solid var(--tx)" : "3px solid transparent",
                       boxShadow: active ? `0 0 0 2px ${c}` : "none",
                       transition: "all 0.1s",
                       "&:hover": { transform: "scale(1.15)" },
@@ -1035,17 +1079,17 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
 
       {/* ── Confirm dialog ── */}
       <Dialog open={!!confirmDialog} onClose={() => setConfirmDialog(null)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.05rem", color: "#1e293b", pb: 1 }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.05rem", color: "var(--tx)", pb: 1 }}>
           {confirmDialog?.title}
         </DialogTitle>
         <DialogContent>
-          <Typography sx={{ color: "#64748b", fontSize: "0.9rem", lineHeight: 1.6 }}>
+          <Typography sx={{ color: "var(--tx-3)", fontSize: "0.9rem", lineHeight: 1.6 }}>
             {confirmDialog?.message}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setConfirmDialog(null)}
-            sx={{ color: "#64748b", textTransform: "none", fontWeight: 500 }}>
+            sx={{ color: "var(--tx-3)", textTransform: "none", fontWeight: 500 }}>
             Cancel
           </Button>
           <Button onClick={confirmDialog?.onConfirm} variant="contained"
@@ -1058,7 +1102,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
 
       {/* ── Rename project dialog ── */}
       <Dialog open={!!renamingProject} onClose={() => setRenamingProject(null)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.05rem", color: "#1e293b" }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.05rem", color: "var(--tx)" }}>
           Edit Project
         </DialogTitle>
         <DialogContent sx={{ pt: "12px !important" }}>
@@ -1071,7 +1115,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => setRenamingProject(null)}
-            sx={{ color: "#64748b", textTransform: "none", fontWeight: 500 }}>
+            sx={{ color: "var(--tx-3)", textTransform: "none", fontWeight: 500 }}>
             Cancel
           </Button>
           <Button onClick={handleRename} variant="contained" disabled={!renameValue.trim()}
@@ -1098,6 +1142,32 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
         </Alert>
       </Snackbar>
 
+      {/* ── Auto-archive error snackbar ── */}
+      <Snackbar
+        open={archiveError}
+        autoHideDuration={5000}
+        onClose={() => setArchiveError(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert onClose={() => setArchiveError(false)} severity="warning" variant="filled"
+          sx={{ borderRadius: 2, fontWeight: 600, fontSize: "0.875rem" }}>
+          Auto-archive failed — completed tasks were not archived.
+        </Alert>
+      </Snackbar>
+
+      {/* ── Fetch error snackbar ── */}
+      <Snackbar
+        open={fetchError}
+        autoHideDuration={6000}
+        onClose={() => setFetchError(false)}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert onClose={() => setFetchError(false)} severity="error" variant="filled"
+          sx={{ borderRadius: 2, fontWeight: 600, fontSize: "0.875rem" }}>
+          Failed to load tasks — check your connection and refresh.
+        </Alert>
+      </Snackbar>
+
       {/* ── Undo deletion toasts ── */}
       {deletionQueue.length > 0 && (
         <Box sx={{
@@ -1113,12 +1183,12 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
 
       {/* ── New project dialog ── */}
       <Dialog open={newProjectOpen} onClose={() => { setNewProjectOpen(false); setPendingTaskStage(null); }} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.05rem", color: "#1e293b" }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.05rem", color: "var(--tx)" }}>
           New Project
         </DialogTitle>
         <DialogContent sx={{ pt: "12px !important" }}>
           {pendingTaskStage !== null && (
-            <Typography sx={{ fontSize: "0.85rem", color: "#64748b", mb: 2 }}>
+            <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-3)", mb: 2 }}>
               You need a project before creating tasks. Create one to continue.
             </Typography>
           )}
@@ -1131,7 +1201,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button onClick={() => { setNewProjectOpen(false); setPendingTaskStage(null); }}
-            sx={{ color: "#64748b", textTransform: "none", fontWeight: 500 }}>
+            sx={{ color: "var(--tx-3)", textTransform: "none", fontWeight: 500 }}>
             Cancel
           </Button>
           <Button onClick={handleCreateProject} variant="contained" disabled={!newProjectName.trim()}
@@ -1150,11 +1220,11 @@ function filterChipSx(active: boolean, color: string) {
     fontWeight: 600,
     fontSize: "0.8rem",
     height: 30,
-    backgroundColor: active ? color : "#f1f5f9",
-    color: active ? "#fff" : "#475569",
-    border: `1.5px solid ${active ? color : "#e2e8f0"}`,
+    backgroundColor: active ? color : "var(--surface-2)",
+    color: active ? "#fff" : "var(--tx-2)",
+    border: `1.5px solid ${active ? color : "var(--border)"}`,
     "& .MuiChip-label": { px: 1.5 },
-    "&:hover": { backgroundColor: active ? color : "#e2e8f0", borderColor: active ? color : "#cbd5e1" },
+    "&:hover": { backgroundColor: active ? color : "var(--border)", borderColor: active ? color : "var(--border-2)" },
     transition: "all 0.15s ease",
   };
 }
@@ -1165,11 +1235,11 @@ function allChipSx(active: boolean) {
     fontWeight: 700,
     fontSize: "0.8rem",
     height: 30,
-    backgroundColor: active ? "#1e293b" : "#f1f5f9",
-    color: active ? "#fff" : "#94a3b8",
-    border: `1.5px solid ${active ? "#1e293b" : "#e2e8f0"}`,
+    backgroundColor: active ? "var(--tx)" : "var(--surface-2)",
+    color: active ? "var(--bg)" : "var(--tx-4)",
+    border: `1.5px solid ${active ? "var(--tx)" : "var(--border)"}`,
     "& .MuiChip-label": { px: 1.5 },
-    "&:hover": { backgroundColor: active ? "#1e293b" : "#e2e8f0" },
+    "&:hover": { backgroundColor: active ? "var(--tx)" : "var(--border)" },
     transition: "all 0.15s ease",
   };
 }

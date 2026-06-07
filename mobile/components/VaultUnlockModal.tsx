@@ -4,6 +4,7 @@ import {
   ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useVault } from '@/lib/vault-context';
+import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 interface Props {
   visible: boolean;
@@ -13,6 +14,8 @@ interface Props {
 
 export default function VaultUnlockModal({ visible, onSuccess, onCancel }: Props) {
   const { unlockWithPassword } = useVault();
+  const colors = useThemeColors();
+  const styles = makeStyles(colors);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,70 +78,72 @@ export default function VaultUnlockModal({ visible, onSuccess, onCancel }: Props
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  card: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 24,
-    width: '100%',
-    maxWidth: 360,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#f1f5f9',
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: '#94a3b8',
-    marginBottom: 20,
-    lineHeight: 18,
-  },
-  input: {
-    backgroundColor: '#0f172a',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 15,
-    color: '#f1f5f9',
-    marginBottom: 8,
-  },
-  inputError: {
-    borderColor: '#ef4444',
-  },
-  errorText: {
-    color: '#f87171',
-    fontSize: 13,
-    marginBottom: 12,
-  },
-  button: {
-    backgroundColor: '#6366f1',
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  cancelButton: {
-    alignItems: 'center',
-    padding: 12,
-    marginTop: 4,
-  },
-  cancelText: {
-    color: '#64748b',
-    fontSize: 14,
-  },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+    },
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      padding: 24,
+      width: '100%',
+      maxWidth: 360,
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: c.tx,
+      marginBottom: 6,
+    },
+    subtitle: {
+      fontSize: 13,
+      color: c.tx2,
+      marginBottom: 20,
+      lineHeight: 18,
+    },
+    input: {
+      backgroundColor: c.bg,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      padding: 14,
+      fontSize: 15,
+      color: c.tx,
+      marginBottom: 8,
+    },
+    inputError: {
+      borderColor: '#ef4444',
+    },
+    errorText: {
+      color: '#f87171',
+      fontSize: 13,
+      marginBottom: 12,
+    },
+    button: {
+      backgroundColor: '#6366f1',
+      borderRadius: 10,
+      padding: 14,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    buttonText: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: 15,
+    },
+    cancelButton: {
+      alignItems: 'center',
+      padding: 12,
+      marginTop: 4,
+    },
+    cancelText: {
+      color: c.tx3,
+      fontSize: 14,
+    },
+  });
+}

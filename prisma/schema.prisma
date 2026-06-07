@@ -27,6 +27,7 @@ model User {
   dailyReflections  DailyReflection[]
   habits            Habit[]
   noteVault         NoteVault?
+  stageColorsJson   String?
 }
 
 model Project {
@@ -142,8 +143,10 @@ model Upload {
   fileFolder   FileFolder? @relation(fields: [fileFolderId], references: [id])
   userId       String
   user         User        @relation(fields: [userId], references: [id])
+  attachments  Attachment[]
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+  deletedAt    DateTime?
 
   @@index([userId])
   @@index([fileFolderId])
@@ -161,11 +164,14 @@ model Attachment {
   task         Task?    @relation(fields: [taskId], references: [id])
   userId       String
   user         User     @relation(fields: [userId], references: [id])
+  uploadId     String?
+  upload       Upload?  @relation(fields: [uploadId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
 
   @@index([noteId])
   @@index([taskId])
   @@index([userId])
+  @@index([uploadId])
 }
 
 model RateLimit {

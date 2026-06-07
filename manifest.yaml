@@ -1,16 +1,11 @@
 id: taskboard
 title: "Taskboard Notes"
-version: "0.3.0"
+version: "0.4.0"
 release-notes: >
-  Major update: unified mobile and desktop feature set. Mobile app gains folder
-  system for notes, note autosave, star/pin/sort/trash, vault lock/unlock UI,
-  hidden notes (10-tap reveal), privacy mode on board, due dates and project
-  labels on task cards, project rename/color, Archive All Done, stage color
-  customization, inline Daily Focus goal editing, move-to-next-day, goal
-  reordering, task undo deletion, global search, keyboard shortcuts (C/B/N/J/S/?),
-  and full task editor parity (description, due date, duplicate, archive, delete,
-  privacy toggle). Desktop gains global search overlay (Cmd+K or /) and keyboard
-  shortcuts.
+  Adds Files: a full file browser and gallery with folder organization, grid/list
+  toggle, image thumbnails, and move-to-folder support. Web and mobile both get
+  the new Files view. Also includes file attachments on tasks, soft-delete for
+  uploads, and numerous bug fixes.
 license: MIT
 wrapper-repo: "https://github.com/start9labs/taskboard"
 upstream-repo: "https://github.com/start9labs/taskboard"

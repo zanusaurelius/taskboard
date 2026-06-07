@@ -155,6 +155,7 @@ export interface AttachmentMeta {
   mimeType: string;
   size: number;
   createdAt: string;
+  uploadId: string | null;
 }
 
 export async function listAttachments(noteId?: string, taskId?: string): Promise<AttachmentMeta[]> {
@@ -222,29 +223,51 @@ export async function deleteFile(id: string): Promise<boolean> {
   return result.ok;
 }
 
+export type UploadResult = UploadFileMeta | { error: string };
+export function uploadOk(r: UploadResult): r is UploadFileMeta { return !('error' in r); }
+
 export async function uploadFile(
   uri: string,
   name: string,
   mimeType: string,
   folderId?: string | null,
-): Promise<UploadFileMeta | null> {
+): Promise<UploadResult> {
   const [baseUrl, token] = await Promise.all([getBaseUrl(), getToken()]);
-  if (!baseUrl) return null;
+  if (!baseUrl) return { error: 'Server URL not configured' };
 
+  // Use XMLHttpRequest instead of fetch. Expo SDK 56 introduced a new "winter"
+  // fetch that doesn't understand RN's {uri,type,name} blob format for FormData
+  // parts and throws "Unsupported FormDataPart implementation". XHR bypasses it
+  // and goes directly to RN's native NetworkingModule which handles uri parts.
   const formData = new FormData();
   formData.append('file', { uri, type: mimeType, name } as unknown as Blob);
   if (folderId) formData.append('folderId', folderId);
 
-  const headers = new Headers();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-
-  try {
-    const res = await fetch(`${baseUrl}/api/files`, { method: 'POST', body: formData, headers });
-    if (!res.ok) return null;
-    return await res.json() as UploadFileMeta;
-  } catch {
-    return null;
-  }
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${baseUrl}/api/files`);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { resolve({ error: 'Invalid server response' }); }
+      } else {
+        try {
+          const body = JSON.parse(xhr.responseText);
+          const msg = body?.error ?? `Server error ${xhr.status}`;
+          console.error(`[uploadFile] ${xhr.status}:`, msg);
+          resolve({ error: msg });
+        } catch {
+          resolve({ error: `Server error ${xhr.status}` });
+        }
+      }
+    };
+    xhr.onerror = () => {
+      console.error('[uploadFile] XHR network error');
+      resolve({ error: 'Network error — could not reach server' });
+    };
+    xhr.send(formData);
+  });
 }
 
 export function fileUrl(id: string, baseUrl: string, token: string | null): string {
@@ -304,4 +327,16 @@ export async function moveFolderTo(id: string, parentId: string | null): Promise
     body: JSON.stringify({ parentId }),
   });
   return result.ok;
+}
+
+export async function linkFileAsAttachment(
+  uploadId: string,
+  noteId?: string,
+  taskId?: string,
+): Promise<AttachmentMeta | null> {
+  const result = await apiFetch<AttachmentMeta>('/api/attachments', {
+    method: 'POST',
+    body: JSON.stringify({ uploadId, noteId, taskId }),
+  });
+  return isOk(result) ? result.data : null;
 }

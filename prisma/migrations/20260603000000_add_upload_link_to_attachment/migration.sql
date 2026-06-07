@@ -1,0 +1,2 @@
+-- uploadId and its index are already included in 20260602000002_add_attachment_table.
+-- SQLite does not support ALTER TABLE ... ADD CONSTRAINT, so no-op here.

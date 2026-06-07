@@ -14,7 +14,7 @@ CREATE TABLE "FileFolder" (
 ALTER TABLE "Upload" ADD COLUMN "originalName" TEXT NOT NULL DEFAULT '';
 ALTER TABLE "Upload" ADD COLUMN "thumbnail" TEXT;
 ALTER TABLE "Upload" ADD COLUMN "fileFolderId" TEXT;
-ALTER TABLE "Upload" ADD COLUMN "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "Upload" ADD COLUMN "updatedAt" DATETIME NOT NULL DEFAULT '2026-01-01 00:00:00';
 
 -- CreateIndex
 CREATE INDEX "FileFolder_userId_idx" ON "FileFolder"("userId");

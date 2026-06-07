@@ -29,9 +29,9 @@ const fieldSx = {
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <Box sx={{ mb: 4 }}>
-      <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "#0f172a", mb: 0.25 }}>{title}</Typography>
-      {subtitle && <Typography sx={{ fontSize: "0.8rem", color: "#94a3b8", mb: 2 }}>{subtitle}</Typography>}
-      <Box sx={{ backgroundColor: "#fff", borderRadius: 2.5, p: 3, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+      <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--tx)", mb: 0.25 }}>{title}</Typography>
+      {subtitle && <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", mb: 2 }}>{subtitle}</Typography>}
+      <Box sx={{ backgroundColor: "var(--surface)", borderRadius: 2.5, p: 3, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
         {children}
       </Box>
     </Box>
@@ -184,11 +184,11 @@ export default function SettingsView() {
   };
 
   return (
-    <Box sx={{ flex: 1, overflowY: "auto", backgroundColor: "#f8fafc" }}>
+    <Box sx={{ flex: 1, overflowY: "auto", backgroundColor: "var(--bg)" }}>
       <Box sx={{ maxWidth: 520, mx: "auto", px: 4, py: 5 }}>
-        <Typography variant="h6" sx={{ fontWeight: 800, color: "#0f172a", mb: 0.5, letterSpacing: -0.3 }}>Settings</Typography>
-        <Typography sx={{ fontSize: "0.85rem", color: "#94a3b8", mb: 4 }}>
-          Signed in as <strong style={{ color: "#475569" }}>{username}</strong>
+        <Typography variant="h6" sx={{ fontWeight: 800, color: "var(--tx)", mb: 0.5, letterSpacing: -0.3 }}>Settings</Typography>
+        <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-4)", mb: 4 }}>
+          Signed in as <strong style={{ color: "var(--tx-2)" }}>{username}</strong>
         </Typography>
 
         {/* ── Username ── */}
@@ -212,7 +212,7 @@ export default function SettingsView() {
           </form>
         </Section>
 
-        <Divider sx={{ mb: 4, borderColor: "#e2e8f0" }} />
+        <Divider sx={{ mb: 4, borderColor: "var(--border)" }} />
 
         {/* ── Password ── */}
         <Section title="Password" subtitle="You'll need your current password to set a new one.">
@@ -232,20 +232,20 @@ export default function SettingsView() {
           </form>
         </Section>
 
-        <Divider sx={{ mb: 4, borderColor: "#e2e8f0" }} />
+        <Divider sx={{ mb: 4, borderColor: "var(--border)" }} />
 
         {/* ── Session ── */}
         <Section title="Session">
           <Button
             variant="outlined"
             onClick={() => signOut({ callbackUrl: "/login" })}
-            sx={{ borderColor: "#e2e8f0", color: "#64748b", textTransform: "none", fontWeight: 600, borderRadius: 1.5, "&:hover": { borderColor: "#ef4444", color: "#ef4444", backgroundColor: "#fff1f2" } }}
+            sx={{ borderColor: "var(--border)", color: "var(--tx-3)", textTransform: "none", fontWeight: 600, borderRadius: 1.5, "&:hover": { borderColor: "#ef4444", color: "#ef4444", backgroundColor: "#fff1f2" } }}
           >
             Sign out
           </Button>
         </Section>
 
-        <Divider sx={{ mb: 4, borderColor: "#e2e8f0" }} />
+        <Divider sx={{ mb: 4, borderColor: "var(--border)" }} />
 
         {/* ── Task Board ── */}
         <Section title="Task Board" subtitle="Automate how completed tasks are managed.">
@@ -256,7 +256,7 @@ export default function SettingsView() {
                 label="Auto-archive done tasks"
                 value={autoArchiveDays}
                 onChange={(e) => handleAutoArchiveChange(Number(e.target.value))}
-                sx={{ borderRadius: 1.5, "& .MuiOutlinedInput-notchedOutline": { borderColor: "#e2e8f0" }, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#6366f1" } }}
+                sx={{ borderRadius: 1.5, "& .MuiOutlinedInput-notchedOutline": { borderColor: "var(--border)" }, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#6366f1" } }}
               >
                 <MenuItem value={0}>Off</MenuItem>
                 <MenuItem value={1}>After 1 day</MenuItem>
@@ -265,13 +265,13 @@ export default function SettingsView() {
                 <MenuItem value={30}>After 30 days</MenuItem>
               </Select>
             </FormControl>
-            <Typography sx={{ fontSize: "0.78rem", color: "#94a3b8" }}>
+            <Typography sx={{ fontSize: "0.78rem", color: "var(--tx-4)" }}>
               Tasks in the Done column are automatically archived after the selected period. Runs each time the board loads.
             </Typography>
           </Box>
         </Section>
 
-        <Divider sx={{ mb: 4, borderColor: "#e2e8f0" }} />
+        <Divider sx={{ mb: 4, borderColor: "var(--border)" }} />
 
         {/* ── Daily Focus ── */}
         <Section title="Daily Focus" subtitle="Customize your daily focus panel.">
@@ -283,14 +283,14 @@ export default function SettingsView() {
                 label="Today's Top N"
                 value={goalLimit}
                 onChange={(e) => setGoalLimit(Number(e.target.value))}
-                sx={{ borderRadius: 1.5, "& .MuiOutlinedInput-notchedOutline": { borderColor: "#e2e8f0" }, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#6366f1" } }}
+                sx={{ borderRadius: 1.5, "& .MuiOutlinedInput-notchedOutline": { borderColor: "var(--border)" }, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#6366f1" } }}
               >
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                   <MenuItem key={n} value={n}>{n} goal{n === 1 ? "" : "s"} per day</MenuItem>
                 ))}
               </Select>
             </FormControl>
-            <Typography sx={{ fontSize: "0.78rem", color: "#94a3b8" }}>
+            <Typography sx={{ fontSize: "0.78rem", color: "var(--tx-4)" }}>
               Sets the number of slots shown in your &ldquo;Today&apos;s Top N&rdquo; section.
             </Typography>
             <Button onClick={handleSaveGoalLimit} sx={saveBtnSx}>
@@ -299,7 +299,7 @@ export default function SettingsView() {
           </Box>
         </Section>
 
-        <Divider sx={{ mb: 4, borderColor: "#e2e8f0" }} />
+        <Divider sx={{ mb: 4, borderColor: "var(--border)" }} />
 
         {/* ── Reminders ── */}
         <Section title="Reminders" subtitle="Desktop notifications that fire on a repeating schedule while the app is open.">
@@ -317,8 +317,8 @@ export default function SettingsView() {
               </Alert>
             )}
             {notifPerm === "default" && (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2, p: 1.5, border: "1px dashed #cbd5e1", borderRadius: 1.5 }}>
-                <Typography sx={{ fontSize: "0.82rem", color: "#64748b", flex: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2, p: 1.5, border: "1px dashed var(--border-2)", borderRadius: 1.5 }}>
+                <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-3)", flex: 1 }}>
                   Grant notification permission to enable reminders.
                 </Typography>
                 <Button onClick={requestPermission} size="small" sx={{ ...saveBtnSx, alignSelf: "auto", px: 2, py: 0.6, fontSize: "0.78rem" }}>
@@ -329,14 +329,14 @@ export default function SettingsView() {
 
             {/* Reminder list */}
             {reminders.length === 0 && notifPerm !== "unsupported" && (
-              <Typography sx={{ fontSize: "0.82rem", color: "#94a3b8" }}>No reminders yet. Add one below.</Typography>
+              <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)" }}>No reminders yet. Add one below.</Typography>
             )}
             {reminders.map((r) => (
-              <Box key={r.id} sx={{ display: "flex", alignItems: "center", gap: 1.5, p: 1.5, border: "1px solid #e2e8f0", borderRadius: 1.5, backgroundColor: "#f8fafc" }}>
+              <Box key={r.id} sx={{ display: "flex", alignItems: "center", gap: 1.5, p: 1.5, border: "1px solid var(--border)", borderRadius: 1.5, backgroundColor: "var(--surface-2)" }}>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: "0.85rem", color: "#0f172a", lineHeight: 1.3 }}>{r.title}</Typography>
-                  {r.body && <Typography sx={{ fontSize: "0.78rem", color: "#64748b", mt: 0.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.body}</Typography>}
-                  <Typography sx={{ fontSize: "0.73rem", color: "#94a3b8", mt: 0.25 }}>Every {r.intervalMinutes} min</Typography>
+                  <Typography sx={{ fontWeight: 600, fontSize: "0.85rem", color: "var(--tx)", lineHeight: 1.3 }}>{r.title}</Typography>
+                  {r.body && <Typography sx={{ fontSize: "0.78rem", color: "var(--tx-3)", mt: 0.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.body}</Typography>}
+                  <Typography sx={{ fontSize: "0.73rem", color: "var(--tx-4)", mt: 0.25 }}>Every {r.intervalMinutes} min</Typography>
                 </Box>
                 <IconButton size="small" title="Test" onClick={() => fireReminder(r)} disabled={notifPerm !== "granted"}
                   sx={{ color: "#6366f1", "&:hover": { backgroundColor: "rgba(99,102,241,0.08)" } }}>
@@ -348,7 +348,7 @@ export default function SettingsView() {
                     sx={{ "& .MuiSwitch-switchBase.Mui-checked": { color: "#6366f1" }, "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#6366f1" } }} />}
                   label="" sx={{ m: 0 }}
                 />
-                <IconButton size="small" onClick={() => handleDelete(r.id)} sx={{ color: "#94a3b8", "&:hover": { color: "#ef4444", backgroundColor: "rgba(239,68,68,0.08)" } }}>
+                <IconButton size="small" onClick={() => handleDelete(r.id)} sx={{ color: "var(--tx-4)", "&:hover": { color: "#ef4444", backgroundColor: "rgba(239,68,68,0.08)" } }}>
                   <DeleteOutlineIcon sx={{ fontSize: 18 }} />
                 </IconButton>
               </Box>
@@ -356,7 +356,7 @@ export default function SettingsView() {
 
             {/* Add form */}
             {addingReminder ? (
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, p: 1.5, border: "1px solid #e2e8f0", borderRadius: 1.5 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, p: 1.5, border: "1px solid var(--border)", borderRadius: 1.5 }}>
                 <TextField label="Title" value={newTitle} onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="e.g. Eye Strain Break" size="small" fullWidth required sx={fieldSx} />
                 <TextField label="Message (optional)" value={newBody} onChange={(e) => setNewBody(e.target.value)}
@@ -364,7 +364,7 @@ export default function SettingsView() {
                 <FormControl size="small" sx={{ maxWidth: 200 }}>
                   <InputLabel>Interval</InputLabel>
                   <Select label="Interval" value={newInterval} onChange={(e) => setNewInterval(Number(e.target.value))}
-                    sx={{ borderRadius: 1.5, "& .MuiOutlinedInput-notchedOutline": { borderColor: "#e2e8f0" }, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#6366f1" } }}>
+                    sx={{ borderRadius: 1.5, "& .MuiOutlinedInput-notchedOutline": { borderColor: "var(--border)" }, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#6366f1" } }}>
                     {[5, 10, 15, 20, 25, 30, 45, 60, 90, 120].map((m) => (
                       <MenuItem key={m} value={m}>Every {m} min</MenuItem>
                     ))}
@@ -373,7 +373,7 @@ export default function SettingsView() {
                 <Box sx={{ display: "flex", gap: 1 }}>
                   <Button onClick={handleAddReminder} disabled={!newTitle.trim()} sx={{ ...saveBtnSx, alignSelf: "auto" }}>Save</Button>
                   <Button onClick={() => { setAddingReminder(false); setNewTitle(""); setNewBody(""); setNewInterval(20); }}
-                    sx={{ color: "#64748b", textTransform: "none", fontWeight: 600, borderRadius: 1.5 }}>Cancel</Button>
+                    sx={{ color: "var(--tx-3)", textTransform: "none", fontWeight: 600, borderRadius: 1.5 }}>Cancel</Button>
                 </Box>
               </Box>
             ) : (
@@ -391,7 +391,7 @@ export default function SettingsView() {
           </Box>
         </Section>
 
-        <Divider sx={{ mb: 4, borderColor: "#e2e8f0" }} />
+        <Divider sx={{ mb: 4, borderColor: "var(--border)" }} />
 
         {/* ── Delete account ── */}
         <Section title="Delete account" subtitle="Permanently deletes your account and all data. This cannot be undone.">
@@ -425,7 +425,7 @@ export default function SettingsView() {
                   <Button
                     variant="outlined"
                     onClick={() => { setDeleteConfirmed(false); setDeleteConfirmPw(""); setDeleteMsg(null); }}
-                    sx={{ flex: 1, borderColor: "#e2e8f0", color: "#64748b", textTransform: "none", fontWeight: 600, borderRadius: 1.5 }}
+                    sx={{ flex: 1, borderColor: "var(--border)", color: "#64748b", textTransform: "none", fontWeight: 600, borderRadius: 1.5 }}
                   >
                     Cancel
                   </Button>

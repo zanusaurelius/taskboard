@@ -8,7 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { apiFetch, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
+import VaultUnlockModal from '@/components/VaultUnlockModal';
 import type { Note, Folder } from '@/lib/types';
+import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 type ActiveFilter = 'all' | 'starred' | 'trash' | string; // string = folder id
 type SortKey = 'modified' | 'created' | 'title';
@@ -28,6 +30,8 @@ function sortNotes(notes: Note[], key: SortKey): Note[] {
 export default function NotesScreen() {
   const { decrypt, encrypt, masterKey, isUnlocked, verifier, unlockWithPassword } = useVault();
   const router = useRouter();
+  const colors = useThemeColors();
+  const styles = makeStyles(colors);
 
   // Hidden vault notes
   const [revealToken, setRevealToken] = useState<string | null>(null);
@@ -40,6 +44,7 @@ export default function NotesScreen() {
     }
   }, [isUnlocked, revealToken]);
   const [vaultRevealModalVisible, setVaultRevealModalVisible] = useState(false);
+  const [vaultUnlockModalVisible, setVaultUnlockModalVisible] = useState(false);
   const [vaultRevealPassword, setVaultRevealPassword] = useState('');
   const [vaultRevealLoading, setVaultRevealLoading] = useState(false);
   const eggTapTimes = useRef<number[]>([]);
@@ -49,10 +54,10 @@ export default function NotesScreen() {
     eggTapTimes.current = [...eggTapTimes.current.filter(t => now - t < 2000), now];
     if (eggTapTimes.current.length >= 10) {
       eggTapTimes.current = [];
-      if (!verifier) { Alert.alert('No vault', 'Set up a vault first to access hidden notes.'); return; }
+      if (!verifier) { Alert.alert('No vault set up', 'Open the web app to configure your vault, then come back.'); return; }
       if (revealToken) {
         // Already revealed — hide again
-        apiFetch('/api/notes/vault/reveal', { method: 'DELETE' });
+        apiFetch('/api/notes/vault/reveal', { method: 'DELETE' }).catch(() => {});
         setRevealToken(null);
         return;
       }
@@ -66,6 +71,7 @@ export default function NotesScreen() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [offline, setOffline] = useState(false);
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('modified');
@@ -96,7 +102,8 @@ export default function NotesScreen() {
 
   const hideSelected = useCallback(() => {
     if (!isUnlocked) {
-      Alert.alert('Vault locked', 'Unlock your vault first to hide notes.');
+      if (!verifier) { Alert.alert('No vault set up', 'Open the web app to configure your vault, then come back.'); return; }
+      setVaultUnlockModalVisible(true);
       return;
     }
     const ids = [...selectedIds];
@@ -143,6 +150,7 @@ export default function NotesScreen() {
   const deleteSelected = useCallback(() => {
     const ids = [...selectedIds];
     const inTrash = activeFilter === 'trash';
+    const notesSnapshot = notes;
     Alert.alert(
       inTrash ? 'Delete forever?' : `Move ${ids.length} note${ids.length > 1 ? 's' : ''} to trash?`,
       inTrash ? 'This cannot be undone.' : undefined,
@@ -163,7 +171,14 @@ export default function NotesScreen() {
               if (inTrash) {
                 setTrashNotes((prev) => prev.filter((n) => !succeeded.has(n.id)));
               } else {
+                const nowIso = new Date().toISOString();
+                const movedToTrash = notesSnapshot
+                  .filter((n) => succeeded.has(n.id))
+                  .map((n) => ({ ...n, deletedAt: nowIso }));
                 setNotes((prev) => prev.filter((n) => !succeeded.has(n.id)));
+                if (movedToTrash.length > 0) {
+                  setTrashNotes((prev) => [...movedToTrash, ...prev]);
+                }
               }
             }
             clearSelection();
@@ -171,7 +186,7 @@ export default function NotesScreen() {
         },
       ]
     );
-  }, [selectedIds, activeFilter]);
+  }, [selectedIds, activeFilter, notes]);
 
   // Move-to-folder modal
   const [moveTarget, setMoveTarget] = useState<Note | null>(null);
@@ -201,6 +216,10 @@ export default function NotesScreen() {
       apiFetch<Note[]>('/api/notes/trash', { headers: revealHeaders }),
     ] as const);
     fetchFolders();
+    const allFailed = [notesResult, trashResult].every(
+      (r) => !r.ok && (r as { status?: number }).status === 0
+    );
+    setOffline(allFailed);
     if (isOk(notesResult)) {
       const decrypted = await Promise.all(notesResult.data.map(decryptNote));
       setNotes(decrypted);
@@ -304,6 +323,29 @@ export default function NotesScreen() {
     await fetchAndDecrypt();
   };
 
+  const emptyTrash = useCallback(() => {
+    if (trashNotes.length === 0) return;
+    Alert.alert(
+      'Empty Trash?',
+      `Permanently delete all ${trashNotes.length} note${trashNotes.length > 1 ? 's' : ''} in trash? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Empty Trash',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await apiFetch('/api/notes/trash', { method: 'DELETE' });
+            if (isOk(result)) {
+              setTrashNotes([]);
+            } else {
+              Alert.alert('Error', 'Could not empty trash. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  }, [trashNotes.length]);
+
   const restoreNote = useCallback(async (noteId: string) => {
     const noteToRestore = trashNotes.find((n) => n.id === noteId);
     const result = await apiFetch(`/api/notes/${noteId}/restore`, { method: 'POST' });
@@ -361,6 +403,9 @@ export default function NotesScreen() {
       setVaultRevealPassword('');
       // Fetch immediately with the new token (don't rely on stale closure)
       fetchAndDecrypt(res.data.token);
+    } else if ((res as { status?: number }).status === 0) {
+      setVaultRevealPassword('');
+      Alert.alert('Offline', 'Can\'t reach server. Connect to the internet and try again.');
     } else {
       setVaultRevealPassword('');
       Alert.alert('Incorrect password', 'Could not reveal hidden notes.');
@@ -369,6 +414,11 @@ export default function NotesScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
+      {offline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
+        </View>
+      )}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleHeadingTap} activeOpacity={1}>
           <Text style={styles.heading}>Notes</Text>
@@ -380,6 +430,11 @@ export default function NotesScreen() {
               onPress={() => { apiFetch('/api/notes/vault/reveal', { method: 'DELETE' }); setRevealToken(null); }}
             >
               <Text style={styles.revealBadgeText}>👁 Hide vault</Text>
+            </TouchableOpacity>
+          )}
+          {activeFilter === 'trash' && trashNotes.length > 0 && (
+            <TouchableOpacity style={styles.emptyTrashBtn} onPress={emptyTrash}>
+              <Text style={styles.emptyTrashText}>Empty</Text>
             </TouchableOpacity>
           )}
           <Text style={styles.count}>{activeFilter === 'trash' ? trashNotes.length : notes.length}</Text>
@@ -412,7 +467,7 @@ export default function NotesScreen() {
           <TextInput
             style={styles.search}
             placeholder="Search notes…"
-            placeholderTextColor="#475569"
+            placeholderTextColor={colors.placeholder}
             value={search}
             onChangeText={setSearch}
             autoCorrect={false}
@@ -495,7 +550,7 @@ export default function NotesScreen() {
           <TextInput
             style={styles.newFolderInput}
             placeholder="Folder name…"
-            placeholderTextColor="#475569"
+            placeholderTextColor={colors.placeholder}
             value={newFolderInput}
             onChangeText={setNewFolderInput}
             autoFocus
@@ -609,7 +664,22 @@ export default function NotesScreen() {
 
       {/* FAB — hidden in trash view */}
       {activeFilter !== 'trash' && (
-        <TouchableOpacity style={styles.fab} onPress={() => router.push('/note/new')} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={styles.fab}
+          activeOpacity={0.85}
+          onPress={async () => {
+            const result = await apiFetch<Note>('/api/notes', {
+              method: 'POST',
+              body: JSON.stringify({ title: '', content: '' }),
+            });
+            if (isOk(result)) {
+              router.push({ pathname: `/note/${result.data.id}`, params: { fresh: '1' } });
+            } else {
+              // Offline or server error — fall back to local new-note screen
+              router.push('/note/new');
+            }
+          }}
+        >
           <Text style={styles.fabIcon}>+</Text>
         </TouchableOpacity>
       )}
@@ -672,7 +742,7 @@ export default function NotesScreen() {
               value={vaultRevealPassword}
               onChangeText={setVaultRevealPassword}
               placeholder="Vault password"
-              placeholderTextColor="#475569"
+              placeholderTextColor={colors.placeholder}
               secureTextEntry
               autoFocus
               autoCapitalize="none"
@@ -690,166 +760,177 @@ export default function NotesScreen() {
           </View>
         </View>
       </Modal>
+      <VaultUnlockModal
+        visible={vaultUnlockModalVisible}
+        onSuccess={() => setVaultUnlockModalVisible(false)}
+        onCancel={() => setVaultUnlockModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 12,
-  },
-  heading: { color: '#f1f5f9', fontSize: 26, fontWeight: '800' },
-  count: { color: '#475569', fontSize: 15, fontWeight: '600' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  revealBadge: { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: '#6366f1' },
-  revealBadgeText: { color: '#a5b4fc', fontSize: 12, fontWeight: '700' },
-  hiddenBadge: { fontSize: 13 },
-  vaultOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  vaultCard: { backgroundColor: '#1e293b', borderRadius: 16, padding: 24, width: '100%', maxWidth: 340, borderWidth: 1, borderColor: '#334155' },
-  vaultTitle: { color: '#f1f5f9', fontSize: 17, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
-  vaultSubtitle: { color: '#64748b', fontSize: 13, textAlign: 'center', marginBottom: 20 },
-  vaultInput: { backgroundColor: '#0f172a', borderRadius: 10, borderWidth: 1, borderColor: '#334155', color: '#f1f5f9', fontSize: 15, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16 },
-  vaultActions: { flexDirection: 'row', gap: 10 },
-  vaultCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155', alignItems: 'center' },
-  vaultCancelText: { color: '#64748b', fontSize: 14, fontWeight: '600' },
-  vaultConfirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#6366f1', alignItems: 'center' },
-  vaultConfirmBtnDisabled: { opacity: 0.4 },
-  vaultConfirmText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    offlineBanner: { backgroundColor: '#7c2d12', paddingHorizontal: 16, paddingVertical: 8 },
+    offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
+    header: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 20, paddingVertical: 12,
+    },
+    heading: { color: c.tx, fontSize: 26, fontWeight: '800' },
+    count: { color: c.tx2, fontSize: 15, fontWeight: '600' },
+    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    revealBadge: { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: '#6366f1' },
+    revealBadgeText: { color: '#a5b4fc', fontSize: 12, fontWeight: '700' },
+    hiddenBadge: { fontSize: 13 },
+    emptyTrashBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: '#ef4444' },
+    emptyTrashText: { color: '#ef4444', fontSize: 12, fontWeight: '700' },
+    vaultOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+    vaultCard: { backgroundColor: c.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 340, borderWidth: 1, borderColor: c.border },
+    vaultTitle: { color: c.tx, fontSize: 17, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
+    vaultSubtitle: { color: c.tx3, fontSize: 13, textAlign: 'center', marginBottom: 20 },
+    vaultInput: { backgroundColor: c.bg, borderRadius: 10, borderWidth: 1, borderColor: c.border, color: c.tx, fontSize: 15, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16 },
+    vaultActions: { flexDirection: 'row', gap: 10 },
+    vaultCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border, alignItems: 'center' },
+    vaultCancelText: { color: c.tx3, fontSize: 14, fontWeight: '600' },
+    vaultConfirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#6366f1', alignItems: 'center' },
+    vaultConfirmBtnDisabled: { opacity: 0.4 },
+    vaultConfirmText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 
-  // Chip row
-  chipScroll: { flexShrink: 0 },
-  chipContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, gap: 8, flexDirection: 'row', alignItems: 'center' },
-  chip: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 20, borderWidth: 1, borderColor: '#334155',
-    backgroundColor: '#1e293b', alignSelf: 'center',
-  },
-  chipActive: { borderColor: '#6366f1', backgroundColor: '#312e81' },
-  chipText: { color: '#94a3b8', fontSize: 13, fontWeight: '600' },
-  chipTextActive: { color: '#a5b4fc' },
-  chipNew: { borderStyle: 'dashed', borderColor: '#475569' },
-  chipNewText: { color: '#475569', fontSize: 13, fontWeight: '600' },
-  chipTrashActive: { borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.12)' },
-  sortRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8,
-  },
-  sortLabel: { color: '#475569', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  sortChip: {
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 12, borderWidth: 1, borderColor: '#1e3a5f',
-    backgroundColor: '#0f172a',
-  },
-  sortChipActive: { borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.15)' },
-  sortChipText: { color: '#475569', fontSize: 12, fontWeight: '600' },
-  sortChipTextActive: { color: '#93c5fd' },
+    // Chip row
+    chipScroll: { flexShrink: 0, flexGrow: 0 },
+    chipContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, gap: 8, flexDirection: 'row', alignItems: 'center' },
+    chip: {
+      paddingHorizontal: 12, paddingVertical: 6,
+      borderRadius: 20, borderWidth: 1, borderColor: c.border,
+      backgroundColor: c.surface, alignSelf: 'center',
+    },
+    chipActive: { borderColor: '#6366f1', backgroundColor: '#312e81' },
+    chipText: { color: c.tx2, fontSize: 13, fontWeight: '600' },
+    chipTextActive: { color: '#a5b4fc' },
+    chipNew: { borderStyle: 'dashed', borderColor: c.tx4 },
+    chipNewText: { color: c.tx4, fontSize: 13, fontWeight: '600' },
+    chipTrashActive: { borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.12)' },
+    sortRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8,
+    },
+    sortLabel: { color: c.tx2, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+    sortChip: {
+      paddingHorizontal: 10, paddingVertical: 4,
+      borderRadius: 12, borderWidth: 1, borderColor: c.border,
+      backgroundColor: c.bg,
+    },
+    sortChipActive: { borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.15)' },
+    sortChipText: { color: c.tx2, fontSize: 12, fontWeight: '600' },
+    sortChipTextActive: { color: '#93c5fd' },
 
-  // New folder inline (Android)
-  newFolderRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingBottom: 8, gap: 8,
-  },
-  newFolderInput: {
-    flex: 1, backgroundColor: '#1e293b', borderRadius: 10,
-    borderWidth: 1, borderColor: '#6366f1', color: '#f1f5f9',
-    fontSize: 14, paddingHorizontal: 12, paddingVertical: 8,
-  },
-  newFolderConfirm: {
-    backgroundColor: '#6366f1', borderRadius: 8,
-    paddingHorizontal: 14, paddingVertical: 8,
-  },
-  newFolderConfirmText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  newFolderCancel: { padding: 8 },
-  newFolderCancelText: { color: '#475569', fontSize: 16 },
+    // New folder inline (Android)
+    newFolderRow: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingHorizontal: 16, paddingBottom: 8, gap: 8,
+    },
+    newFolderInput: {
+      flex: 1, backgroundColor: c.surface, borderRadius: 10,
+      borderWidth: 1, borderColor: '#6366f1', color: c.tx,
+      fontSize: 14, paddingHorizontal: 12, paddingVertical: 8,
+    },
+    newFolderConfirm: {
+      backgroundColor: '#6366f1', borderRadius: 8,
+      paddingHorizontal: 14, paddingVertical: 8,
+    },
+    newFolderConfirmText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+    newFolderCancel: { padding: 8 },
+    newFolderCancelText: { color: c.tx2, fontSize: 16 },
 
-  searchWrap: { paddingHorizontal: 16, paddingBottom: 10 },
-  search: {
-    backgroundColor: '#1e293b', borderRadius: 10, borderWidth: 1, borderColor: '#334155',
-    color: '#f1f5f9', fontSize: 15, paddingHorizontal: 14, paddingVertical: 10,
-  },
-  list: { paddingHorizontal: 16, paddingBottom: 100, gap: 10 },
-  selectionBar: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 10,
-    backgroundColor: '#1e293b', borderBottomWidth: 1, borderBottomColor: '#334155',
-  },
-  selectionCancel: { padding: 4 },
-  selectionCancelText: { color: '#94a3b8', fontSize: 16, fontWeight: '600' },
-  selectionCount: { color: '#f1f5f9', fontSize: 14, fontWeight: '700' },
-  selectionActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  selectionHide: { padding: 4 },
-  selectionHideText: { color: '#818cf8', fontSize: 14, fontWeight: '700' },
-  selectionDelete: { padding: 4 },
-  selectionDeleteText: { color: '#ef4444', fontSize: 14, fontWeight: '700' },
-  checkbox: {
-    width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#475569',
-    marginRight: 10, alignItems: 'center', justifyContent: 'center',
-  },
-  checkboxSelected: { backgroundColor: '#6366f1', borderColor: '#6366f1' },
-  checkmark: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  card: {
-    backgroundColor: '#1e293b', borderRadius: 12, padding: 16,
-    borderWidth: 1, borderColor: '#334155', gap: 6,
-  },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardTitle: { color: '#f1f5f9', fontSize: 16, fontWeight: '700', flex: 1 },
-  cardBadges: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 6 },
-  starBadge: { color: '#f59e0b', fontSize: 14 },
-  pinBadge: { fontSize: 13 },
-  cardSnippet: { color: '#94a3b8', fontSize: 13, lineHeight: 18 },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardFolder: { color: '#6366f1', fontSize: 11, fontWeight: '600', flex: 1 },
-  cardDate: { color: '#475569', fontSize: 11 },
-  cardDateOffset: { textAlign: 'right' },
-  trashActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  restoreBtn: {
-    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8,
-    backgroundColor: 'rgba(99,102,241,0.15)',
-  },
-  restoreBtnText: { color: '#6366f1', fontSize: 13, fontWeight: '600' },
-  deleteForeverBtn: {
-    paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8,
-    backgroundColor: 'rgba(239,68,68,0.12)',
-  },
-  deleteForeverBtnText: { color: '#ef4444', fontSize: 13, fontWeight: '600' },
-  empty: { alignItems: 'center', paddingTop: 60 },
-  emptyText: { color: '#475569', fontSize: 15 },
-  fab: {
-    position: 'absolute', bottom: 28, right: 24,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#6366f1', shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  fabIcon: { color: '#fff', fontSize: 28, lineHeight: 32 },
+    searchWrap: { paddingHorizontal: 16, paddingBottom: 10 },
+    search: {
+      backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      color: c.tx, fontSize: 15, paddingHorizontal: 14, paddingVertical: 10,
+    },
+    list: { paddingHorizontal: 16, paddingBottom: 100, gap: 10 },
+    selectionBar: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 16, paddingVertical: 10,
+      backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    selectionCancel: { padding: 4 },
+    selectionCancelText: { color: c.tx2, fontSize: 16, fontWeight: '600' },
+    selectionCount: { color: c.tx, fontSize: 14, fontWeight: '700' },
+    selectionActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    selectionHide: { padding: 4 },
+    selectionHideText: { color: '#818cf8', fontSize: 14, fontWeight: '700' },
+    selectionDelete: { padding: 4 },
+    selectionDeleteText: { color: '#ef4444', fontSize: 14, fontWeight: '700' },
+    checkbox: {
+      width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: c.tx4,
+      marginRight: 10, alignItems: 'center', justifyContent: 'center',
+    },
+    checkboxSelected: { backgroundColor: '#6366f1', borderColor: '#6366f1' },
+    checkmark: { color: '#fff', fontSize: 12, fontWeight: '800' },
+    card: {
+      backgroundColor: c.surface, borderRadius: 12, padding: 16,
+      borderWidth: 1, borderColor: c.cardBorder, gap: 6,
+    },
+    cardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    cardTitle: { color: c.tx, fontSize: 16, fontWeight: '700', flex: 1 },
+    cardBadges: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 6 },
+    starBadge: { color: '#f59e0b', fontSize: 14 },
+    pinBadge: { fontSize: 13 },
+    cardSnippet: { color: c.tx2, fontSize: 13, lineHeight: 18 },
+    cardMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    cardFolder: { color: '#6366f1', fontSize: 11, fontWeight: '600', flex: 1 },
+    cardDate: { color: c.tx4, fontSize: 11 },
+    cardDateOffset: { textAlign: 'right' },
+    trashActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+    restoreBtn: {
+      paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8,
+      backgroundColor: 'rgba(99,102,241,0.15)',
+    },
+    restoreBtnText: { color: '#6366f1', fontSize: 13, fontWeight: '600' },
+    deleteForeverBtn: {
+      paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8,
+      backgroundColor: 'rgba(239,68,68,0.12)',
+    },
+    deleteForeverBtnText: { color: '#ef4444', fontSize: 13, fontWeight: '600' },
+    empty: { alignItems: 'center', paddingTop: 60 },
+    emptyText: { color: c.tx2, fontSize: 15 },
+    fab: {
+      position: 'absolute', bottom: 28, right: 24,
+      width: 56, height: 56, borderRadius: 28,
+      backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center',
+      shadowColor: '#6366f1', shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
+      elevation: 8,
+    },
+    fabIcon: { color: '#fff', fontSize: 28, lineHeight: 32 },
 
-  // Move-to-folder modal
-  modalOverlay: {
-    flex: 1, justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  bottomSheet: {
-    backgroundColor: '#1e293b', borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingHorizontal: 20, paddingBottom: 36, paddingTop: 12,
-    borderTopWidth: 1, borderColor: '#334155',
-  },
-  sheetHandle: {
-    width: 40, height: 4, borderRadius: 2, backgroundColor: '#475569',
-    alignSelf: 'center', marginBottom: 16,
-  },
-  sheetTitle: { color: '#94a3b8', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
-  folderOption: {
-    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#0f172a',
-  },
-  folderOptionActive: { borderBottomColor: '#0f172a' },
-  folderOptionText: { color: '#f1f5f9', fontSize: 16 },
-  folderOptionTextActive: { color: '#818cf8', fontWeight: '700' },
-  sheetCancel: {
-    marginTop: 8, paddingVertical: 14, alignItems: 'center',
-    backgroundColor: '#0f172a', borderRadius: 12,
-  },
-  sheetCancelText: { color: '#94a3b8', fontSize: 16, fontWeight: '600' },
-});
+    // Move-to-folder modal
+    modalOverlay: {
+      flex: 1, justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.6)',
+    },
+    bottomSheet: {
+      backgroundColor: c.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      paddingHorizontal: 20, paddingBottom: 36, paddingTop: 12,
+      borderTopWidth: 1, borderColor: c.border,
+    },
+    sheetHandle: {
+      width: 40, height: 4, borderRadius: 2, backgroundColor: c.tx4,
+      alignSelf: 'center', marginBottom: 16,
+    },
+    sheetTitle: { color: c.tx2, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+    folderOption: {
+      paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: c.bg,
+    },
+    folderOptionActive: { borderBottomColor: c.bg },
+    folderOptionText: { color: c.tx, fontSize: 16 },
+    folderOptionTextActive: { color: '#818cf8', fontWeight: '700' },
+    sheetCancel: {
+      marginTop: 8, paddingVertical: 14, alignItems: 'center',
+      backgroundColor: c.bg, borderRadius: 12,
+    },
+    sheetCancelText: { color: c.tx2, fontSize: 16, fontWeight: '600' },
+  });
+}

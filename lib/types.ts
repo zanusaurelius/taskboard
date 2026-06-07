@@ -4,6 +4,7 @@ export interface Project {
   encName: string | null;
   color: string | null;
   archived: boolean;
+  updatedAt: string;
 }
 
 export interface Folder {
@@ -50,6 +51,8 @@ export interface Task {
   locked: boolean;
   projectId: string;
   project?: Project;
+  doneAt?: string | null;
+  updatedAt: string;
 }
 
 export interface DailyGoal {
@@ -88,4 +91,5 @@ export interface UploadFile {
   fileFolderId: string | null;
   createdAt: string;
   updatedAt: string;
+  attachments: { noteId: string | null; taskId: string | null }[];
 }

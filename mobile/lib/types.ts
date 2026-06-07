@@ -53,6 +53,7 @@ export interface Task {
   locked: boolean;
   projectId: string;
   project?: Project;
+  doneAt?: string | null;
   updatedAt: string;
 }
 
@@ -86,6 +87,18 @@ export interface DailyReflection {
   body: string | null;
   encBody: string | null;
   updatedAt: string;
+}
+
+export interface UploadFileMeta {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  thumbnail: string | null;
+  fileFolderId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  attachments: { noteId: string | null; taskId: string | null }[];
 }
 
 export interface VaultConfig {

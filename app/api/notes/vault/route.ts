@@ -12,6 +12,14 @@ export async function GET(request: Request) {
   const vault = await prisma.noteVault.findUnique({ where: { userId } });
   if (!vault) return NextResponse.json({ exists: false });
 
+  let webAuthnCredentials: { id: string; name: string }[] = [];
+  try {
+    const parsed = JSON.parse(vault.webAuthnCredentials);
+    if (Array.isArray(parsed)) {
+      webAuthnCredentials = parsed.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }));
+    }
+  } catch { /* corrupted data — treat as empty */ }
+
   return NextResponse.json({
     exists: true,
     encryptedMasterKey: vault.encryptedMasterKey,
@@ -19,9 +27,7 @@ export async function GET(request: Request) {
     encryptedMasterKeyBak: vault.encryptedMasterKeyBak,
     backupKeySalt: vault.backupKeySalt,
     verifier: vault.verifier,
-    webAuthnCredentials: JSON.parse(vault.webAuthnCredentials).map(
-      (c: { id: string; name: string }) => ({ id: c.id, name: c.name }),
-    ),
+    webAuthnCredentials,
   });
 }
 

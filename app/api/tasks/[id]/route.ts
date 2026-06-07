@@ -7,7 +7,7 @@ import { MAX_TASK_TITLE_LEN, MAX_TASK_DESC_LEN } from "@/lib/constants";
 
 function extractUploadFilenames(html: string | null): string[] {
   if (!html) return [];
-  return [...html.matchAll(/\/api\/uploads\/([a-f0-9]+\.(?:jpg|png|gif|webp))/g)].map((m) => m[1]);
+  return [...html.matchAll(/\/api\/uploads\/([a-f0-9]+\.[a-z0-9]+)/g)].map((m) => m[1]);
 }
 
 async function getOwnedTask(id: string, userId: string) {

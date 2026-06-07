@@ -52,16 +52,16 @@ function entryMatchesSearch(e: Reflection, q: string): boolean {
 
 const inputFieldSx = {
   "& .MuiOutlinedInput-root": {
-    borderRadius: 2, fontSize: "0.9rem", backgroundColor: "#f8fafc",
-    "& fieldset": { borderColor: "#e2e8f0" },
-    "&:hover fieldset": { borderColor: "#cbd5e1" },
+    borderRadius: 2, fontSize: "0.9rem", backgroundColor: "var(--surface-2)",
+    "& fieldset": { borderColor: "var(--border)" },
+    "&:hover fieldset": { borderColor: "var(--border-2)" },
     "&.Mui-focused fieldset": { borderColor: "#6366f1", borderWidth: 1.5 },
   },
   "& textarea": { lineHeight: 1.6 },
 };
 
 const labelSx = {
-  fontSize: "0.68rem", fontWeight: 800, color: "#94a3b8",
+  fontSize: "0.68rem", fontWeight: 800, color: "var(--tx-4)",
   textTransform: "uppercase" as const, letterSpacing: 1.1, mb: 0.75,
 };
 
@@ -101,12 +101,18 @@ export default function JournalView() {
     const res = await fetch("/api/daily-reflections");
     if (res.ok) {
       const raw: Reflection[] = await res.json();
-      const data = await Promise.all(raw.map(async (e) => ({
-        ...e,
-        note: e.encNote ? (await vault.decrypt(JSON.parse(e.encNote)) ?? e.note) : e.note,
-        gratitude: e.encGratitude ? (await vault.decrypt(JSON.parse(e.encGratitude)) ?? e.gratitude) : e.gratitude,
-        body: e.encBody ? (await vault.decrypt(JSON.parse(e.encBody)) ?? e.body) : e.body,
-      })));
+      const data = await Promise.all(raw.map(async (e) => {
+        try {
+          return {
+            ...e,
+            note: e.encNote ? (await vault.decrypt(JSON.parse(e.encNote)) ?? e.note) : e.note,
+            gratitude: e.encGratitude ? (await vault.decrypt(JSON.parse(e.encGratitude)) ?? e.gratitude) : e.gratitude,
+            body: e.encBody ? (await vault.decrypt(JSON.parse(e.encBody)) ?? e.body) : e.body,
+          };
+        } catch {
+          return e; // corrupt entry — show plaintext fallback rather than blanking the whole journal
+        }
+      }));
       setEntries(data);
       // Seed editing state for today
       const todayEntry = data.find((e) => e.date === today);
@@ -160,7 +166,7 @@ export default function JournalView() {
     const encNote = rawEncNote ? JSON.stringify(rawEncNote) : null;
     const encGratitude = rawEncGratitude ? JSON.stringify(rawEncGratitude) : null;
     const encBody = rawEncBody ? JSON.stringify(rawEncBody) : null;
-    await fetch("/api/daily-reflections", {
+    const res = await fetch("/api/daily-reflections", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -173,7 +179,7 @@ export default function JournalView() {
         encBody,
       }),
     });
-    flashSaved();
+    if (res.ok) flashSaved();
     setEntries((prev) => {
       const exists = prev.find((e) => e.date === selectedDate);
       const payload: Reflection = {
@@ -240,24 +246,24 @@ export default function JournalView() {
       {/* ── Left panel ── */}
       <Box sx={{
         width: { xs: "100%", sm: 260 }, flexShrink: 0,
-        borderRight: "1px solid #e2e8f0",
+        borderRight: "1px solid var(--border)",
         display: isMobile && mobilePanel === "detail" ? "none" : "flex",
         flexDirection: "column",
-        backgroundColor: "#f8fafc",
+        backgroundColor: "var(--surface-2)",
       }}>
         {/* Search */}
         <Box sx={{ px: 1.5, pt: 1.5, pb: 1 }}>
           <Box sx={{
             display: "flex", alignItems: "center", gap: 1,
-            backgroundColor: "#fff", borderRadius: 2,
-            border: "1px solid #e2e8f0", px: 1.25, py: 0.6,
+            backgroundColor: "var(--surface)", borderRadius: 2,
+            border: "1px solid var(--border)", px: 1.25, py: 0.6,
           }}>
-            <SearchIcon sx={{ fontSize: 16, color: "#94a3b8", flexShrink: 0 }} />
+            <SearchIcon sx={{ fontSize: 16, color: "var(--tx-4)", flexShrink: 0 }} />
             <InputBase
               placeholder="Search journal…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              sx={{ fontSize: "0.82rem", flex: 1, color: "#334155" }}
+              sx={{ fontSize: "0.82rem", flex: 1, color: "var(--tx-2)" }}
             />
           </Box>
         </Box>
@@ -281,10 +287,10 @@ export default function JournalView() {
                     "&:hover": { backgroundColor: selectedDate === today ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.03)" },
                   }}
                 >
-                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: selectedDate === today ? "#6366f1" : "#1e293b" }}>
+                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: selectedDate === today ? "#6366f1" : "var(--tx)" }}>
                     Today
                   </Typography>
-                  <Typography sx={{ fontSize: "0.72rem", color: "#94a3b8", mt: 0.1 }}>
+                  <Typography sx={{ fontSize: "0.72rem", color: "var(--tx-4)", mt: 0.1 }}>
                     {formatDayShort(today)}
                   </Typography>
                 </Box>
@@ -294,7 +300,7 @@ export default function JournalView() {
               {months.map((month) => (
                 <Box key={month}>
                   <Typography sx={{
-                    fontSize: "0.65rem", fontWeight: 800, color: "#94a3b8",
+                    fontSize: "0.65rem", fontWeight: 800, color: "var(--tx-4)",
                     textTransform: "uppercase", letterSpacing: 1,
                     px: 2, pt: 1.5, pb: 0.5,
                   }}>
@@ -311,12 +317,12 @@ export default function JournalView() {
                         "&:hover": { backgroundColor: selectedDate === entry.date ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.03)" },
                       }}
                     >
-                      <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: selectedDate === entry.date ? "#6366f1" : "#334155" }}>
+                      <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: selectedDate === entry.date ? "#6366f1" : "var(--tx)" }}>
                         {formatDayShort(entry.date)}
                       </Typography>
                       {(entry.note || entry.gratitude || entry.body) && (
                         <Typography sx={{
-                          fontSize: "0.72rem", color: "#94a3b8", mt: 0.1,
+                          fontSize: "0.72rem", color: "var(--tx-4)", mt: 0.1,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           {entry.body ?? entry.note ?? entry.gratitude}
@@ -328,7 +334,7 @@ export default function JournalView() {
               ))}
 
               {!loading && months.length === 0 && !showTodayInList && (
-                <Typography sx={{ fontSize: "0.82rem", color: "#94a3b8", px: 2, pt: 3, textAlign: "center" }}>
+                <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)", px: 2, pt: 3, textAlign: "center" }}>
                   No entries match your search.
                 </Typography>
               )}
@@ -340,11 +346,11 @@ export default function JournalView() {
       {/* ── Right panel ── */}
       <Box sx={{ flex: 1, overflowY: "auto", display: isMobile && mobilePanel === "list" ? "none" : "flex", flexDirection: "column" }}>
         {isMobile && (
-          <Box sx={{ px: 1.5, py: 0.75, borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 0.5, backgroundColor: "#f8fafc", flexShrink: 0 }}>
-            <IconButton size="small" onClick={() => setMobilePanel("list")} sx={{ color: "#475569" }}>
+          <Box sx={{ px: 1.5, py: 0.75, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 0.5, backgroundColor: "var(--surface-2)", flexShrink: 0 }}>
+            <IconButton size="small" onClick={() => setMobilePanel("list")} sx={{ color: "var(--tx-2)" }}>
               <ArrowBackIcon sx={{ fontSize: 20 }} />
             </IconButton>
-            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Journal</Typography>
+            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--tx-2)" }}>Journal</Typography>
           </Box>
         )}
         {!loading && focusField === null && (
@@ -353,10 +359,10 @@ export default function JournalView() {
             {/* Date header */}
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <Box>
-                <Typography sx={{ fontWeight: 800, fontSize: "1.25rem", color: "#1e293b", lineHeight: 1.2 }}>
+                <Typography sx={{ fontWeight: 800, fontSize: "1.25rem", color: "var(--tx)", lineHeight: 1.2 }}>
                   {isToday ? "Today" : formatDayShort(selectedDate)}
                 </Typography>
-                <Typography sx={{ fontSize: "0.8rem", color: "#94a3b8", mt: 0.25 }}>
+                <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", mt: 0.25 }}>
                   {formatDayFull(selectedDate)}
                 </Typography>
               </Box>
@@ -419,10 +425,10 @@ export default function JournalView() {
                 sx={{
                   flex: 1,
                   "& .MuiOutlinedInput-root": {
-                    borderRadius: 2, fontSize: "0.95rem", backgroundColor: "#fff",
+                    borderRadius: 2, fontSize: "0.95rem", backgroundColor: "var(--surface)",
                     alignItems: "flex-start",
-                    "& fieldset": { borderColor: "#e2e8f0" },
-                    "&:hover fieldset": { borderColor: "#cbd5e1" },
+                    "& fieldset": { borderColor: "var(--border)" },
+                    "&:hover fieldset": { borderColor: "var(--border-2)" },
                     "&.Mui-focused fieldset": { borderColor: "#6366f1", borderWidth: 1.5 },
                   },
                   "& textarea": { lineHeight: 1.8, py: 1.5, px: 0.5 },
@@ -455,13 +461,13 @@ export default function JournalView() {
               </Box>
 
               {/* Heading */}
-              <Typography sx={{ fontWeight: 800, fontSize: "1.15rem", color: "#1e293b", lineHeight: 1.3 }}>
+              <Typography sx={{ fontWeight: 800, fontSize: "1.15rem", color: "var(--tx)", lineHeight: 1.3 }}>
                 {fieldLabel} — all entries
               </Typography>
 
               {/* Items */}
               {streamItems.length === 0 ? (
-                <Typography sx={{ fontSize: "0.88rem", color: "#94a3b8", mt: 1 }}>
+                <Typography sx={{ fontSize: "0.88rem", color: "var(--tx-4)", mt: 1 }}>
                   No entries yet for this field.
                 </Typography>
               ) : (
@@ -472,21 +478,21 @@ export default function JournalView() {
                       <Box key={entry.date}>
                         <Box
                           sx={{
-                            py: 2, px: 2, backgroundColor: "#f8fafc", borderRadius: 2,
+                            py: 2, px: 2, backgroundColor: "var(--surface-2)", borderRadius: 2,
                             cursor: "pointer",
                             "&:hover": { backgroundColor: "rgba(99,102,241,0.05)" },
                           }}
                           onClick={() => { setSelectedDate(entry.date); setFocusField(null); if (isMobile) setMobilePanel("detail"); }}
                         >
-                          <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "#1e293b", mb: 0.5 }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--tx)", mb: 0.5 }}>
                             {formatDayFull(entry.date)}
                           </Typography>
-                          <Typography sx={{ fontSize: "0.9rem", color: "#475569", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                          <Typography sx={{ fontSize: "0.9rem", color: "var(--tx-2)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
                             {content}
                           </Typography>
                         </Box>
                         {idx < streamItems.length - 1 && (
-                          <Box sx={{ borderBottom: "1px solid #e2e8f0", mx: 2 }} />
+                          <Box sx={{ borderBottom: "1px solid var(--divider)", mx: 2 }} />
                         )}
                       </Box>
                     );
@@ -499,7 +505,7 @@ export default function JournalView() {
 
         {/* Empty state when nothing selected */}
         {!loading && !selectedDate && (
-          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
+          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--tx-4)" }}>
             <AutoStoriesOutlinedIcon sx={{ fontSize: 48, mb: 1.5, opacity: 0.4 }} />
             <Typography sx={{ fontSize: "0.875rem" }}>Select a day to view your entry</Typography>
           </Box>

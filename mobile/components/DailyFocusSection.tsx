@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, Modal, FlatList,
+  StyleSheet, ActivityIndicator, Modal, FlatList, Alert, Pressable,
 } from 'react-native';
+import DraggableFlatList, { NestableDraggableFlatList, ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
 import * as SecureStore from 'expo-secure-store';
 import { apiFetch, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
 import { useRouter } from 'expo-router';
 import { getGoalLimit } from '@/lib/storage';
 import type { DailyGoal, Habit, Task, Project } from '@/lib/types';
+import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 const localDateStr = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -29,6 +31,8 @@ const MAX_FUTURE = 7;
 export default function DailyFocusSection() {
   const router = useRouter();
   const { masterKey, encrypt, decrypt } = useVault();
+  const colors = useThemeColors();
+  const s = makeStyles(colors);
 
   const vaultEncrypt = async (text: string): Promise<{ encText: string; text: string } | { text: string }> => {
     if (!masterKey) return { text };
@@ -70,6 +74,7 @@ export default function DailyFocusSection() {
 
   const [addingHabit, setAddingHabit] = useState(false);
   const [habitInput, setHabitInput] = useState('');
+  const [reorderHabitsVisible, setReorderHabitsVisible] = useState(false);
   const [addingGoalIdx, setAddingGoalIdx] = useState<number | null>(null);
   const [goalInput, setGoalInput] = useState('');
   const [linkedTask, setLinkedTask] = useState<Task | null>(null);
@@ -126,8 +131,10 @@ export default function DailyFocusSection() {
     // Discard results if a newer navigation has already started a fetch
     if (gen !== fetchGenRef.current) return;
 
-    if (isOk(goalsRes)) setGoals(await vaultDecryptGoals(goalsRes.data));
-    else setGoals([]);
+    if (isOk(goalsRes)) {
+      const gs = await vaultDecryptGoals(goalsRes.data);
+      setGoals([...gs.filter(g => !g.completed), ...gs.filter(g => g.completed)]);
+    } else setGoals([]);
 
     if (isOk(habitsRes)) setHabits(await vaultDecryptHabits(habitsRes.data));
     else setHabits([]);
@@ -191,23 +198,39 @@ export default function DailyFocusSection() {
   // ── Habits ──────────────────────────────────────────────────────────────────
 
   const handleToggleHabit = async (habit: Habit) => {
+    const flip = (v: boolean) =>
+      setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: v } : h));
+    flip(!habit.completedToday); // optimistic
     if (habit.completedToday) {
       const res = await apiFetch(`/api/habits/${habit.id}/complete?date=${today}`, { method: 'DELETE' });
-      if (isOk(res)) setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: false } : h));
-      else if ((res as { status?: number }).status === 0) Alert.alert('Offline', 'Habit changes sync when you reconnect.');
+      if (!isOk(res)) {
+        flip(true); // rollback
+        if ((res as { status?: number }).status === 0) Alert.alert('Offline', 'Habit changes sync when you reconnect.');
+      }
     } else {
       const res = await apiFetch(`/api/habits/${habit.id}/complete`, {
         method: 'POST',
         body: JSON.stringify({ date: today }),
       });
-      if (isOk(res)) setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: true } : h));
-      else if ((res as { status?: number }).status === 0) Alert.alert('Offline', 'Habit changes sync when you reconnect.');
+      if (!isOk(res)) {
+        flip(false); // rollback
+        if ((res as { status?: number }).status === 0) Alert.alert('Offline', 'Habit changes sync when you reconnect.');
+      }
     }
   };
 
   const handleDeleteHabit = async (id: string) => {
     const res = await apiFetch(`/api/habits/${id}`, { method: 'DELETE' });
     if (isOk(res)) setHabits((prev) => prev.filter((h) => h.id !== id));
+  };
+
+  const handleHabitReorder = async (reordered: Habit[]) => {
+    setHabits(reordered);
+    await Promise.all(
+      reordered.map((h, i) =>
+        apiFetch(`/api/habits/${h.id}`, { method: 'PATCH', body: JSON.stringify({ position: i }) })
+      )
+    );
   };
 
   const handleAddHabit = async () => {
@@ -316,35 +339,15 @@ export default function DailyFocusSection() {
     if (isOk(res)) setGoals(prev => prev.filter(g => g.id !== goalId));
   };
 
-  const handleMoveGoal = async (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= goals.length) return;
-
-    const newGoals = [...goals];
-    // Swap the two goals
-    [newGoals[index], newGoals[targetIndex]] = [newGoals[targetIndex], newGoals[index]];
-    setGoals(newGoals);
-
-    // Persist new positions for both swapped goals
-    const results = await Promise.all([
-      apiFetch(`/api/daily-goals/${newGoals[index].id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ position: index }),
-      }),
-      apiFetch(`/api/daily-goals/${newGoals[targetIndex].id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ position: targetIndex }),
-      }),
-    ]);
-    if (results.some((r) => !isOk(r))) {
-      // Revert optimistic UI update on failure
-      setGoals((prev) => {
-        const reverted = [...prev];
-        [reverted[index], reverted[targetIndex]] = [reverted[targetIndex], reverted[index]];
-        return reverted;
-      });
-    }
-  };
+  const handleReorderGoals = useCallback(async (reordered: DailyGoal[]) => {
+    const rePositioned = reordered.map((g, i) => ({ ...g, position: i }));
+    setGoals(rePositioned);
+    await Promise.all(
+      rePositioned.map((g) =>
+        apiFetch(`/api/daily-goals/${g.id}`, { method: 'PUT', body: JSON.stringify({ position: g.position }) })
+      )
+    );
+  }, []);
 
   const handleCarryOver = async () => {
     if (carryingOver) return;
@@ -354,7 +357,7 @@ export default function DailyFocusSection() {
       return;
     }
     setCarryingOver(true);
-    const limit = goalLimit;
+    const limit = Math.min(goals.length + carryOver.length, 20);
     for (let i = 0; i < carryOver.length; i++) {
       const g = carryOver[i];
       const encFields = await vaultEncrypt(g.text);
@@ -363,7 +366,12 @@ export default function DailyFocusSection() {
         body: JSON.stringify({ ...encFields, taskId: g.taskId, date: today, position: goals.length + i, limit }),
       });
       if (!isOk(res)) continue;
-      await apiFetch(`/api/daily-goals/${g.id}`, { method: 'DELETE' });
+      const created = (res as { data: { id: string } }).data;
+      const delRes = await apiFetch(`/api/daily-goals/${g.id}`, { method: 'DELETE' });
+      if (!isOk(delRes)) {
+        // Rollback: delete the just-created goal so the original isn't orphaned
+        await apiFetch(`/api/daily-goals/${created.id}`, { method: 'DELETE' });
+      }
     }
     setCarryOver([]);
     setCarryingOver(false);
@@ -406,6 +414,10 @@ export default function DailyFocusSection() {
 
   // Feature 3: extraSlots increases total available slots
   const totalSlots = Math.max(goalLimit, goals.length) + extraSlots;
+  const displayHabits = [...habits].sort((a, b) => {
+    if (a.completedToday === b.completedToday) return 0;
+    return a.completedToday ? 1 : -1;
+  });
   const completedHabits = habits.filter((h) => h.completedToday).length;
   const completedGoals = goals.filter((g) => g.completed).length;
 
@@ -485,7 +497,7 @@ export default function DailyFocusSection() {
               {/* Previous day's reflection banner */}
               {prevReflection && (
                 <View style={s.prevReflBanner}>
-                  <Text style={s.prevReflLabel}>ONE THING TO DO BETTER TODAY</Text>
+                  <Text style={s.prevReflLabel}>{'ONE THING TO\nDO BETTER TODAY'}</Text>
                   <Text style={s.prevReflText}>{prevReflection}</Text>
                 </View>
               )}
@@ -493,9 +505,16 @@ export default function DailyFocusSection() {
               {/* ── Habits (today only) ── */}
               {isToday && (
                 <View style={s.section}>
-                  <Text style={s.sectionLabel}>DAILY HABITS</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={s.sectionLabel}>DAILY HABITS</Text>
+                    {habits.length > 1 && (
+                      <TouchableOpacity onPress={() => setReorderHabitsVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Text style={{ color: s.sectionLabel.color, fontSize: 11 }}>Reorder ⋮⋮</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.habitsRow}>
-                    {habits.map((h) => (
+                    {displayHabits.map((h) => (
                       <TouchableOpacity
                         key={h.id}
                         style={[s.habitChip, h.completedToday && s.habitChipDone]}
@@ -545,10 +564,10 @@ export default function DailyFocusSection() {
               <View style={s.section}>
                 <View style={s.goalsHeader}>
                   <Text style={s.sectionLabel}>
-                    {isToday ? `TODAY'S TOP ${goalLimit}` :
-                      dayOffset === 1 ? `TOMORROW'S TOP ${goalLimit}` :
-                      dayOffset === -1 ? `YESTERDAY'S TOP ${goalLimit}` :
-                      `TOP ${goalLimit}`}
+                    {isToday ? `Today's Top Goals` :
+                      dayOffset === 1 ? `Tomorrow's Goals` :
+                      dayOffset === -1 ? `Yesterday's Goals` :
+                      `Goals`}
                   </Text>
                   {isToday && (carryOver.length > 0 || carryingOver) && (
                     <TouchableOpacity onPress={handleCarryOver} style={s.carryOverBtn} disabled={carryingOver}>
@@ -559,106 +578,99 @@ export default function DailyFocusSection() {
                   )}
                 </View>
 
-                {Array.from({ length: totalSlots }, (_, i) => i).map((slotIdx) => {
-                  const goal = goals[slotIdx];
-                  const isAdding = addingGoalIdx === slotIdx;
-
-                  if (goal) {
+                {/* Existing goals — drag to reorder */}
+                <NestableDraggableFlatList
+                  data={goals}
+                  keyExtractor={(g) => g.id}
+                  onDragEnd={({ data }) => handleReorderGoals(data)}
+                  contentContainerStyle={{ gap: 6 }}
+                  renderItem={({ item: goal, drag, isActive, getIndex }: RenderItemParams<DailyGoal>) => {
+                    const slotIdx = getIndex?.() ?? 0;
                     const isEditingThis = editingGoalId === goal.id;
                     return (
-                      <View key={goal.id} style={[s.goalRow, goal.completed && s.goalRowDone]}>
-                        <View style={[s.goalNum, goal.completed && s.goalNumDone]}>
-                          <Text style={[s.goalNumText, goal.completed && s.goalNumTextDone]}>{slotIdx + 1}</Text>
-                        </View>
-                        <TouchableOpacity onPress={() => handleToggleGoal(goal)} style={s.goalCheck}>
-                          <Text style={[s.goalCheckText, goal.completed && s.goalCheckDone]}>
-                            {goal.completed ? '●' : '○'}
-                          </Text>
-                        </TouchableOpacity>
-                        <View style={{ flex: 1 }}>
-                          {isEditingThis ? (
-                            <TextInput
-                              style={s.goalInput}
-                              value={editingGoalText}
-                              onChangeText={setEditingGoalText}
-                              autoFocus
-                              returnKeyType="done"
-                              onSubmitEditing={() => commitGoalEdit(goal)}
-                              onBlur={() => commitGoalEdit(goal)}
-                            />
-                          ) : (
-                            <>
-                              <Text style={[s.goalText, goal.completed && s.goalTextDone]} numberOfLines={2}>
-                                {goal.text}
-                              </Text>
-                              {goal.taskId && (
-                                <Text style={s.goalLinkedBadge}>🔗 linked to task</Text>
-                              )}
-                            </>
+                      <ScaleDecorator>
+                        <View style={[s.goalRow, goal.completed && s.goalRowDone, isActive && s.goalRowActive]}>
+                          {/* Drag handle — disabled for completed goals */}
+                          <TouchableOpacity
+                            onLongPress={drag}
+                            delayLongPress={150}
+                            disabled={goal.completed}
+                            style={s.goalDragHandle}
+                          >
+                            <Text style={[s.goalDragHandleText, goal.completed && { opacity: 0.15 }]}>⠿</Text>
+                          </TouchableOpacity>
+                          <View style={[s.goalNum, goal.completed && s.goalNumDone]}>
+                            <Text style={[s.goalNumText, goal.completed && s.goalNumTextDone]}>{slotIdx + 1}</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => handleToggleGoal(goal)} style={s.goalCheck}>
+                            <Text style={[s.goalCheckText, goal.completed && s.goalCheckDone]}>
+                              {goal.completed ? '●' : '○'}
+                            </Text>
+                          </TouchableOpacity>
+                          <View style={{ flex: 1, justifyContent: 'center' }}>
+                            {isEditingThis ? (
+                              <TextInput
+                                style={s.goalInput}
+                                value={editingGoalText}
+                                onChangeText={setEditingGoalText}
+                                autoFocus
+                                returnKeyType="done"
+                                onSubmitEditing={() => commitGoalEdit(goal)}
+                                onBlur={() => commitGoalEdit(goal)}
+                              />
+                            ) : (
+                              <>
+                                <Text style={[s.goalText, goal.completed && s.goalTextDone]} numberOfLines={2}>
+                                  {goal.text}
+                                </Text>
+                                {goal.taskId && (
+                                  <Text style={s.goalLinkedBadge}>🔗 linked to task</Text>
+                                )}
+                              </>
+                            )}
+                          </View>
+                          {!goal.completed && dayOffset < MAX_FUTURE && (
+                            <TouchableOpacity onPress={() => handleMoveToNextDay(goal.id)} style={s.goalMoveBtn}>
+                              <Text style={s.goalMoveBtnText}>→</Text>
+                            </TouchableOpacity>
                           )}
-                        </View>
-                        {/* Feature 2: move to next day (incomplete goals only, not at max future) */}
-                        {!goal.completed && dayOffset < MAX_FUTURE && (
-                          <TouchableOpacity
-                            onPress={() => handleMoveToNextDay(goal.id)}
-                            style={s.goalMoveBtn}
-                          >
-                            <Text style={s.goalMoveBtnText}>→</Text>
-                          </TouchableOpacity>
-                        )}
-                        {/* Send to board */}
-                        {!goal.completed && (
-                          <TouchableOpacity
-                            onPress={() => {
-                              if (goal.taskId) {
-                                handleDeleteGoal(goal.id);
-                              } else {
-                                router.push({
-                                  pathname: '/task/new',
-                                  params: { prefillTitle: goal.text, fromGoalId: goal.id },
-                                });
-                              }
-                            }}
-                            style={s.goalSendBackBtn}
-                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                          >
-                            <Text style={s.goalSendBackText}>↩</Text>
-                          </TouchableOpacity>
-                        )}
-                        {/* Feature 1: edit button */}
-                        {!isEditingThis && (
-                          <TouchableOpacity
-                            onPress={() => {
-                              setEditingGoalId(goal.id);
-                              setEditingGoalText(goal.text);
-                            }}
-                            style={s.goalEditBtn}
-                          >
-                            <Text style={s.goalEditBtnText}>✏</Text>
-                          </TouchableOpacity>
-                        )}
-                        <View style={s.goalReorderBtns}>
-                          <TouchableOpacity
-                            onPress={() => handleMoveGoal(slotIdx, 'up')}
-                            disabled={slotIdx === 0}
-                            style={[s.reorderBtn, slotIdx === 0 && s.reorderBtnDisabled]}
-                          >
-                            <Text style={s.reorderBtnText}>↑</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => handleMoveGoal(slotIdx, 'down')}
-                            disabled={slotIdx === goals.length - 1}
-                            style={[s.reorderBtn, slotIdx === goals.length - 1 && s.reorderBtnDisabled]}
-                          >
-                            <Text style={s.reorderBtnText}>↓</Text>
+                          {!goal.completed && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                if (goal.taskId) {
+                                  handleDeleteGoal(goal.id);
+                                } else {
+                                  router.push({ pathname: '/task/new', params: { prefillTitle: goal.text, fromGoalId: goal.id } });
+                                }
+                              }}
+                              style={s.goalSendBackBtn}
+                              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            >
+                              <Text style={s.goalSendBackText}>↩</Text>
+                            </TouchableOpacity>
+                          )}
+                          {!isEditingThis && (
+                            <TouchableOpacity
+                              onPress={() => { setEditingGoalId(goal.id); setEditingGoalText(goal.text); }}
+                              style={s.goalEditBtn}
+                            >
+                              <Text style={s.goalEditBtnText}>✏</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity onPress={() => handleDeleteGoal(goal.id)} style={s.goalDelete}>
+                            <Text style={s.goalDeleteText}>✕</Text>
                           </TouchableOpacity>
                         </View>
-                        <TouchableOpacity onPress={() => handleDeleteGoal(goal.id)} style={s.goalDelete}>
-                          <Text style={s.goalDeleteText}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
+                      </ScaleDecorator>
                     );
-                  }
+                  }}
+                  scrollEnabled={false}
+                />
+
+                {/* Empty slots below existing goals */}
+                {Array.from({ length: Math.max(0, totalSlots - goals.length) }, (_, i) => {
+                  const slotIdx = goals.length + i;
+                  const isAdding = addingGoalIdx === slotIdx;
 
                   if (isAdding) {
                     return (
@@ -736,7 +748,9 @@ export default function DailyFocusSection() {
                 <>
                   <View style={s.divider} />
                   <View style={s.section}>
-                    <Text style={s.sectionLabel}>ONE THING TO DO BETTER TOMORROW</Text>
+                    <View style={s.reflSectionHeader}>
+                      <Text style={s.reflSectionLabel}>ONE THING TO DO{'\n'}BETTER TOMORROW</Text>
+                    </View>
                     <TextInput
                       style={s.reflectionInput}
                       placeholder="Write one thing you can improve tomorrow…"
@@ -750,7 +764,9 @@ export default function DailyFocusSection() {
                   </View>
 
                   <View style={s.section}>
-                    <Text style={s.sectionLabel}>ONE THING I'M GRATEFUL FOR</Text>
+                    <View style={s.reflSectionHeader}>
+                      <Text style={s.reflSectionLabel}>ONE THING I'M{'\n'}GRATEFUL FOR</Text>
+                    </View>
                     <TextInput
                       style={s.reflectionInput}
                       placeholder="Write one thing you're grateful for today…"
@@ -789,7 +805,8 @@ export default function DailyFocusSection() {
             <FlatList
               data={availableTasks.filter((t) => {
                 if (!taskSearch.trim()) return true;
-                // Locked tasks (empty title) are hidden when actively searching since they have no searchable text
+                // Encrypted tasks have no searchable title — show them always so user can see they're locked
+                if (!t.title && t.encTitle) return true;
                 if (!t.title) return false;
                 return t.title.toLowerCase().includes(taskSearch.toLowerCase());
               })}
@@ -822,194 +839,232 @@ export default function DailyFocusSection() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Habit reorder modal ── */}
+      <Modal visible={reorderHabitsVisible} animationType="slide" transparent onRequestClose={() => setReorderHabitsVisible(false)}>
+        <Pressable style={s.pickerOverlay} onPress={() => setReorderHabitsVisible(false)}>
+          <Pressable style={s.pickerSheet} onPress={() => {}}>
+            <View style={s.pickerTitleRow}>
+              <Text style={s.pickerTitleText}>Reorder Habits</Text>
+              <TouchableOpacity onPress={() => setReorderHabitsVisible(false)}>
+                <Text style={[s.pickerTitleText, { color: '#6366f1' }]}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: s.sectionLabel.color, fontSize: 12, marginBottom: 8, marginHorizontal: 4 }}>
+              Drag ☰ to reorder
+            </Text>
+            <DraggableFlatList
+              data={habits}
+              keyExtractor={(h) => h.id}
+              onDragEnd={({ data }) => handleHabitReorder(data)}
+              renderItem={({ item, drag, isActive }: RenderItemParams<Habit>) => (
+                <View style={[s.reorderRow, { backgroundColor: isActive ? '#6366f120' : 'transparent' }]}>
+                  <Text style={[s.habitText, { flex: 1, color: s.habitText.color }]} numberOfLines={1}>{item.text}</Text>
+                  <TouchableOpacity onLongPress={drag} delayLongPress={0} style={s.reorderHandle}>
+                    <Text style={{ color: s.sectionLabel.color, fontSize: 18 }}>☰</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  card: {
-    backgroundColor: '#1e293b',
-    borderRadius: 14,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'column',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
-  },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerRowRight: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
-  headerTitle: { color: '#f1f5f9', fontWeight: '700', fontSize: 14 },
-  dateNav: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#0f172a', borderRadius: 8, paddingHorizontal: 4, paddingVertical: 2 },
-  navBtn: { paddingHorizontal: 6, paddingVertical: 2 },
-  navBtnText: { color: '#64748b', fontSize: 16, fontWeight: '700' },
-  navBtnDisabled: { color: '#1e293b' },
-  dateText: { color: '#94a3b8', fontSize: 11, fontWeight: '600', maxWidth: 120 },
-  relBadge: { backgroundColor: '#312e81', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
-  relBadgeText: { color: '#a5b4fc', fontSize: 11, fontWeight: '700' },
-  statsRow: { flexDirection: 'row', gap: 4 },
-  statBadge: { backgroundColor: '#0f172a', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
-  statBadgeDone: { backgroundColor: '#14532d' },
-  statBadgeText: { color: '#64748b', fontSize: 10, fontWeight: '700' },
-  statBadgeTextDone: { color: '#4ade80' },
-  collapseIcon: { color: '#64748b', fontSize: 12, marginLeft: 4 },
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      marginHorizontal: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: c.border,
+      overflow: 'hidden',
+    },
+    header: {
+      flexDirection: 'column',
+      gap: 6,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    headerRowRight: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
+    headerTitle: { color: c.tx, fontWeight: '700', fontSize: 14 },
+    dateNav: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.bg, borderRadius: 8, paddingHorizontal: 4, paddingVertical: 2 },
+    navBtn: { paddingHorizontal: 6, paddingVertical: 2 },
+    navBtnText: { color: c.tx3, fontSize: 16, fontWeight: '700' },
+    navBtnDisabled: { color: c.border },
+    dateText: { color: c.tx2, fontSize: 11, fontWeight: '600', maxWidth: 120 },
+    relBadge: { backgroundColor: '#312e81', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
+    relBadgeText: { color: '#a5b4fc', fontSize: 11, fontWeight: '700' },
+    statsRow: { flexDirection: 'row', gap: 4 },
+    statBadge: { backgroundColor: c.bg, borderRadius: 99, paddingHorizontal: 8, paddingVertical: 2 },
+    statBadgeDone: { backgroundColor: '#14532d' },
+    statBadgeText: { color: c.tx3, fontSize: 10, fontWeight: '700' },
+    statBadgeTextDone: { color: '#4ade80' },
+    collapseIcon: { color: c.tx3, fontSize: 12, marginLeft: 4 },
 
-  body: { paddingHorizontal: 16, paddingVertical: 12, gap: 4 },
+    body: { paddingHorizontal: 16, paddingVertical: 12, gap: 4 },
 
-  offlineBanner: {
-    backgroundColor: '#7c2d12',
-    borderRadius: 8, padding: 10, marginBottom: 10,
-  },
-  offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
+    offlineBanner: {
+      backgroundColor: '#7c2d12',
+      borderRadius: 8, padding: 10, marginBottom: 10,
+    },
+    offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
 
-  prevReflBanner: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    borderLeftWidth: 3, borderLeftColor: '#6366f1',
-    paddingLeft: 10, paddingVertical: 6, marginBottom: 8,
-  },
-  prevReflLabel: { color: '#6366f1', fontSize: 9, fontWeight: '800', letterSpacing: 0.8, flexShrink: 0, marginTop: 1 },
-  prevReflText: { color: '#94a3b8', fontSize: 13, fontWeight: '500', lineHeight: 18, flex: 1 },
+    prevReflBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      borderLeftWidth: 3, borderLeftColor: '#6366f1',
+      paddingLeft: 10, paddingVertical: 6, marginBottom: 8,
+    },
+    prevReflLabel: { color: '#6366f1', fontSize: 9, fontWeight: '800', letterSpacing: 0.8, flexShrink: 0, textAlign: 'center' },
+    prevReflText: { color: c.tx2, fontSize: 13, fontWeight: '500', lineHeight: 18, flex: 1 },
 
-  section: { marginBottom: 12 },
-  sectionLabel: { color: '#64748b', fontSize: 9, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+    section: { marginBottom: 12 },
+    sectionLabel: { color: c.tx3, fontSize: 9, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+    reflSectionHeader: { borderLeftWidth: 2, borderLeftColor: '#6366f1', paddingLeft: 8, paddingVertical: 2, marginBottom: 8 },
+    reflSectionLabel: { color: '#6366f1', fontSize: 9, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
 
-  habitsRow: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingBottom: 4 },
-  habitChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#0f172a', borderWidth: 1.5, borderColor: '#334155',
-    borderRadius: 99, paddingHorizontal: 10, paddingVertical: 6,
-  },
-  habitChipDone: { backgroundColor: '#052e16', borderColor: '#86efac' },
-  habitDot: { color: '#475569', fontSize: 12 },
-  habitDotDone: { color: '#22c55e' },
-  habitText: { color: '#94a3b8', fontSize: 13, fontWeight: '500', maxWidth: 140 },
-  habitTextDone: { color: '#4ade80', textDecorationLine: 'line-through' },
-  habitInputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#0f172a', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1.5, borderColor: '#6366f1' },
-  habitInput: { color: '#f1f5f9', fontSize: 13, flex: 1, paddingVertical: 4 },
-  habitAddBtn: { backgroundColor: '#6366f1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  habitAddBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  habitAddChip: {
-    width: 32, height: 32, borderRadius: 8, borderWidth: 1.5,
-    borderColor: '#334155', borderStyle: 'dashed',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  habitAddChipText: { color: '#475569', fontSize: 18, lineHeight: 22 },
-  habitHint: { color: '#334155', fontSize: 10, marginTop: 4 },
+    habitsRow: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingBottom: 4 },
+    habitChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: c.bg, borderWidth: 1.5, borderColor: c.border,
+      borderRadius: 99, paddingHorizontal: 10, paddingVertical: 6,
+    },
+    habitChipDone: { backgroundColor: '#052e16', borderColor: '#86efac' },
+    habitDot: { color: c.tx4, fontSize: 12 },
+    habitDotDone: { color: '#22c55e' },
+    habitText: { color: c.tx2, fontSize: 13, fontWeight: '500', maxWidth: 140 },
+    habitTextDone: { color: '#4ade80', textDecorationLine: 'line-through' },
+    habitInputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.bg, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1.5, borderColor: '#6366f1' },
+    habitInput: { color: c.tx, fontSize: 13, flex: 1, paddingVertical: 4 },
+    habitAddBtn: { backgroundColor: '#6366f1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+    habitAddBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+    habitAddChip: {
+      width: 32, height: 32, borderRadius: 8, borderWidth: 1.5,
+      borderColor: c.border, borderStyle: 'dashed',
+      alignItems: 'center', justifyContent: 'center',
+    },
+    habitAddChipText: { color: c.tx4, fontSize: 18, lineHeight: 22 },
+    habitHint: { color: c.border, fontSize: 10, marginTop: 4 },
 
-  goalsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  carryOverBtn: { backgroundColor: '#78350f', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  carryOverText: { color: '#fbbf24', fontSize: 11, fontWeight: '600' },
+    goalsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+    carryOverBtn: { backgroundColor: '#78350f', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+    carryOverText: { color: '#fbbf24', fontSize: 11, fontWeight: '600' },
 
-  goalRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#0f172a', borderRadius: 10, padding: 10,
-    borderWidth: 1.5, borderColor: '#334155', marginBottom: 6,
-  },
-  goalRowDone: { backgroundColor: '#052e16', borderColor: '#166534' },
-  goalNum: {
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: '#334155', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  goalNumDone: { backgroundColor: '#22c55e' },
-  goalNumActive: { backgroundColor: '#6366f1' },
-  goalNumText: { color: '#94a3b8', fontSize: 10, fontWeight: '800' },
-  goalNumTextDone: { color: '#fff' },
-  goalCheck: { paddingHorizontal: 2 },
-  goalCheckText: { color: '#475569', fontSize: 16 },
-  goalCheckDone: { color: '#22c55e' },
-  goalText: { flex: 1, color: '#e2e8f0', fontSize: 14, fontWeight: '500', lineHeight: 18 },
-  goalTextDone: { color: '#4ade80', textDecorationLine: 'line-through' },
-  goalDelete: { paddingHorizontal: 6, paddingVertical: 4 },
-  goalDeleteText: { color: '#475569', fontSize: 12 },
-  goalEditBtn: { paddingHorizontal: 4, paddingVertical: 4 },
-  goalEditBtnText: { color: '#64748b', fontSize: 12 },
-  goalMoveBtn: { paddingHorizontal: 4, paddingVertical: 4 },
-  goalMoveBtnText: { color: '#64748b', fontSize: 14 },
-  goalSendBackBtn: { paddingHorizontal: 4, paddingVertical: 4 },
-  goalSendBackText: { color: '#6366f1', fontSize: 15 },
+    goalRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: c.bg, borderRadius: 10, padding: 10,
+      borderWidth: 1.5, borderColor: c.border, marginBottom: 6,
+    },
+    goalRowDone: { backgroundColor: '#052e16', borderColor: '#166534' },
+    goalNum: {
+      width: 22, height: 22, borderRadius: 11,
+      backgroundColor: c.border, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    goalNumDone: { backgroundColor: '#22c55e' },
+    goalNumActive: { backgroundColor: '#6366f1' },
+    goalNumText: { color: c.tx2, fontSize: 10, fontWeight: '800' },
+    goalNumTextDone: { color: '#fff' },
+    goalCheck: { paddingHorizontal: 2 },
+    goalCheckText: { color: c.tx4, fontSize: 16 },
+    goalCheckDone: { color: '#22c55e' },
+    goalText: { color: c.tx, fontSize: 14, fontWeight: '500', lineHeight: 18 },
+    goalTextDone: { color: '#4ade80', textDecorationLine: 'line-through' },
+    goalDelete: { paddingHorizontal: 6, paddingVertical: 4 },
+    goalDeleteText: { color: c.tx4, fontSize: 12 },
+    goalEditBtn: { paddingHorizontal: 4, paddingVertical: 4 },
+    goalEditBtnText: { color: c.tx3, fontSize: 12 },
+    goalMoveBtn: { paddingHorizontal: 4, paddingVertical: 4 },
+    goalMoveBtnText: { color: c.tx3, fontSize: 14 },
+    goalSendBackBtn: { paddingHorizontal: 4, paddingVertical: 4 },
+    goalSendBackText: { color: '#6366f1', fontSize: 15 },
 
-  goalAddingRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#1e2d4a', borderRadius: 10, padding: 10,
-    borderWidth: 1.5, borderColor: '#6366f1',
-  },
-  goalInput: { flex: 1, color: '#f1f5f9', fontSize: 14, paddingVertical: 0 },
-  goalSaveBtn: { backgroundColor: '#6366f1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  goalSaveBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+    goalAddingRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      backgroundColor: c.surface2, borderRadius: 10, padding: 10,
+      borderWidth: 1.5, borderColor: '#6366f1',
+    },
+    goalInput: { flex: 1, color: c.tx, fontSize: 14, paddingVertical: 0 },
+    goalSaveBtn: { backgroundColor: '#6366f1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+    goalSaveBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  goalEmpty: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderWidth: 1.5, borderColor: '#1e293b', borderRadius: 10,
-    borderStyle: 'dashed', padding: 10, marginBottom: 6,
-  },
-  goalEmptyText: { color: '#334155', fontSize: 14, fontWeight: '500' },
+    goalEmpty: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      borderWidth: 1.5, borderColor: c.border, borderRadius: 10,
+      borderStyle: 'dashed', padding: 10, marginBottom: 6,
+    },
+    goalEmptyText: { color: c.border2, fontSize: 14, fontWeight: '500' },
 
-  cancelText: { color: '#64748b', fontSize: 16, paddingHorizontal: 4 },
+    cancelText: { color: c.tx3, fontSize: 16, paddingHorizontal: 4 },
 
-  goalLinkedBadge: { color: '#6366f1', fontSize: 10, fontWeight: '600', marginTop: 2 },
-  goalAddingOuter: { marginBottom: 6 },
-  linkTaskBtn: { paddingVertical: 6, paddingHorizontal: 10, alignSelf: 'flex-start' },
-  linkTaskBtnText: { color: '#6366f1', fontSize: 12, fontWeight: '600' },
-  linkedTaskPill: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4,
-  },
-  linkedTaskName: { flex: 1, color: '#a5b4fc', fontSize: 13, fontWeight: '600' },
+    goalLinkedBadge: { color: '#6366f1', fontSize: 10, fontWeight: '600', marginTop: 2 },
+    goalAddingOuter: { marginBottom: 6 },
+    linkTaskBtn: { paddingVertical: 6, paddingHorizontal: 10, alignSelf: 'flex-start' },
+    linkTaskBtnText: { color: '#6366f1', fontSize: 12, fontWeight: '600' },
+    linkedTaskPill: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 4,
+    },
+    linkedTaskName: { flex: 1, color: '#a5b4fc', fontSize: 13, fontWeight: '600' },
 
-  addAnotherBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 8, paddingHorizontal: 12, marginTop: 2,
-    borderWidth: 1.5, borderColor: '#334155', borderRadius: 10,
-    borderStyle: 'dashed',
-  },
-  addAnotherText: { color: '#6366f1', fontSize: 13, fontWeight: '600' },
+    addAnotherBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      paddingVertical: 8, paddingHorizontal: 12, marginTop: 2,
+      borderWidth: 1.5, borderColor: c.border, borderRadius: 10,
+      borderStyle: 'dashed',
+    },
+    addAnotherText: { color: '#6366f1', fontSize: 13, fontWeight: '600' },
 
-  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  pickerSheet: {
-    backgroundColor: '#1e293b', borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    maxHeight: '75%', paddingBottom: 32,
-  },
-  pickerHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: '#334155',
-  },
-  pickerTitle: { color: '#f1f5f9', fontSize: 16, fontWeight: '700' },
-  pickerSearch: {
-    margin: 16, backgroundColor: '#0f172a', borderRadius: 10,
-    borderWidth: 1, borderColor: '#334155', color: '#f1f5f9',
-    fontSize: 14, paddingHorizontal: 14, paddingVertical: 10,
-  },
-  pickerList: { flex: 1 },
-  pickerEmpty: { color: '#475569', fontSize: 14, textAlign: 'center', paddingTop: 24 },
-  pickerItem: {
-    paddingHorizontal: 20, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: '#334155',
-  },
-  pickerItemTitle: { color: '#f1f5f9', fontSize: 14, fontWeight: '600' },
-  pickerItemProject: { color: '#64748b', fontSize: 12, marginTop: 2 },
-  pickerItemLocked: { opacity: 0.55 },
-  pickerItemLockedText: { color: '#94a3b8' },
-  pickerItemLockedHint: { color: '#475569', fontSize: 12, marginTop: 2 },
+    pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+    pickerSheet: {
+      backgroundColor: c.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+      maxHeight: '75%', paddingBottom: 32,
+    },
+    pickerHeader: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    pickerTitle: { color: c.tx, fontSize: 16, fontWeight: '700' },
+    pickerSearch: {
+      margin: 16, backgroundColor: c.bg, borderRadius: 10,
+      borderWidth: 1, borderColor: c.border, color: c.tx,
+      fontSize: 14, paddingHorizontal: 14, paddingVertical: 10,
+    },
+    pickerList: { flex: 1 },
+    pickerEmpty: { color: c.tx2, fontSize: 14, textAlign: 'center', paddingTop: 24 },
+    pickerItem: {
+      paddingHorizontal: 20, paddingVertical: 12,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    pickerItemTitle: { color: c.tx, fontSize: 14, fontWeight: '600' },
+    pickerItemProject: { color: c.tx3, fontSize: 12, marginTop: 2 },
+    pickerItemLocked: { opacity: 0.55 },
+    pickerItemLockedText: { color: c.tx2 },
+    pickerItemLockedHint: { color: c.tx4, fontSize: 12, marginTop: 2 },
 
-  goalReorderBtns: { flexDirection: 'column', gap: 0 },
-  reorderBtn: { padding: 3 },
-  reorderBtnDisabled: { opacity: 0.2 },
-  reorderBtnText: { color: '#64748b', fontSize: 12, fontWeight: '700' },
+    goalRowActive: { borderColor: '#6366f1', opacity: 0.9 },
+    goalDragHandle: { paddingHorizontal: 4, paddingVertical: 4 },
+    goalDragHandleText: { color: c.tx3, fontSize: 16 },
 
-  divider: { height: 1, backgroundColor: '#334155', marginBottom: 12 },
+    divider: { height: 1, backgroundColor: c.border, marginBottom: 12 },
 
-  reflectionInput: {
-    backgroundColor: '#0f172a', borderRadius: 10, borderWidth: 1, borderColor: '#334155',
-    color: '#f1f5f9', fontSize: 14, paddingHorizontal: 14, paddingVertical: 10,
-    lineHeight: 20, minHeight: 44, textAlignVertical: 'top',
-  },
-});
+    reflectionInput: {
+      backgroundColor: c.bg, borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      color: c.tx, fontSize: 14, paddingHorizontal: 14, paddingVertical: 10,
+      lineHeight: 20, minHeight: 44, textAlignVertical: 'top',
+    },
+
+    pickerTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 },
+    pickerTitleText: { color: c.tx, fontSize: 16, fontWeight: '700' },
+    reorderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
+    reorderHandle: { padding: 8, marginLeft: 8 },
+  });
+}

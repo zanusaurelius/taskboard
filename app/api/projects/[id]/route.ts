@@ -7,7 +7,7 @@ import { MAX_PROJECT_NAME_LEN } from "@/lib/constants";
 
 function extractUploadFilenames(html: string | null): string[] {
   if (!html) return [];
-  return [...html.matchAll(/\/api\/uploads\/([a-f0-9]+\.(?:jpg|png|gif|webp))/g)].map((m) => m[1]);
+  return [...html.matchAll(/\/api\/uploads\/([a-f0-9]+\.[a-z0-9]+)/g)].map((m) => m[1]);
 }
 
 async function getOwnedProject(id: string, userId: string) {
@@ -54,6 +54,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const data: { name?: string; encName?: string | null; color?: string | null; archived?: boolean } = {};
   if (typeof body.name === "string") {
     const trimmed = body.name.trim();
+    if (trimmed.length === 0) return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
     if (trimmed.length > MAX_PROJECT_NAME_LEN) {
       return NextResponse.json({ error: `Name must be at most ${MAX_PROJECT_NAME_LEN} characters` }, { status: 400 });
     }

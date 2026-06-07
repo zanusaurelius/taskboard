@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import { existsSync } from "fs";
-import { join } from "path";
+import { existsSync, createReadStream } from "fs";
+import { Readable } from "stream";
+import { join, basename } from "path";
 import { getUserIdWithQueryToken } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
 import { UPLOAD_DIR, THUMB_DIR, isImage } from "@/lib/file-utils";
@@ -16,10 +16,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   // If a pre-generated thumbnail exists, serve it
   if (upload.thumbnail) {
-    const thumbPath = join(THUMB_DIR, upload.thumbnail);
+    const thumbPath = join(THUMB_DIR, basename(upload.thumbnail)); // basename prevents path traversal
     if (existsSync(thumbPath)) {
-      const buffer = await readFile(thumbPath);
-      return new Response(buffer, {
+      const stream = Readable.toWeb(createReadStream(thumbPath)) as ReadableStream;
+      return new Response(stream, {
         headers: {
           "Content-Type": "image/jpeg",
           "Cache-Control": "private, max-age=86400",
@@ -32,10 +32,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (isImage(upload.mimeType)) {
     const filePath = join(UPLOAD_DIR, upload.filename);
     if (!existsSync(filePath)) return NextResponse.json({ error: "File not found" }, { status: 404 });
-    const buffer = await readFile(filePath);
-    return new Response(buffer, {
+    const stream = Readable.toWeb(createReadStream(filePath)) as ReadableStream;
+    return new Response(stream, {
       headers: {
         "Content-Type": upload.mimeType,
+        "Content-Length": String(upload.size),
         "Cache-Control": "private, max-age=3600",
       },
     });

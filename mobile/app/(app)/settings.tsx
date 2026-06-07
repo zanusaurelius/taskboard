@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert,
-  TextInput, ScrollView, ActivityIndicator,
+  TextInput, ScrollView, ActivityIndicator, DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getBaseUrl, clearAll, getGoalLimit, setGoalLimit as storeGoalLimit, getAutoArchiveDays, setAutoArchiveDays as storeAutoArchiveDays } from '@/lib/storage';
 import { apiFetch, isOk, logout } from '@/lib/api';
-import { pendingCount } from '@/lib/sync';
+import { useTheme, useThemeColors, type ThemeMode } from '@/lib/theme-context';
+import type { ThemeColors } from '@/lib/theme-context';
 
 const GOAL_LIMIT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const AUTO_ARCHIVE_OPTIONS = [
@@ -18,7 +19,8 @@ const AUTO_ARCHIVE_OPTIONS = [
   { label: 'After 30 days', value: 30 },
 ];
 
-function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function Section({ title, subtitle, children, c }: { title: string; subtitle?: string; children: React.ReactNode; c: ThemeColors }) {
+  const s = makeStyles(c);
   return (
     <View style={s.section}>
       <Text style={s.sectionTitle}>{title}</Text>
@@ -28,7 +30,8 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, c }: { label: string; children: React.ReactNode; c: ThemeColors }) {
+  const s = makeStyles(c);
   return (
     <View style={s.field}>
       <Text style={s.fieldLabel}>{label}</Text>
@@ -37,12 +40,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function PickerRow({ label, options, value, onChange }: {
+function PickerRow({ label, options, value, onChange, c }: {
   label: string;
   options: { label: string; value: number }[];
   value: number;
   onChange: (v: number) => void;
+  c: ThemeColors;
 }) {
+  const s = makeStyles(c);
   return (
     <View style={s.pickerSection}>
       <Text style={s.fieldLabel}>{label}</Text>
@@ -63,9 +68,12 @@ function PickerRow({ label, options, value, onChange }: {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const colors = useThemeColors();
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
+  const s = makeStyles(colors);
+
   const [serverUrl, setServerUrl] = useState('');
   const [currentUsername, setCurrentUsername] = useState('');
-  const [pending, setPending] = useState(0);
 
   // Account
   const [newUsername, setNewUsername] = useState('');
@@ -75,7 +83,6 @@ export default function SettingsScreen() {
   const [confirmPw, setConfirmPw] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
 
-  // Preferences stored in AsyncStorage-style via a simple approach
   const [goalLimit, setGoalLimit] = useState(3);
   const [autoArchiveDays, setAutoArchiveDays] = useState(0);
 
@@ -93,10 +100,6 @@ export default function SettingsScreen() {
     });
   }, []);
 
-  // Refresh pending count every time Settings comes into focus
-  useFocusEffect(useCallback(() => {
-    pendingCount().then(setPending);
-  }, []));
 
   const handleGoalLimitChange = async (v: number) => {
     setGoalLimit(v);
@@ -168,7 +171,7 @@ export default function SettingsScreen() {
     setDeleteLoading(false);
     if (isOk(res)) {
       await clearAll();
-      router.replace('/(auth)/login');
+      DeviceEventEmitter.emit('auth:logout');
     } else {
       const err = (res as { error?: string }).error ?? 'Failed to delete account.';
       Alert.alert('Error', err);
@@ -178,19 +181,25 @@ export default function SettingsScreen() {
   const handleLogout = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: async () => { await logout(); router.replace('/(auth)/login'); } },
+      { text: 'Sign out', style: 'destructive', onPress: async () => { await logout(); DeviceEventEmitter.emit('auth:logout'); } },
     ]);
   };
 
   const handleChangeServer = () => {
     Alert.alert('Change server', 'This will sign you out and clear all saved data on this device.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Change server', style: 'destructive', onPress: async () => { await clearAll(); router.replace('/(auth)/login'); } },
+      { text: 'Change server', style: 'destructive', onPress: async () => { await clearAll(); DeviceEventEmitter.emit('auth:logout'); } },
     ]);
   };
 
+  const THEME_OPTIONS: { label: string; value: ThemeMode }[] = [
+    { label: 'Auto', value: 'system' },
+    { label: 'Light', value: 'light' },
+    { label: 'Dark', value: 'dark' },
+  ];
+
   return (
-    <SafeAreaView style={s.root} edges={['top']}>
+    <SafeAreaView style={[s.root]} edges={['top']}>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         <View style={s.headingRow}>
           <Text style={s.heading}>Settings</Text>
@@ -199,8 +208,28 @@ export default function SettingsScreen() {
           ) : null}
         </View>
 
+        {/* ── Appearance ── */}
+        <Section title="Appearance" c={colors}>
+          <View style={s.row}>
+            <Text style={s.rowLabel}>Theme</Text>
+            <View style={s.themePicker}>
+              {THEME_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[s.themeChip, themeMode === opt.value && s.themeChipActive]}
+                  onPress={() => setThemeMode(opt.value)}
+                >
+                  <Text style={[s.themeChipText, themeMode === opt.value && s.themeChipTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </Section>
+
         {/* ── Server ── */}
-        <Section title="Server">
+        <Section title="Server" c={colors}>
           <TouchableOpacity
             style={s.row}
             onPress={() => Alert.alert('Server address', serverUrl || '(not set)')}
@@ -214,23 +243,16 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </Section>
 
-        {/* ── Sync ── */}
-        <Section title="Sync">
-          <View style={s.row}>
-            <Text style={s.rowLabel}>Pending changes</Text>
-            <Text style={[s.rowValue, pending > 0 && s.pending]}>{pending}</Text>
-          </View>
-        </Section>
 
         {/* ── Username ── */}
-        <Section title="Username" subtitle="Change how you sign in.">
-          <Field label="New username">
+        <Section title="Username" subtitle="Change how you sign in." c={colors}>
+          <Field label="New username" c={colors}>
             <TextInput
               style={s.input}
               value={newUsername}
               onChangeText={setNewUsername}
               placeholder="Enter new username"
-              placeholderTextColor="#475569"
+              placeholderTextColor={colors.placeholder}
               autoCapitalize="none"
               autoCorrect={false}
               returnKeyType="done"
@@ -249,36 +271,36 @@ export default function SettingsScreen() {
         </Section>
 
         {/* ── Password ── */}
-        <Section title="Password" subtitle="You'll need your current password to set a new one.">
-          <Field label="Current password">
+        <Section title="Password" subtitle="You'll need your current password to set a new one." c={colors}>
+          <Field label="Current password" c={colors}>
             <TextInput
               style={s.input}
               value={currentPw}
               onChangeText={setCurrentPw}
               placeholder="Current password"
-              placeholderTextColor="#475569"
+              placeholderTextColor={colors.placeholder}
               secureTextEntry
               autoCapitalize="none"
             />
           </Field>
-          <Field label="New password">
+          <Field label="New password" c={colors}>
             <TextInput
               style={s.input}
               value={newPw}
               onChangeText={setNewPw}
               placeholder="At least 8 characters"
-              placeholderTextColor="#475569"
+              placeholderTextColor={colors.placeholder}
               secureTextEntry
               autoCapitalize="none"
             />
           </Field>
-          <Field label="Confirm new password">
+          <Field label="Confirm new password" c={colors}>
             <TextInput
               style={s.input}
               value={confirmPw}
               onChangeText={setConfirmPw}
               placeholder="Repeat new password"
-              placeholderTextColor="#475569"
+              placeholderTextColor={colors.placeholder}
               secureTextEntry
               autoCapitalize="none"
               returnKeyType="done"
@@ -297,35 +319,37 @@ export default function SettingsScreen() {
         </Section>
 
         {/* ── Daily Focus ── */}
-        <Section title="Daily Focus" subtitle="Number of goal slots shown in Today's Top N.">
+        <Section title="Daily Focus" subtitle="Number of goal slots shown in Today's Top N." c={colors}>
           <PickerRow
             label="Goals per day"
             options={GOAL_LIMIT_OPTIONS.map((n) => ({ label: String(n), value: n }))}
             value={goalLimit}
             onChange={handleGoalLimitChange}
+            c={colors}
           />
         </Section>
 
         {/* ── Task Board ── */}
-        <Section title="Task Board" subtitle="Auto-archive tasks after they're marked done.">
+        <Section title="Task Board" subtitle="Auto-archive tasks after they're marked done." c={colors}>
           <PickerRow
             label="Auto-archive done tasks"
             options={AUTO_ARCHIVE_OPTIONS}
             value={autoArchiveDays}
             onChange={handleAutoArchiveChange}
+            c={colors}
           />
           <Text style={s.hint}>Runs each time the board loads.</Text>
         </Section>
 
         {/* ── Account ── */}
-        <Section title="Account">
+        <Section title="Account" c={colors}>
           <TouchableOpacity style={s.row} onPress={handleLogout}>
             <Text style={s.dangerText}>Sign out</Text>
           </TouchableOpacity>
         </Section>
 
         {/* ── Danger zone ── */}
-        <Section title="Delete Account" subtitle="Permanently deletes your account and all data. This cannot be undone.">
+        <Section title="Delete Account" subtitle="Permanently deletes your account and all data. This cannot be undone." c={colors}>
           {!showDeleteForm ? (
             <TouchableOpacity style={s.dangerBtn} onPress={() => setShowDeleteForm(true)}>
               <Text style={s.dangerBtnText}>Delete my account…</Text>
@@ -335,13 +359,13 @@ export default function SettingsScreen() {
               <Text style={s.deleteWarning}>
                 This will permanently delete your account, all tasks, notes, projects, and data.
               </Text>
-              <Field label="Confirm with your current password">
+              <Field label="Confirm with your current password" c={colors}>
                 <TextInput
                   style={[s.input, s.inputDanger]}
                   value={deleteConfirmPw}
                   onChangeText={setDeleteConfirmPw}
                   placeholder="Enter password to confirm"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={colors.placeholder}
                   secureTextEntry
                   autoCapitalize="none"
                 />
@@ -370,74 +394,85 @@ export default function SettingsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  scroll: { paddingBottom: 40 },
-  headingRow: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20 },
-  heading: { color: '#f1f5f9', fontSize: 26, fontWeight: '800' },
-  signedInAs: { color: '#475569', fontSize: 13, marginTop: 4 },
-  signedInName: { color: '#94a3b8', fontWeight: '600' },
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    scroll: { paddingBottom: 40 },
+    headingRow: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20 },
+    heading: { color: c.tx, fontSize: 26, fontWeight: '800' },
+    signedInAs: { color: c.tx3, fontSize: 13, marginTop: 4 },
+    signedInName: { color: c.tx2, fontWeight: '600' },
 
-  section: { marginBottom: 24, paddingHorizontal: 20 },
-  sectionTitle: { color: '#f1f5f9', fontSize: 15, fontWeight: '700', marginBottom: 2 },
-  sectionSubtitle: { color: '#64748b', fontSize: 12, marginBottom: 10 },
-  sectionCard: { backgroundColor: '#1e293b', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#334155', gap: 0 },
+    section: { marginBottom: 24, paddingHorizontal: 20 },
+    sectionTitle: { color: c.tx, fontSize: 15, fontWeight: '700', marginBottom: 2 },
+    sectionSubtitle: { color: c.tx3, fontSize: 12, marginBottom: 10 },
+    sectionCard: { backgroundColor: c.surface, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: c.border, gap: 0 },
 
-  row: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#334155',
-  },
-  rowMt: { borderBottomWidth: 0 },
-  rowLabel: { color: '#94a3b8', fontSize: 15 },
-  rowValue: { color: '#64748b', fontSize: 14, maxWidth: '60%', textAlign: 'right' },
-  rowChevron: { color: '#475569', fontSize: 20 },
-  pending: { color: '#f59e0b', fontWeight: '700' },
+    row: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      paddingHorizontal: 16, paddingVertical: 14,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    rowMt: { borderBottomWidth: 0 },
+    rowLabel: { color: c.tx2, fontSize: 15 },
+    rowValue: { color: c.tx3, fontSize: 14, maxWidth: '60%', textAlign: 'right' },
+    rowChevron: { color: c.tx4, fontSize: 20 },
+    pending: { color: '#f59e0b', fontWeight: '700' },
 
-  field: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
-  fieldLabel: { color: '#64748b', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
-  input: {
-    backgroundColor: '#0f172a', borderRadius: 8, borderWidth: 1, borderColor: '#334155',
-    color: '#f1f5f9', fontSize: 15, paddingHorizontal: 12, paddingVertical: 10,
-  },
-  inputDanger: { borderColor: '#7f1d1d' },
+    themePicker: { flexDirection: 'row', gap: 6 },
+    themeChip: {
+      paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20,
+      backgroundColor: c.surface2, borderWidth: 1, borderColor: c.border,
+    },
+    themeChipActive: { backgroundColor: 'rgba(99,102,241,0.15)', borderColor: '#6366f1' },
+    themeChipText: { color: c.tx3, fontSize: 13, fontWeight: '600' },
+    themeChipTextActive: { color: '#6366f1', fontWeight: '700' },
 
-  btn: {
-    margin: 16, marginTop: 8,
-    backgroundColor: '#6366f1', borderRadius: 10, paddingVertical: 12,
-    alignItems: 'center',
-  },
-  btnDisabled: { opacity: 0.4 },
-  btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+    field: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+    fieldLabel: { color: c.tx3, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
+    input: {
+      backgroundColor: c.bg, borderRadius: 8, borderWidth: 1, borderColor: c.border,
+      color: c.tx, fontSize: 15, paddingHorizontal: 12, paddingVertical: 10,
+    },
+    inputDanger: { borderColor: '#7f1d1d' },
 
-  pickerSection: { paddingHorizontal: 16, paddingVertical: 12 },
-  pickerRow: { flexDirection: 'row', gap: 8, paddingBottom: 2 },
-  pickerChip: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
-    backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155',
-  },
-  pickerChipActive: { backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1' },
-  pickerChipText: { color: '#64748b', fontSize: 13, fontWeight: '600' },
-  pickerChipTextActive: { color: '#a5b4fc' },
+    btn: {
+      margin: 16, marginTop: 8,
+      backgroundColor: '#6366f1', borderRadius: 10, paddingVertical: 12,
+      alignItems: 'center',
+    },
+    btnDisabled: { opacity: 0.4 },
+    btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  hint: { color: '#475569', fontSize: 12, paddingHorizontal: 16, paddingBottom: 12 },
+    pickerSection: { paddingHorizontal: 16, paddingVertical: 12 },
+    pickerRow: { flexDirection: 'row', gap: 8, paddingBottom: 2 },
+    pickerChip: {
+      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+      backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+    },
+    pickerChipActive: { backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1' },
+    pickerChipText: { color: c.tx3, fontSize: 13, fontWeight: '600' },
+    pickerChipTextActive: { color: '#a5b4fc' },
 
-  dangerText: { color: '#ef4444', fontSize: 15, fontWeight: '600' },
-  dangerBtn: {
-    margin: 16, borderWidth: 1.5, borderColor: '#7f1d1d',
-    borderRadius: 10, paddingVertical: 12, alignItems: 'center',
-  },
-  dangerBtnText: { color: '#ef4444', fontSize: 15, fontWeight: '600' },
+    hint: { color: c.tx4, fontSize: 12, paddingHorizontal: 16, paddingBottom: 12 },
 
-  deleteForm: { padding: 16, gap: 8 },
-  deleteWarning: {
-    color: '#f87171', fontSize: 13, lineHeight: 18,
-    backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 8,
-    padding: 12, marginBottom: 4,
-  },
-  deleteButtons: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  cancelBtn: { flex: 1, borderWidth: 1, borderColor: '#334155', borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
-  cancelBtnText: { color: '#64748b', fontSize: 14, fontWeight: '600' },
-  deleteConfirmBtn: { flex: 1, backgroundColor: '#ef4444', borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
-  deleteConfirmBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-});
+    dangerText: { color: '#ef4444', fontSize: 15, fontWeight: '600' },
+    dangerBtn: {
+      margin: 16, borderWidth: 1.5, borderColor: '#7f1d1d',
+      borderRadius: 10, paddingVertical: 12, alignItems: 'center',
+    },
+    dangerBtnText: { color: '#ef4444', fontSize: 15, fontWeight: '600' },
+
+    deleteForm: { padding: 16, gap: 8 },
+    deleteWarning: {
+      color: '#f87171', fontSize: 13, lineHeight: 18,
+      backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 8,
+      padding: 12, marginBottom: 4,
+    },
+    deleteButtons: { flexDirection: 'row', gap: 10, marginTop: 4 },
+    cancelBtn: { flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
+    cancelBtnText: { color: c.tx3, fontSize: 14, fontWeight: '600' },
+    deleteConfirmBtn: { flex: 1, backgroundColor: '#ef4444', borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
+    deleteConfirmBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  });
+}

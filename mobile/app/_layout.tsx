@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, TextInput, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Alert, TextInput, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, NativeModules, AppState, type AppStateStatus } from 'react-native';
 import { useRouter, useSegments, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -8,17 +8,33 @@ import { onUnauthorized, onDbLocked, checkDbStatus, unlockDb } from '@/lib/api';
 import { DeviceEventEmitter } from 'react-native';
 import { VaultProvider, useVault } from '@/lib/vault-context';
 import { flushQueue, watchConnectivity } from '@/lib/sync';
+import { syncAllImageFiles } from '@/lib/background-sync';
+import { ThemeProvider, useThemeColors } from '@/lib/theme-context';
+import ShareHandlerModal, { type SharedFile } from '@/components/ShareHandlerModal';
 
 // Inner component has access to VaultProvider context
 function RootNavigator() {
   const router = useRouter();
   const segments = useSegments();
   useVault(); // keep VaultProvider context alive for optional vault features
+  const colors = useThemeColors();
   const [authState, setAuthState] = useState<'loading' | 'authed' | 'unauthed'>('loading');
+  const [pendingShare, setPendingShare] = useState<SharedFile[] | null>(null);
   const [dbLocked, setDbLocked] = useState(false);
   const [dbPassphrase, setDbPassphrase] = useState('');
   const [dbUnlocking, setDbUnlocking] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+
+  const checkForShare = async () => {
+    if (!NativeModules.TaskboardShare) return;
+    try {
+      const json: string | null = await NativeModules.TaskboardShare.getInitialShare();
+      if (json) {
+        const parsed = JSON.parse(json) as SharedFile[];
+        if (parsed.length > 0) setPendingShare(parsed);
+      }
+    } catch { /* not Android or module unavailable */ }
+  };
 
   const checkAuth = async () => {
     const [token, baseUrl] = await Promise.all([getToken(), getBaseUrl()]);
@@ -54,14 +70,38 @@ function RootNavigator() {
     // Login screen emits this after storing the token so we re-check immediately,
     // avoiding a race where authState is still 'unauthed' when navigation fires.
     const sub = DeviceEventEmitter.addListener('auth:login', checkAuth);
-    return () => sub.remove();
+    const logoutSub = DeviceEventEmitter.addListener('auth:logout', () => setAuthState('unauthed'));
+    // Check for pending Android share intent when app comes to foreground
+    const appSub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') {
+        checkForShare();
+        syncAllImageFiles().catch(() => {});
+      }
+    });
+    return () => { sub.remove(); logoutSub.remove(); appSub.remove(); };
   }, []);
+
+  // Check for pending share when authenticated
+  useEffect(() => {
+    if (authState === 'authed') checkForShare();
+  }, [authState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Flush offline queue on auth and whenever connectivity is restored
   useEffect(() => {
     if (authState !== 'authed') return;
-    flushQueue();
-    return watchConnectivity(() => flushQueue());
+    syncAllImageFiles().catch(() => {});
+    const handleFlush = () => {
+      flushQueue().then(({ dropped }) => {
+        if (dropped > 0) {
+          Alert.alert(
+            'Sync warning',
+            `${dropped} offline change${dropped > 1 ? 's' : ''} could not be applied after repeated failures and were discarded.`,
+          );
+        }
+      });
+    };
+    handleFlush();
+    return watchConnectivity(handleFlush);
   }, [authState]);
 
   useEffect(() => {
@@ -83,15 +123,15 @@ function RootNavigator() {
 
   if (dbLocked) {
     return (
-      <View style={dbStyles.root}>
-        <View style={dbStyles.card}>
+      <View style={[dbStyles.root, { backgroundColor: colors.bg }]}>
+        <View style={[dbStyles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={dbStyles.icon}>🔐</Text>
-          <Text style={dbStyles.title}>Database locked</Text>
-          <Text style={dbStyles.subtitle}>Enter your database passphrase to continue</Text>
+          <Text style={[dbStyles.title, { color: colors.tx }]}>Database locked</Text>
+          <Text style={[dbStyles.subtitle, { color: colors.tx3 }]}>Enter your database passphrase to continue</Text>
           <TextInput
-            style={[dbStyles.input, dbError ? dbStyles.inputError : null]}
+            style={[dbStyles.input, { backgroundColor: colors.bg, borderColor: dbError ? '#ef4444' : colors.border, color: colors.tx }]}
             placeholder="Database passphrase"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={colors.placeholder}
             value={dbPassphrase}
             onChangeText={(v) => { setDbPassphrase(v); setDbError(null); }}
             secureTextEntry
@@ -108,7 +148,18 @@ function RootNavigator() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <>
+      <StatusBar style={colors.statusBar} />
+      <Stack screenOptions={{ headerShown: false }} />
+      {pendingShare && authState === 'authed' && (
+        <ShareHandlerModal
+          files={pendingShare}
+          onDismiss={() => setPendingShare(null)}
+        />
+      )}
+    </>
+  );
 }
 
 const dbStyles = StyleSheet.create({
@@ -127,10 +178,11 @@ const dbStyles = StyleSheet.create({
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <VaultProvider>
-        <StatusBar style="light" />
-        <RootNavigator />
-      </VaultProvider>
+      <ThemeProvider>
+        <VaultProvider>
+          <RootNavigator />
+        </VaultProvider>
+      </ThemeProvider>
     </GestureHandlerRootView>
   );
 }

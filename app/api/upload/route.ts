@@ -78,8 +78,8 @@ export async function POST(request: Request) {
     );
   }
 
-  // Check per-user storage quota
-  const usage = await prisma.upload.aggregate({ where: { userId }, _sum: { size: true } });
+  // Check per-user storage quota (exclude soft-deleted uploads)
+  const usage = await prisma.upload.aggregate({ where: { userId, deletedAt: null }, _sum: { size: true } });
   const currentBytes = usage._sum.size ?? 0;
   if (currentBytes + buffer.length > QUOTA_BYTES) {
     return NextResponse.json({ error: "Storage quota exceeded" }, { status: 413 });

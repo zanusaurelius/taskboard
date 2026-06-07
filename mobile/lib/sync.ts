@@ -13,8 +13,8 @@ export type ConflictHandler = (op: {
   body: object | null;
 }, serverItem: unknown) => void;
 
-export async function flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: number; failed: number }> {
-  if (isFlushing) return { flushed: 0, failed: 0 };
+export async function flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: number; failed: number; dropped: number }> {
+  if (isFlushing) return { flushed: 0, failed: 0, dropped: 0 };
   isFlushing = true;
   try {
     return await _flushQueue(onConflict);
@@ -23,18 +23,20 @@ export async function flushQueue(onConflict?: ConflictHandler): Promise<{ flushe
   }
 }
 
-async function _flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: number; failed: number }> {
+async function _flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: number; failed: number; dropped: number }> {
   const token = await getToken();
-  if (!token) return { flushed: 0, failed: 0 };
+  if (!token) return { flushed: 0, failed: 0, dropped: 0 };
 
   const ops = await allPending();
   let flushed = 0;
   let failed = 0;
+  let dropped = 0;
 
   for (const op of ops) {
     if (op.retry_count >= MAX_RETRY) {
       await dequeue(op.id);
-      failed++;
+      console.warn(`[sync] Dropped op after ${MAX_RETRY} retries:`, op.method, op.path);
+      dropped++;
       continue;
     }
 
@@ -73,7 +75,7 @@ async function _flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: num
     }
   }
 
-  return { flushed, failed };
+  return { flushed, failed, dropped };
 }
 
 

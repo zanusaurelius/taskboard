@@ -14,18 +14,24 @@ import RichEditor, { type RichEditorRef } from '@/components/RichEditor';
 import { BulletListIcon, NumberedListIcon, ImageUploadIcon } from '@/components/ToolbarIcons';
 import AttachmentsPanel from '@/components/AttachmentsPanel';
 import type { Note, Folder } from '@/lib/types';
+import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 type SavedNote = Note & { _title: string };
 
 export default function NoteEditorScreen() {
-  const { id, revealToken } = useLocalSearchParams<{ id: string; revealToken?: string }>();
+  const { id, revealToken, fresh } = useLocalSearchParams<{ id: string; revealToken?: string; fresh?: string }>();
   const router = useRouter();
   const isNew = id === 'new';
+  // "fresh" = note was just pre-created by the FAB; skip loading spinner and show full UI immediately
+  const isFresh = fresh === '1';
   const { masterKey, isUnlocked, encrypt, decrypt } = useVault();
+  const colors = useThemeColors();
+  const s = makeStyles(colors);
 
   const [title, setTitle] = useState('');
   const [note, setNote] = useState<SavedNote | null>(null);
-  const [loading, setLoading] = useState(!isNew);
+  // Fresh notes were just created — we know they're empty, so skip the spinner
+  const [loading, setLoading] = useState(!isNew && !isFresh);
   const [savedFlash, setSavedFlash] = useState(false);
   const [starred, setStarred] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -95,6 +101,10 @@ export default function NoteEditorScreen() {
     const wasEncrypted = !!(noteRef.current?.encTitle || noteRef.current?.encContent);
     if (wasEncrypted && !masterKey) {
       savingRef.current = false;
+      Alert.alert(
+        'Vault locked',
+        'Your vault locked while you were editing. Unlock your vault to save these changes.',
+      );
       return;
     }
 
@@ -108,6 +118,8 @@ export default function NoteEditorScreen() {
     };
 
     if (isNew) {
+      // Don't create an empty note — user may just be moving focus to the editor.
+      if (!t.trim() && !html.trim()) { savingRef.current = false; return; }
       const result = await apiFetch<Note>('/api/notes', { method: 'POST', body: JSON.stringify(body) });
       if (isOk(result)) {
         await setLastSynced('note', result.data.id, result.data.updatedAt);
@@ -404,7 +416,7 @@ export default function NoteEditorScreen() {
 
       {/* Editor area — toolbar at bottom (above keyboard) so title stays visible */}
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView style={s.flex} keyboardShouldPersistTaps="handled">
+        <ScrollView style={[s.flex, { backgroundColor: colors.surface }]} keyboardShouldPersistTaps="handled">
           {/* Title */}
           <TextInput
             ref={titleRef}
@@ -416,7 +428,7 @@ export default function NoteEditorScreen() {
             placeholderTextColor="#334155"
             returnKeyType="next"
             onSubmitEditing={() => editorRef.current?.focus()}
-            autoFocus={isNew}
+            autoFocus={isNew || isFresh}
             multiline={false}
           />
           <View style={s.divider} />
@@ -468,50 +480,53 @@ export default function NoteEditorScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  flex: { flex: 1 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderColor: '#1e293b',
-  },
-  backBtn: { padding: 4 },
-  backText: { color: '#6366f1', fontSize: 17 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  iconBtn: { padding: 6 },
-  iconBtnText: { fontSize: 19, color: '#94a3b8' },
-  iconDim: { opacity: 0.35 },
-  starActive: { color: '#f59e0b' },
-  chipBtn: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7, backgroundColor: 'rgba(99,102,241,0.15)' },
-  chipBtnText: { color: '#818cf8', fontSize: 13, fontWeight: '600' },
-  savedText: {
-    position: 'absolute', left: 0, right: 0, textAlign: 'center',
-    color: '#22c55e', fontSize: 13, fontWeight: '600', pointerEvents: 'none',
-  },
-  toolbar: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#1e293b', borderTopWidth: 1, borderTopColor: '#334155',
-    paddingHorizontal: 4, paddingVertical: 2,
-  },
-  fmtBtn: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 6, marginHorizontal: 1 },
-  fmtBtnText: { color: '#94a3b8', fontSize: 14, fontWeight: '600' },
-  fmtBold: { color: '#e2e8f0', fontSize: 15, fontWeight: '800' },
-  fmtItalic: { color: '#e2e8f0', fontSize: 15, fontStyle: 'italic', fontWeight: '600' },
-  fmtUnderline: { color: '#e2e8f0', fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
-  fmtCode: { color: '#7dd3fc', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  fmtSep: { width: 1, height: 20, backgroundColor: '#334155', marginHorizontal: 4 },
-  titleInput: {
-    color: '#f1f5f9', fontSize: 22, fontWeight: '700',
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8,
-  },
-  divider: { height: 1, backgroundColor: '#1e293b', marginHorizontal: 20, marginBottom: 4 },
-  editor: { backgroundColor: '#0f172a' },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
-  folderModal: { backgroundColor: '#1e293b', borderRadius: 16, padding: 20, width: '80%', gap: 4 },
-  folderModalTitle: { color: '#f1f5f9', fontSize: 16, fontWeight: '700', marginBottom: 8 },
-  folderOpt: { paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10 },
-  folderOptActive: { backgroundColor: '#312e81' },
-  folderOptText: { color: '#94a3b8', fontSize: 15, fontWeight: '600' },
-  folderOptTextActive: { color: '#a5b4fc' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    flex: { flex: 1 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
+    header: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderColor: c.border,
+    },
+    backBtn: { padding: 4 },
+    backText: { color: '#6366f1', fontSize: 17 },
+    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    iconBtn: { padding: 6 },
+    iconBtnText: { fontSize: 19, color: c.tx2 },
+    iconDim: { opacity: 0.35 },
+    starActive: { color: '#f59e0b' },
+    chipBtn: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 7, backgroundColor: 'rgba(99,102,241,0.15)' },
+    chipBtnText: { color: '#818cf8', fontSize: 13, fontWeight: '600' },
+    savedText: {
+      flex: 1, textAlign: 'center',
+      color: '#22c55e', fontSize: 13, fontWeight: '600', pointerEvents: 'none',
+    },
+    toolbar: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.border,
+      paddingHorizontal: 4, paddingVertical: 2,
+    },
+    fmtBtn: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 6, marginHorizontal: 1 },
+    fmtBtnText: { color: c.tx2, fontSize: 14, fontWeight: '600' },
+    fmtBold: { color: c.tx, fontSize: 15, fontWeight: '800' },
+    fmtItalic: { color: c.tx, fontSize: 15, fontStyle: 'italic', fontWeight: '600' },
+    fmtUnderline: { color: c.tx, fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
+    fmtCode: { color: '#7dd3fc', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+    fmtSep: { width: 1, height: 20, backgroundColor: c.border, marginHorizontal: 4 },
+    titleInput: {
+      color: c.tx, fontSize: 22, fontWeight: '700',
+      paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8,
+      backgroundColor: c.surface,
+    },
+    divider: { height: 1, backgroundColor: c.border, marginHorizontal: 20, marginBottom: 4 },
+    editor: { backgroundColor: c.surface },
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+    folderModal: { backgroundColor: c.surface, borderRadius: 16, padding: 20, width: '80%', gap: 4, borderWidth: 1, borderColor: c.border },
+    folderModalTitle: { color: c.tx, fontSize: 16, fontWeight: '700', marginBottom: 8 },
+    folderOpt: { paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10 },
+    folderOptActive: { backgroundColor: 'rgba(99,102,241,0.2)' },
+    folderOptText: { color: c.tx2, fontSize: 15, fontWeight: '600' },
+    folderOptTextActive: { color: '#a5b4fc' },
+  });
+}

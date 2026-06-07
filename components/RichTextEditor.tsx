@@ -123,9 +123,9 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
 
   const btnSx = (active: boolean) => ({
     p: 0.6, borderRadius: 1,
-    color: active ? "#6366f1" : "#64748b",
-    backgroundColor: active ? "#eef0ff" : "transparent",
-    "&:hover": { backgroundColor: active ? "#e0e4ff" : "#f1f5f9" },
+    color: active ? "#6366f1" : "var(--tx-3)",
+    backgroundColor: active ? "rgba(99,102,241,0.15)" : "transparent",
+    "&:hover": { backgroundColor: active ? "rgba(99,102,241,0.2)" : "var(--surface-hover, rgba(0,0,0,0.06))" },
   });
 
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,10 +143,10 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
       }}
       onDrop={() => setIsDragOver(false)}
       sx={{
-        border: isDragOver ? "2px dashed #6366f1" : "1px solid #e2e8f0",
+        border: isDragOver ? "2px dashed #6366f1" : "1px solid var(--border)",
         borderRadius: 2,
         overflow: "hidden",
-        backgroundColor: isDragOver ? "#f5f6ff" : "transparent",
+        backgroundColor: isDragOver ? "rgba(99,102,241,0.08)" : "transparent",
         transition: "border-color 0.15s, box-shadow 0.15s, background-color 0.15s",
         "&:focus-within": {
           borderColor: "#6366f1",
@@ -158,48 +158,48 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
       <Box sx={{
         display: "flex", alignItems: "center", gap: 0.25,
         px: 1.25, py: 0.75,
-        borderBottom: "1px solid #f1f5f9",
-        backgroundColor: "#fafafa",
+        borderBottom: "1px solid var(--border)",
+        backgroundColor: "var(--surface-2)",
         flexWrap: "wrap",
       }}>
         <Tooltip title="Bold (⌘B)" placement="top">
-          <IconButton size="small" onClick={() => editor.chain().focus().toggleBold().run()} sx={btnSx(editor.isActive("bold"))}>
+          <IconButton tabIndex={-1} size="small" onClick={() => editor.chain().focus().toggleBold().run()} sx={btnSx(editor.isActive("bold"))}>
             <FormatBoldIcon sx={{ fontSize: 19 }} />
           </IconButton>
         </Tooltip>
         <Tooltip title="Italic (⌘I)" placement="top">
-          <IconButton size="small" onClick={() => editor.chain().focus().toggleItalic().run()} sx={btnSx(editor.isActive("italic"))}>
+          <IconButton tabIndex={-1} size="small" onClick={() => editor.chain().focus().toggleItalic().run()} sx={btnSx(editor.isActive("italic"))}>
             <FormatItalicIcon sx={{ fontSize: 19 }} />
           </IconButton>
         </Tooltip>
         <Tooltip title="Underline (⌘U)" placement="top">
-          <IconButton size="small" onClick={() => editor.chain().focus().toggleUnderline().run()} sx={btnSx(editor.isActive("underline"))}>
+          <IconButton tabIndex={-1} size="small" onClick={() => editor.chain().focus().toggleUnderline().run()} sx={btnSx(editor.isActive("underline"))}>
             <FormatUnderlinedIcon sx={{ fontSize: 19 }} />
           </IconButton>
         </Tooltip>
 
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.75, borderColor: "#e2e8f0" }} />
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.75, borderColor: "var(--border)" }} />
 
         <Tooltip title="Bullet list" placement="top">
-          <IconButton size="small" onClick={() => editor.chain().focus().toggleBulletList().run()} sx={btnSx(editor.isActive("bulletList"))}>
+          <IconButton tabIndex={-1} size="small" onClick={() => editor.chain().focus().toggleBulletList().run()} sx={btnSx(editor.isActive("bulletList"))}>
             <FormatListBulletedIcon sx={{ fontSize: 19 }} />
           </IconButton>
         </Tooltip>
         <Tooltip title="Numbered list" placement="top">
-          <IconButton size="small" onClick={() => editor.chain().focus().toggleOrderedList().run()} sx={btnSx(editor.isActive("orderedList"))}>
+          <IconButton tabIndex={-1} size="small" onClick={() => editor.chain().focus().toggleOrderedList().run()} sx={btnSx(editor.isActive("orderedList"))}>
             <FormatListNumberedIcon sx={{ fontSize: 19 }} />
           </IconButton>
         </Tooltip>
 
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.75, borderColor: "#e2e8f0" }} />
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.75, borderColor: "var(--border)" }} />
 
         <Tooltip title="Code" placement="top">
-          <IconButton size="small" onClick={() => editor.chain().focus().toggleCode().run()} sx={btnSx(editor.isActive("code"))}>
+          <IconButton tabIndex={-1} size="small" onClick={() => editor.chain().focus().toggleCode().run()} sx={btnSx(editor.isActive("code"))}>
             <CodeIcon sx={{ fontSize: 19 }} />
           </IconButton>
         </Tooltip>
         <Tooltip title="Upload image" placement="top">
-          <IconButton size="small" onClick={() => fileRef.current?.click()} sx={btnSx(false)}>
+          <IconButton tabIndex={-1} size="small" onClick={() => fileRef.current?.click()} sx={btnSx(false)}>
             <ImageIcon sx={{ fontSize: 19 }} />
           </IconButton>
         </Tooltip>
@@ -219,7 +219,7 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
             minHeight,
             fontSize: "0.9rem",
             lineHeight: 1.65,
-            color: "#1e293b",
+            color: "var(--tx-1)",
           },
           "& .rte-content p": { margin: "0 0 0.4em" },
           "& .rte-content p:last-child": { marginBottom: 0 },
@@ -229,7 +229,7 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
           "& .rte-content em": { fontStyle: "italic" },
           "& .rte-content u": { textDecoration: "underline" },
           "& .rte-content code": {
-            backgroundColor: "#f1f5f9",
+            backgroundColor: "var(--surface-2)",
             borderRadius: "4px",
             padding: "0 4px",
             fontFamily: "monospace",
@@ -250,7 +250,7 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
           "& .rte-content blockquote": {
             borderLeft: "3px solid #e2e8f0",
             paddingLeft: "1em",
-            color: "#64748b",
+            color: "var(--tx-3)",
             margin: "0.5em 0",
           },
         }}

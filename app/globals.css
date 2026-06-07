@@ -6,10 +6,41 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Theme tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --border-2: #cbd5e1;
+  --divider: rgba(0,0,0,0.07);
+  --accent-tint: rgba(99,102,241,0.12);
+  --tx: #1e293b;
+  --tx-2: #475569;
+  --tx-3: #64748b;
+  --tx-4: #94a3b8;
+}
+
+[data-theme="dark"] {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #162032;
+  --surface-hover: #243347;
+  --border: #334155;
+  --border-2: #475569;
+  --divider: rgba(255,255,255,0.07);
+  --accent-tint: rgba(99,102,241,0.18);
+  --tx: #f1f5f9;
+  --tx-2: #94a3b8;
+  --tx-3: #64748b;
+  --tx-4: #475569;
+}
+
 body {
   margin: 0;
   padding: 0;
-  background: #f1f5f9;
+  background: var(--bg);
 }
 
 * {
@@ -24,9 +55,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--border-2);
   border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--tx-4);
 }

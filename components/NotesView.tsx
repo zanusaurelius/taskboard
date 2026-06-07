@@ -17,6 +17,8 @@ import Snackbar from "@mui/material/Snackbar";
 import LinearProgress from "@mui/material/LinearProgress";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogActions from "@mui/material/DialogActions";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import RestoreFromTrashIcon from "@mui/icons-material/RestoreFromTrash";
 import AddIcon from "@mui/icons-material/Add";
@@ -132,6 +134,7 @@ function NotesViewInner({ onCreateTask }: Props) {
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
   const [draggedNoteIds, setDraggedNoteIds]   = useState<string[]>([]);
   const [dragOverTarget, setDragOverTarget]   = useState<DragTarget | null>(null);
+  const [batchDeleteConfirm, setBatchDeleteConfirm] = useState<{ notes: Note[] } | null>(null);
   const lastClickedIdRef  = useRef<string | null>(null);
   const sortedNotesRef    = useRef<Note[]>([]);
   const stableOrderRef    = useRef<string[]>([]);
@@ -595,22 +598,25 @@ function NotesViewInner({ onCreateTask }: Props) {
     setActiveId(n.id);
     setSelectedNoteIds(new Set([n.id]));
   };
+  const executeBatchDelete = async (toDelete: Note[]) => {
+    if (activeId && toDelete.some(n => n.id === activeId)) { setActiveId(null); setLocalTitle(""); setLocalContent(""); }
+    setSelectedNoteIds(new Set());
+    for (const note of toDelete) {
+      if (note.locked || note.hidden) {
+        startPendingDelete(note);
+      } else {
+        await deleteNote(note.id);
+      }
+    }
+  };
+
   const ctxDelete = async () => {
     if (!contextMenu) return;
     const isMulti = selectedNoteIds.has(contextMenu.note.id) && selectedNoteIds.size > 1;
     closeContextMenu();
     if (isMulti) {
       const toDelete = Array.from(selectedNoteIds).map(id => notes.find(n => n.id === id)).filter((n): n is Note => !!n);
-      if (activeId && selectedNoteIds.has(activeId)) { setActiveId(null); setLocalTitle(""); setLocalContent(""); }
-      setSelectedNoteIds(new Set());
-      // Locked/hidden notes get the 30-second undo window; regular notes go straight to trash
-      for (const note of toDelete) {
-        if (note.locked || note.hidden) {
-          startPendingDelete(note);
-        } else {
-          deleteNote(note.id);
-        }
-      }
+      setBatchDeleteConfirm({ notes: toDelete });
       return;
     }
     const note = contextMenu.note;
@@ -940,7 +946,7 @@ function NotesViewInner({ onCreateTask }: Props) {
 
       {/* ── Left panel ── */}
       <Box
-        sx={{ width: { xs: "100%", sm: 280 }, flexShrink: 0, borderRight: "1px solid #e2e8f0", display: isMobile && mobilePanel === "editor" ? "none" : "flex", flexDirection: "column", backgroundColor: "#f8fafc" }}
+        sx={{ width: { xs: "100%", sm: 280 }, flexShrink: 0, borderRight: "1px solid var(--border)", display: isMobile && mobilePanel === "editor" ? "none" : "flex", flexDirection: "column", backgroundColor: "var(--surface-2)" }}
         onContextMenu={(e) => { e.preventDefault(); setListCtxMenu({ x: e.clientX, y: e.clientY }); }}
       >
 
@@ -949,7 +955,7 @@ function NotesViewInner({ onCreateTask }: Props) {
           <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
             <Typography
               onClick={handleNotesHeaderClick}
-              sx={{ fontWeight: 700, fontSize: "0.85rem", color: "#1e293b", cursor: "default", userSelect: "none" }}
+              sx={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--tx)", cursor: "default", userSelect: "none" }}
             >
               Notes
             </Typography>
@@ -959,13 +965,13 @@ function NotesViewInner({ onCreateTask }: Props) {
             </Button>
           </Box>
           {isRevealed && (
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, px: 0.75, py: 0.5, borderRadius: 1.5, backgroundColor: "#eef0ff" }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, px: 0.75, py: 0.5, borderRadius: 1.5, backgroundColor: "rgba(99,102,241,0.12)" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
                 <ShieldOutlinedIcon sx={{ fontSize: 13, color: "#6366f1" }} />
                 <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#6366f1" }}>Vault open</Typography>
               </Box>
               <Tooltip title="Lock vault and hide hidden notes" placement="top">
-                <IconButton size="small" onClick={handleCloseVault} sx={{ p: 0.25, color: "#6366f1", "&:hover": { backgroundColor: "#e0e4ff" } }}>
+                <IconButton size="small" onClick={handleCloseVault} sx={{ p: 0.25, color: "#6366f1", "&:hover": { backgroundColor: "rgba(99,102,241,0.2)" } }}>
                   <LockOutlinedIcon sx={{ fontSize: 13 }} />
                 </IconButton>
               </Tooltip>
@@ -984,9 +990,9 @@ function NotesViewInner({ onCreateTask }: Props) {
               </Tooltip>
             </Box>
           )}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: 1.5, px: 1.25, py: 0.6 }}>
-            <SearchIcon sx={{ fontSize: 16, color: "#94a3b8", flexShrink: 0 }} />
-            <InputBase value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search notes…" sx={{ fontSize: "0.82rem", color: "#334155", flex: 1 }} />
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: 1.5, px: 1.25, py: 0.6 }}>
+            <SearchIcon sx={{ fontSize: 16, color: "var(--tx-4)", flexShrink: 0 }} />
+            <InputBase value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search notes…" sx={{ fontSize: "0.82rem", color: "var(--tx-2)", flex: 1 }} />
           </Box>
         </Box>
 
@@ -1010,12 +1016,12 @@ function NotesViewInner({ onCreateTask }: Props) {
 
         {/* Folders section header with collapse toggle */}
         <Box sx={{ px: 1.5, py: 0.25, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <Typography sx={{ fontSize: "0.67rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, userSelect: "none" }}>
+          <Typography sx={{ fontSize: "0.67rem", fontWeight: 700, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 0.8, userSelect: "none" }}>
             Folders
           </Typography>
           <Tooltip title={foldersCollapsed ? "Expand folders" : "Collapse folders"} placement="top">
             <IconButton size="small" onClick={() => setFoldersCollapsed(c => !c)}
-              sx={{ p: 0.2, color: "#94a3b8", "&:hover": { color: "#64748b", backgroundColor: "#f1f5f9" } }}>
+              sx={{ p: 0.2, color: "var(--tx-4)", "&:hover": { color: "#64748b", backgroundColor: "var(--bg)" } }}>
               {foldersCollapsed ? <ExpandMoreIcon sx={{ fontSize: 14 }} /> : <ExpandLessIcon sx={{ fontSize: 14 }} />}
             </IconButton>
           </Tooltip>
@@ -1043,7 +1049,7 @@ function NotesViewInner({ onCreateTask }: Props) {
                     onKeyDown={(e) => { if (e.key === "Enter") handleRenameFolder(); if (e.key === "Escape") setRenamingFolder(null); }}
                     onBlur={handleRenameFolder}
                     autoFocus
-                    sx={{ fontSize: "0.8rem", color: "#1e293b", width: "100%", px: 1, py: 0.5, backgroundColor: "#fff", borderRadius: 1.5, border: "1px solid #c7d2fe" }}
+                    sx={{ fontSize: "0.8rem", color: "var(--tx)", width: "100%", px: 1, py: 0.5, backgroundColor: "var(--surface)", borderRadius: 1.5, border: "1px solid #c7d2fe" }}
                   />
                 ) : (
                   <FolderRow
@@ -1068,11 +1074,11 @@ function NotesViewInner({ onCreateTask }: Props) {
                 )}
                 <Box className="folder-actions" sx={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", display: "flex", opacity: 0, transition: "opacity 0.15s", gap: 0.25 }}>
                   <IconButton size="small" onClick={() => { setRenamingFolder(f); setRenameFolderValue(f.name); }}
-                    sx={{ p: 0.3, color: "#64748b", backgroundColor: "rgba(248,250,252,0.9)", "&:hover": { color: "#475569", backgroundColor: "#e2e8f0" } }}>
+                    sx={{ p: 0.3, color: "var(--tx-3)", backgroundColor: "var(--surface)", "&:hover": { color: "var(--tx-2)", backgroundColor: "var(--border)" } }}>
                     <EditIcon sx={{ fontSize: 12 }} />
                   </IconButton>
                   <IconButton size="small" onClick={() => handleDeleteFolder(f)}
-                    sx={{ p: 0.3, color: "#64748b", backgroundColor: "rgba(248,250,252,0.9)", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
+                    sx={{ p: 0.3, color: "var(--tx-3)", backgroundColor: "var(--surface)", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
                     <DeleteOutlineIcon sx={{ fontSize: 12 }} />
                   </IconButton>
                 </Box>
@@ -1088,11 +1094,11 @@ function NotesViewInner({ onCreateTask }: Props) {
                 onBlur={() => { if (!newFolderName.trim()) { setNewFolderMode(false); setNewFolderName(""); } else handleCreateFolder(); }}
                 placeholder="Folder name…"
                 autoFocus
-                sx={{ fontSize: "0.8rem", color: "#1e293b", width: "100%", px: 1, py: 0.5, mt: 0.5, backgroundColor: "#fff", borderRadius: 1.5, border: "1px solid #c7d2fe" }}
+                sx={{ fontSize: "0.8rem", color: "var(--tx)", width: "100%", px: 1, py: 0.5, mt: 0.5, backgroundColor: "var(--surface)", borderRadius: 1.5, border: "1px solid #c7d2fe" }}
               />
             ) : (
               <Box onClick={() => setNewFolderMode(true)}
-                sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1, py: 0.6, mt: 0.25, cursor: "pointer", borderRadius: 1.5, color: "#94a3b8", "&:hover": { color: "#6366f1", backgroundColor: "#f1f5f9" }, transition: "all 0.15s" }}>
+                sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1, py: 0.6, mt: 0.25, cursor: "pointer", borderRadius: 1.5, color: "var(--tx-4)", "&:hover": { color: "#6366f1", backgroundColor: "var(--bg)" }, transition: "all 0.15s" }}>
                 <CreateNewFolderOutlinedIcon sx={{ fontSize: 14 }} />
                 <Typography sx={{ fontSize: "0.78rem", fontWeight: 500 }}>New Folder</Typography>
               </Box>
@@ -1101,7 +1107,7 @@ function NotesViewInner({ onCreateTask }: Props) {
             {/* Trash */}
             {trashCount > 0 && (
               <>
-                <Divider sx={{ my: 0.75, borderColor: "#e2e8f0" }} />
+                <Divider sx={{ my: 0.75, borderColor: "var(--divider)" }} />
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <FolderRow
                     label="Trash" count={trashCount}
@@ -1110,7 +1116,7 @@ function NotesViewInner({ onCreateTask }: Props) {
                     onClick={() => setSelectedFolder("trash")}
                     sx={{ flex: 1, color: selectedFolder === "trash" ? "#ef4444" : "#94a3b8",
                       backgroundColor: selectedFolder === "trash" ? "#fff1f2" : "transparent",
-                      "&:hover": { backgroundColor: selectedFolder === "trash" ? "#fff1f2" : "#f1f5f9" } }}
+                      "&:hover": { backgroundColor: selectedFolder === "trash" ? "#fff1f2" : "var(--surface-hover)" } }}
                   />
                   {selectedFolder === "trash" && (
                     <Tooltip title="Empty trash" placement="top">
@@ -1132,11 +1138,11 @@ function NotesViewInner({ onCreateTask }: Props) {
             onMouseDown={handleResizeStart}
             sx={{ height: 8, cursor: "row-resize", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, "&:hover .resize-grip": { backgroundColor: "#a5b4fc" } }}
           >
-            <Box className="resize-grip" sx={{ width: 36, height: 2, backgroundColor: "#e2e8f0", borderRadius: 1, transition: "background-color 0.15s" }} />
+            <Box className="resize-grip" sx={{ width: 36, height: 2, backgroundColor: "var(--border)", borderRadius: 1, transition: "background-color 0.15s" }} />
           </Box>
         )}
 
-        <Divider sx={{ borderColor: "#e2e8f0" }} />
+        <Divider sx={{ borderColor: "var(--divider)" }} />
 
         {/* Sort controls */}
         <Box sx={{ px: 2, py: 1.25, display: "flex", gap: 0.5 }}>
@@ -1146,7 +1152,7 @@ function NotesViewInner({ onCreateTask }: Props) {
               <Tooltip key={field} title={active ? (sortDir === "desc" ? "Oldest/A-Z first" : "Newest/Z-A first") : ""} placement="top">
                 <Button size="small" onClick={() => handleSort(field)}
                   endIcon={active ? (sortDir === "desc" ? <ArrowDownwardIcon sx={{ fontSize: "11px !important" }} /> : <ArrowUpwardIcon sx={{ fontSize: "11px !important" }} />) : undefined}
-                  sx={{ fontSize: "0.72rem", fontWeight: active ? 700 : 500, textTransform: "none", color: active ? "#6366f1" : "#94a3b8", backgroundColor: active ? "#eef0ff" : "transparent", borderRadius: 1.5, px: 1, py: 0.25, minWidth: 0, "& .MuiButton-endIcon": { ml: 0.25 }, "&:hover": { backgroundColor: active ? "#e0e4ff" : "#f1f5f9", color: active ? "#6366f1" : "#64748b" } }}>
+                  sx={{ fontSize: "0.72rem", fontWeight: active ? 700 : 500, textTransform: "none", color: active ? "#6366f1" : "var(--tx-2)", backgroundColor: active ? "rgba(99,102,241,0.12)" : "transparent", borderRadius: 1.5, px: 1, py: 0.25, minWidth: 0, "& .MuiButton-endIcon": { ml: 0.25 }, "&:hover": { backgroundColor: active ? "rgba(99,102,241,0.2)" : "var(--surface-hover)", color: active ? "#6366f1" : "var(--tx-3)" } }}>
                   {SORT_LABELS[field]}
                 </Button>
               </Tooltip>
@@ -1154,7 +1160,7 @@ function NotesViewInner({ onCreateTask }: Props) {
           })}
         </Box>
 
-        <Divider sx={{ borderColor: "#e2e8f0" }} />
+        <Divider sx={{ borderColor: "var(--divider)" }} />
 
         {/* Note list */}
         <Box sx={{ flex: 1, overflowY: "auto" }}>
@@ -1164,16 +1170,16 @@ function NotesViewInner({ onCreateTask }: Props) {
             <>
               {trashNotes.length === 0 ? (
                 <Box sx={{ p: 3, textAlign: "center" }}>
-                  <Typography sx={{ fontSize: "0.82rem", color: "#94a3b8" }}>Trash is empty</Typography>
+                  <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)" }}>Trash is empty</Typography>
                 </Box>
               ) : trashNotes.map((note) => (
-                <Box key={note.id} sx={{ px: 2, py: 1.25, borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 1, opacity: 0.75, "&:hover": { opacity: 1, backgroundColor: "#fef2f2" }, transition: "all 0.1s" }}>
-                  {note.locked && <LockOutlinedIcon sx={{ fontSize: 13, color: "#94a3b8", flexShrink: 0 }} />}
+                <Box key={note.id} sx={{ px: 2, py: 1.25, borderBottom: "1px solid var(--divider)", display: "flex", alignItems: "center", gap: 1, opacity: 0.75, "&:hover": { opacity: 1, backgroundColor: "#fef2f2" }, transition: "all 0.1s" }}>
+                  {note.locked && <LockOutlinedIcon sx={{ fontSize: 13, color: "var(--tx-4)", flexShrink: 0 }} />}
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontSize: "0.84rem", color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: note.locked ? "italic" : "normal" }}>
+                    <Typography sx={{ fontSize: "0.84rem", color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: note.locked ? "italic" : "normal" }}>
                       {note.locked ? "Locked note" : (note.title || "Untitled")}
                     </Typography>
-                    <Typography sx={{ fontSize: "0.72rem", color: "#94a3b8" }}>
+                    <Typography sx={{ fontSize: "0.72rem", color: "var(--tx-4)" }}>
                       Deleted {noteTimestamp(note.deletedAt!)}
                     </Typography>
                   </Box>
@@ -1194,7 +1200,7 @@ function NotesViewInner({ onCreateTask }: Props) {
 
           {!isTrashView && sortedNotes.length === 0 && (
             <Box sx={{ p: 3, textAlign: "center" }}>
-              <Typography sx={{ fontSize: "0.82rem", color: "#94a3b8" }}>
+              <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)" }}>
                 {search ? "No matching notes" : "No notes yet"}
               </Typography>
             </Box>
@@ -1227,12 +1233,12 @@ function NotesViewInner({ onCreateTask }: Props) {
                 sx={{
                   px: 2, py: 1.5,
                   cursor: isDragging ? "grabbing" : "pointer",
-                  borderBottom: "1px solid #f1f5f9",
-                  backgroundColor: isActive ? "#eef0ff" : isSelected ? "#f5f3ff" : "transparent",
+                  borderBottom: "1px solid var(--divider)",
+                  backgroundColor: isActive ? "rgba(99,102,241,0.15)" : isSelected ? "rgba(165,180,252,0.12)" : "transparent",
                   borderLeft: isActive ? "3px solid #6366f1" : isSelected ? "3px solid #a5b4fc" : "3px solid transparent",
                   opacity: isDragged ? 0.45 : 1,
                   userSelect: "none",
-                  "&:hover": { backgroundColor: isActive ? "#eef0ff" : isSelected ? "#f5f3ff" : "#f1f5f9" },
+                  "&:hover": { backgroundColor: isActive ? "rgba(99,102,241,0.2)" : isSelected ? "rgba(165,180,252,0.18)" : "var(--surface-hover)" },
                   "&:hover .note-icons": { opacity: 1 },
                   transition: "background-color 0.1s, opacity 0.15s",
                 }}
@@ -1245,7 +1251,7 @@ function NotesViewInner({ onCreateTask }: Props) {
                     {note.hidden && isRevealed && (
                       <VisibilityOffOutlinedIcon sx={{ fontSize: 13, color: "#f59e0b", flexShrink: 0 }} />
                     )}
-                    <Typography sx={{ fontWeight: isActive ? 700 : 500, fontSize: "0.85rem", color: isLockedAndSealed ? "#94a3b8" : "#1e293b", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, fontStyle: isLockedAndSealed ? "italic" : "normal" }}>
+                    <Typography sx={{ fontWeight: isActive ? 700 : 500, fontSize: "0.85rem", color: isLockedAndSealed ? "var(--tx-4)" : "var(--tx)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, fontStyle: isLockedAndSealed ? "italic" : "normal" }}>
                       {displayTitle}
                     </Typography>
                   </Box>
@@ -1265,13 +1271,13 @@ function NotesViewInner({ onCreateTask }: Props) {
                   </Box>
                 </Box>
                 <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mt: 0.3 }}>
-                  <Typography sx={{ fontSize: "0.75rem", color: "#64748b", flexShrink: 0 }}>{noteTimestamp(note.updatedAt)}</Typography>
+                  <Typography sx={{ fontSize: "0.75rem", color: "var(--tx-3)", flexShrink: 0 }}>{noteTimestamp(note.updatedAt)}</Typography>
                   {isLockedAndSealed ? (
-                    <Typography sx={{ fontSize: "0.75rem", color: "#cbd5e1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: 2 }}>
+                    <Typography sx={{ fontSize: "0.75rem", color: "var(--border-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: 2 }}>
                       {"•••••••••"}
                     </Typography>
                   ) : (
-                    preview && <Typography sx={{ fontSize: "0.75rem", color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview.slice(0, 60)}</Typography>
+                    preview && <Typography sx={{ fontSize: "0.75rem", color: "var(--tx-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview.slice(0, 60)}</Typography>
                   )}
                 </Box>
               </Box>
@@ -1281,21 +1287,21 @@ function NotesViewInner({ onCreateTask }: Props) {
       </Box>
 
       {/* ── Editor pane ── */}
-      <Box sx={{ flex: 1, display: isMobile && mobilePanel === "list" ? "none" : "flex", flexDirection: "column", overflow: "hidden", backgroundColor: "#fff" }}>
+      <Box sx={{ flex: 1, display: isMobile && mobilePanel === "list" ? "none" : "flex", flexDirection: "column", overflow: "hidden", backgroundColor: "var(--surface)" }}>
         {isMobile && (
-          <Box sx={{ px: 1.5, py: 0.75, borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 0.5, backgroundColor: "#f8fafc", flexShrink: 0 }}>
-            <IconButton size="small" onClick={() => setMobilePanel("list")} sx={{ color: "#475569" }}>
+          <Box sx={{ px: 1.5, py: 0.75, borderBottom: "1px solid var(--divider)", display: "flex", alignItems: "center", gap: 0.5, backgroundColor: "var(--surface-2)", flexShrink: 0 }}>
+            <IconButton size="small" onClick={() => setMobilePanel("list")} sx={{ color: "var(--tx-2)" }}>
               <ArrowBackIcon sx={{ fontSize: 20 }} />
             </IconButton>
-            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>Notes</Typography>
+            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--tx-2)" }}>Notes</Typography>
           </Box>
         )}
         {activeNote === null ? (
           <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
-            <NoteAltOutlinedIcon sx={{ fontSize: 52, color: "#cbd5e1" }} />
-            <Typography sx={{ fontSize: "0.95rem", fontWeight: 500, color: "#94a3b8" }}>Select a note or create a new one</Typography>
+            <NoteAltOutlinedIcon sx={{ fontSize: 52, color: "var(--border-2)" }} />
+            <Typography sx={{ fontSize: "0.95rem", fontWeight: 500, color: "var(--tx-4)" }}>Select a note or create a new one</Typography>
             <Button startIcon={<AddIcon />} onClick={handleNewNote} variant="outlined"
-              sx={{ color: "#6366f1", borderColor: "#c7d2fe", textTransform: "none", fontWeight: 600, borderRadius: 2, "&:hover": { borderColor: "#6366f1", backgroundColor: "#eef0ff" } }}>
+              sx={{ color: "#6366f1", borderColor: "#c7d2fe", textTransform: "none", fontWeight: 600, borderRadius: 2, "&:hover": { borderColor: "#6366f1", backgroundColor: "rgba(99,102,241,0.12)" } }}>
               New Note
             </Button>
           </Box>
@@ -1303,8 +1309,8 @@ function NotesViewInner({ onCreateTask }: Props) {
           /* Locked note, vault not unlocked — show lock prompt */
           <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
             <LockOutlinedIcon sx={{ fontSize: 52, color: "#c7d2fe" }} />
-            <Typography sx={{ fontSize: "0.95rem", fontWeight: 600, color: "#64748b" }}>This note is locked</Typography>
-            <Typography sx={{ fontSize: "0.85rem", color: "#94a3b8" }}>Unlock vault to read this note</Typography>
+            <Typography sx={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--tx-3)" }}>This note is locked</Typography>
+            <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-4)" }}>Unlock vault to read this note</Typography>
             <Button
               startIcon={<LockOpenOutlinedIcon />}
               onClick={() => setUnlockModalOpen({ open: true, mode: "unlock" })}
@@ -1316,9 +1322,9 @@ function NotesViewInner({ onCreateTask }: Props) {
           </Box>
         ) : (
           <>
-            <Box sx={{ px: { xs: 1.5, sm: 3 }, py: { xs: 0.75, sm: 1.5 }, borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+            <Box sx={{ px: { xs: 1.5, sm: 3 }, py: { xs: 0.75, sm: 1.5 }, borderBottom: "1px solid var(--divider)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, overflow: "hidden" }}>
-                <Typography sx={{ fontSize: "0.75rem", color: "#94a3b8", display: { xs: "none", sm: "block" }, flexShrink: 0 }}>
+                <Typography sx={{ fontSize: "0.75rem", color: "var(--tx-4)", display: { xs: "none", sm: "block" }, flexShrink: 0 }}>
                   {noteTimestamp(activeNote.updatedAt)} · auto-saved
                 </Typography>
                 {activeNote.folderId && folders.find((f) => f.id === activeNote.folderId) && (
@@ -1342,20 +1348,20 @@ function NotesViewInner({ onCreateTask }: Props) {
                 {isMobile ? (
                   <Tooltip title="New Note" placement="top">
                     <IconButton size="small" onClick={handleNewNote}
-                      sx={{ color: "#475569", backgroundColor: "#f1f5f9", borderRadius: 1.5, "&:hover": { backgroundColor: "#e2e8f0" } }}>
+                      sx={{ color: "var(--tx-2)", backgroundColor: "var(--bg)", borderRadius: 1.5, "&:hover": { backgroundColor: "var(--border)" } }}>
                       <AddIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   </Tooltip>
                 ) : (
                   <Button size="small" startIcon={<AddIcon sx={{ fontSize: 16 }} />} onClick={handleNewNote}
-                    sx={{ color: "#475569", fontWeight: 600, fontSize: "0.8rem", textTransform: "none", backgroundColor: "#f1f5f9", borderRadius: 1.5, px: 1.5, "&:hover": { backgroundColor: "#e2e8f0" } }}>
+                    sx={{ color: "var(--tx-2)", fontWeight: 600, fontSize: "0.8rem", textTransform: "none", backgroundColor: "var(--bg)", borderRadius: 1.5, px: 1.5, "&:hover": { backgroundColor: "var(--border)" } }}>
                     New Note
                   </Button>
                 )}
                 {isMobile ? (
                   <Tooltip title="Send to Board" placement="top">
                     <IconButton size="small" onClick={handleCreateTask}
-                      sx={{ color: "#6366f1", backgroundColor: "#eef0ff", borderRadius: 1.5, "&:hover": { backgroundColor: "#e0e4ff" } }}>
+                      sx={{ color: "#6366f1", backgroundColor: "rgba(99,102,241,0.12)", borderRadius: 1.5, "&:hover": { backgroundColor: "rgba(99,102,241,0.2)" } }}>
                       <TaskAltIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   </Tooltip>
@@ -1366,14 +1372,14 @@ function NotesViewInner({ onCreateTask }: Props) {
                   </Button>
                 )}
                 <IconButton size="small" onClick={handleDelete} title="Delete note"
-                  sx={{ color: "#94a3b8", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
+                  sx={{ color: "var(--tx-4)", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
                   <DeleteOutlineIcon sx={{ fontSize: 18 }} />
                 </IconButton>
               </Box>
             </Box>
             <Box sx={{ px: { xs: 2, sm: 3 }, pt: { xs: 2, sm: 3 }, pb: 1, flexShrink: 0 }}>
               <InputBase value={localTitle} onChange={(e) => handleTitleChange(e.target.value)} placeholder="Untitled" multiline fullWidth
-                sx={{ fontSize: "1.6rem", fontWeight: 700, color: "#0f172a", lineHeight: 1.3, "& textarea": { padding: 0 } }} />
+                sx={{ fontSize: "1.6rem", fontWeight: 700, color: "var(--tx)", lineHeight: 1.3, "& textarea": { padding: 0 } }} />
             </Box>
             <Box sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2, sm: 3 }, flex: 1, overflowY: "auto" }}>
               <RichTextEditor key={editorKey} value={localContent} onChange={handleContentChange} minHeight={400} />
@@ -1438,7 +1444,7 @@ function NotesViewInner({ onCreateTask }: Props) {
 
         <Divider sx={{ my: 0.5 }} />
 
-        <Typography sx={{ px: 2, pt: 0.5, pb: 0.25, fontSize: "0.7rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>
+        <Typography sx={{ px: 2, pt: 0.5, pb: 0.25, fontSize: "0.7rem", fontWeight: 700, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 0.8 }}>
           Move to folder
         </Typography>
         <MenuItem onClick={() => ctxMoveToFolder(null)} sx={menuItemSx}>
@@ -1502,7 +1508,7 @@ function NotesViewInner({ onCreateTask }: Props) {
             <LinearProgress
               variant="determinate"
               value={(undoCountdown / 30) * 100}
-              sx={{ borderRadius: 1, height: 3, backgroundColor: "rgba(255,255,255,0.3)", "& .MuiLinearProgress-bar": { backgroundColor: "#fff" } }}
+              sx={{ borderRadius: 1, height: 3, backgroundColor: "rgba(255,255,255,0.3)", "& .MuiLinearProgress-bar": { backgroundColor: "var(--surface)" } }}
             />
           </Box>
         }
@@ -1534,7 +1540,7 @@ function NotesViewInner({ onCreateTask }: Props) {
             <LinearProgress
               variant="determinate"
               value={(folderUndoCountdown / 30) * 100}
-              sx={{ borderRadius: 1, height: 3, backgroundColor: "rgba(255,255,255,0.3)", "& .MuiLinearProgress-bar": { backgroundColor: "#fff" } }}
+              sx={{ borderRadius: 1, height: 3, backgroundColor: "rgba(255,255,255,0.3)", "& .MuiLinearProgress-bar": { backgroundColor: "var(--surface)" } }}
             />
           </Box>
         }
@@ -1612,16 +1618,43 @@ function NotesViewInner({ onCreateTask }: Props) {
         </MenuItem>
       </Menu>
 
+      {/* ── Batch delete confirmation ── */}
+      <Dialog open={!!batchDeleteConfirm} onClose={() => setBatchDeleteConfirm(null)} maxWidth="xs" fullWidth
+        slotProps={{ paper: { sx: { borderRadius: 2.5 } } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: "0.95rem", pb: 1 }}>
+          Delete {batchDeleteConfirm?.notes.length} notes?
+        </DialogTitle>
+        <DialogContent sx={{ pt: 0 }}>
+          <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-3)" }}>
+            This will permanently delete all selected notes. Locked or hidden notes get a 30-second undo window; all others go straight to trash.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+          <Button onClick={() => setBatchDeleteConfirm(null)} sx={{ textTransform: "none", color: "var(--tx-3)" }}>Cancel</Button>
+          <Button
+            variant="contained"
+            sx={{ textTransform: "none", backgroundColor: "#ef4444", "&:hover": { backgroundColor: "#dc2626" }, fontWeight: 700 }}
+            onClick={() => {
+              const toDelete = batchDeleteConfirm!.notes;
+              setBatchDeleteConfirm(null);
+              executeBatchDelete(toDelete);
+            }}
+          >
+            Delete all
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* ── Hint label dialog ── */}
       <Dialog open={!!hintDialog} onClose={() => setHintDialog(null)} maxWidth="xs" fullWidth slotProps={{ paper: { sx: { borderRadius: 2.5, p: 0.5 } } }}>
         <DialogContent>
-          <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "#0f172a", mb: 0.5 }}>
+          <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--tx)", mb: 0.5 }}>
             Add a hint label
           </Typography>
-          <Typography sx={{ fontSize: "0.8rem", color: "#94a3b8", mb: 2 }}>
+          <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", mb: 2 }}>
             This short label is visible when the note is locked — it&apos;s not encrypted. Leave blank to show &ldquo;Locked note&rdquo;.
           </Typography>
-          <Box sx={{ backgroundColor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 1.5, px: 1.5, py: 1, mb: 2 }}>
+          <Box sx={{ backgroundColor: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 1.5, px: 1.5, py: 1, mb: 2 }}>
             <InputBase
               value={hintValue}
               onChange={(e) => setHintValue(e.target.value)}
@@ -1636,12 +1669,12 @@ function NotesViewInner({ onCreateTask }: Props) {
                 }
                 if (e.key === "Escape") setHintDialog(null);
               }}
-              sx={{ fontSize: "0.875rem", color: "#1e293b" }}
+              sx={{ fontSize: "0.875rem", color: "var(--tx)" }}
             />
           </Box>
           <Box sx={{ display: "flex", gap: 1.5 }}>
             <Button onClick={() => setHintDialog(null)} variant="outlined"
-              sx={{ flex: 1, textTransform: "none", fontWeight: 600, borderRadius: 1.5, borderColor: "#e2e8f0", color: "#64748b" }}>
+              sx={{ flex: 1, textTransform: "none", fontWeight: 600, borderRadius: 1.5, borderColor: "var(--border)", color: "var(--tx-3)" }}>
               Skip
             </Button>
             <Button
@@ -1710,11 +1743,11 @@ function FolderRow({ label, count, active, icon, onClick, onContextMenu, pinned,
       sx={{
         display: "flex", alignItems: "center", gap: 0.75,
         px: 1, py: 0.65, borderRadius: 1.5, cursor: "pointer",
-        backgroundColor: isDragOver ? "#eef0ff" : active ? "#eef0ff" : "transparent",
-        color: active ? "#6366f1" : "#64748b",
+        backgroundColor: isDragOver ? "rgba(99,102,241,0.15)" : active ? "rgba(99,102,241,0.12)" : "transparent",
+        color: active ? "#6366f1" : "var(--tx-3)",
         outline: isDragOver ? "2px dashed #6366f1" : "none",
         outlineOffset: "-1px",
-        "&:hover": { backgroundColor: active ? "#eef0ff" : "#f1f5f9" },
+        "&:hover": { backgroundColor: active ? "rgba(99,102,241,0.2)" : "var(--surface-hover)" },
         transition: "all 0.1s",
         ...sx,
       }}

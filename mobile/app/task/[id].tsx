@@ -257,7 +257,8 @@ export default function TaskEditorScreen() {
                   body: JSON.stringify({
                     title: titleField, encTitle, stage, priority: priority ?? undefined,
                     description: descHtml, dueDate: dueDate ?? undefined,
-                    sensitive,
+                    sensitive, projectId,
+                    ...(locked !== undefined && { locked }),
                   }),
                 });
                 if (isOk(r2)) {

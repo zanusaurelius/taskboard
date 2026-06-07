@@ -1,7 +1,10 @@
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
+import { useThemeColors } from '@/lib/theme-context';
+import { useVault } from '@/lib/vault-context';
 
 function TabIcon({ label, active }: { label: string; active: boolean }) {
+  const colors = useThemeColors();
   const icons: Record<string, string> = {
     Board: '📋',
     Notes: '📝',
@@ -11,20 +14,29 @@ function TabIcon({ label, active }: { label: string; active: boolean }) {
   };
   return (
     <View style={styles.iconWrap}>
-      <Text style={[styles.icon, active && styles.iconActive]}>{icons[label]}</Text>
-      <Text style={[styles.label, active && styles.labelActive]} numberOfLines={1}>{label}</Text>
+      <Text style={styles.icon}>{icons[label]}</Text>
+      <Text style={[styles.label, { color: active ? colors.tabBarActive : colors.tabBarInactive }]} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
 
 export default function AppLayout() {
+  const colors = useThemeColors();
+  const { lock } = useVault();
   return (
     <Tabs
       initialRouteName="board"
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: {
+          backgroundColor: colors.tabBarBg,
+          borderTopColor: colors.tabBarBorder,
+          height: 60,
+        },
         tabBarShowLabel: false,
+      }}
+      screenListeners={{
+        tabPress: () => { lock(); },
       }}
     >
       <Tabs.Screen name="index" options={{ href: null }} />
@@ -64,29 +76,16 @@ export default function AppLayout() {
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: '#0f172a',
-    borderTopColor: 'rgba(255,255,255,0.08)',
-    height: 60,
-  },
   iconWrap: {
     alignItems: 'center',
     gap: 2,
   },
   icon: {
     fontSize: 20,
-    color: 'rgba(255,255,255,0.45)',
-  },
-  iconActive: {
-    color: '#a5b4fc',
   },
   label: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.45)',
-    letterSpacing: -0.2,
-  },
-  labelActive: {
-    color: '#a5b4fc',
+    letterSpacing: -0.3,
   },
 });

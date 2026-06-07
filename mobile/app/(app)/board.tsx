@@ -5,7 +5,12 @@ import {
   Modal, Platform, Alert, DeviceEventEmitter,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import DraggableFlatList, { ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
+import DraggableFlatList, {
+  NestableScrollContainer,
+  NestableDraggableFlatList,
+  ScaleDecorator,
+  type RenderItemParams,
+} from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -15,6 +20,7 @@ import { getAutoArchiveDays } from '@/lib/storage';
 import type { Task, Project } from '@/lib/types';
 import DailyFocusSection from '@/components/DailyFocusSection';
 import VaultUnlockModal from '@/components/VaultUnlockModal';
+import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 const STAGES: Task['stage'][] = ['todo', 'in_progress', 'blocked', 'done'];
 const STAGE_LABELS: Record<Task['stage'], string> = {
@@ -28,30 +34,37 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 const STAGE_COLOR_PALETTE = ['#6366f1', '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#0ea5e9', '#64748b'];
 const STAGE_COLORS_KEY = 'taskboard_stage_colors';
-const PROJECT_PALETTE = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#0ea5e9'];
+// Must match web TaskBoard.tsx PROJECT_COLORS + hashId algorithm for color consistency
+const PROJECT_PALETTE = [
+  '#f59e0b', '#10b981', '#3b82f6', '#ec4899',
+  '#8b5cf6', '#0ea5e9', '#14b8a6', '#f43f5e', '#84cc16', '#6366f1',
+];
 
 const PRIVACY_MODE_KEY = 'taskboard_privacy_mode';
 
 function hashProjectColor(projectId: string): string {
-  let hash = 0;
-  for (let i = 0; i < projectId.length; i++) {
-    hash = (hash * 31 + projectId.charCodeAt(i)) >>> 0;
-  }
-  return PROJECT_PALETTE[hash % PROJECT_PALETTE.length];
+  let h = 0;
+  for (let i = 0; i < projectId.length; i++) h = (Math.imul(31, h) + projectId.charCodeAt(i)) | 0;
+  return PROJECT_PALETTE[Math.abs(h) % PROJECT_PALETTE.length];
 }
 
 export default function BoardScreen() {
   const { decrypt, isUnlocked, lock } = useVault();
   const router = useRouter();
+  const colors = useThemeColors();
+  const styles = makeStyles(colors);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
 
   // Privacy mode
   const [privacyMode, setPrivacyMode] = useState(true);
   const [vaultUnlockVisible, setVaultUnlockVisible] = useState(false);
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
 
   // Search & filter state
   const [searchText, setSearchText] = useState('');
@@ -86,13 +99,16 @@ export default function BoardScreen() {
     });
   }, []);
 
-  // Load stage colors from SecureStore on mount
+  // Load stage colors from server (falls back to SecureStore cache)
   useEffect(() => {
-    SecureStore.getItemAsync(STAGE_COLORS_KEY).then((val) => {
-      if (val) {
-        try {
-          setStageColors({ ...STAGE_COLORS, ...JSON.parse(val) });
-        } catch { /* ignore parse errors */ }
+    apiFetch<Record<string, string>>('/api/settings/stage-colors').then((result) => {
+      if (isOk(result) && Object.keys(result.data).length > 0) {
+        setStageColors({ ...STAGE_COLORS, ...result.data });
+        SecureStore.setItemAsync(STAGE_COLORS_KEY, JSON.stringify(result.data)).catch(() => {});
+      } else {
+        SecureStore.getItemAsync(STAGE_COLORS_KEY).then((val) => {
+          if (val) { try { setStageColors({ ...STAGE_COLORS, ...JSON.parse(val) }); } catch { /* ignore */ } }
+        });
       }
     });
   }, []);
@@ -105,7 +121,7 @@ export default function BoardScreen() {
   const handlePrivacyChip = () => {
     if (privacyMode) {
       // Trying to reveal — open vault unlock if locked tasks exist
-      if (tasks.some((t) => t.locked)) {
+      if (tasks.some((t) => t.locked || t.sensitive)) {
         setVaultUnlockVisible(true);
       } else {
         setPrivacyMode(false);
@@ -124,6 +140,15 @@ export default function BoardScreen() {
       apiFetch<Task[]>('/api/tasks?includeArchived=true'),
       apiFetch<Project[]>('/api/projects'),
     ]);
+
+    const allOffline = [tasksRes, projectsRes].every(
+      (r) => !r.ok && (r as { status?: number }).status === 0
+    );
+    const anyServerError = [tasksRes, projectsRes].some(
+      (r) => !r.ok && (r as { status?: number }).status !== 0
+    );
+    setOffline(allOffline);
+    setFetchError(!allOffline && anyServerError && !isOk(tasksRes));
 
     if (isOk(tasksRes)) {
       const decrypted = await Promise.all(tasksRes.data.map(async (t) => ({
@@ -202,12 +227,15 @@ export default function BoardScreen() {
   }, [tasks]);
 
   const handleReorderTasks = useCallback(async (stage: Task['stage'], orderedTasks: Task[]) => {
-    setTasks(prev => [...prev.filter(t => t.stage !== stage), ...orderedTasks]);
+    // Assign new position values locally so tasksForStage()'s position sort
+    // preserves the drag order instead of reverting to the old order.
+    const rePositioned = orderedTasks.map((task, index) => ({ ...task, position: (index + 1) * 1000 }));
+    setTasks(prev => [...prev.filter(t => t.stage !== stage), ...rePositioned]);
     await Promise.all(
-      orderedTasks.map((task, index) =>
+      rePositioned.map((task) =>
         apiFetch(`/api/tasks/${task.id}`, {
           method: 'PUT',
-          body: JSON.stringify({ position: (index + 1) * 1000 }),
+          body: JSON.stringify({ position: task.position }),
         })
       )
     );
@@ -217,7 +245,13 @@ export default function BoardScreen() {
   const visibleTasks = tasks.filter((t) => {
     if (!showArchived && t.archived) return false;
     if (selectedProject !== null && t.projectId !== selectedProject) return false;
-    if (searchText && !t.title.toLowerCase().includes(searchText.toLowerCase())) return false;
+    if (searchText) {
+      const q = searchText.toLowerCase();
+      const inTitle = t.title.toLowerCase().includes(q);
+      const plainDesc = t.description ? t.description.replace(/<[^>]*>/g, ' ').toLowerCase() : '';
+      const inDesc = plainDesc.includes(q);
+      if (!inTitle && !inDesc) return false;
+    }
     if (stageFilter.length > 0 && !stageFilter.includes(t.stage)) return false;
     return true;
   });
@@ -242,7 +276,7 @@ export default function BoardScreen() {
     const res = await apiFetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, color: PROJECT_PALETTE[0] }),
     });
     setSavingProject(false);
     if (isOk(res)) {
@@ -267,7 +301,7 @@ export default function BoardScreen() {
     if (!name) return;
     setSavingEditProject(true);
     const res = await apiFetch(`/api/projects/${editingProject.id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, color: editProjectColor }),
     });
@@ -340,15 +374,18 @@ export default function BoardScreen() {
     );
   };
 
-  const formatDueDate = (dueDate: string) => {
-    const d = new Date(dueDate);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const parseLocalDate = (dueDate: string) => {
+    const [y, m, d] = dueDate.split('-').map(Number);
+    return new Date(y, m - 1, d);
   };
+
+  const formatDueDate = (dueDate: string) =>
+    parseLocalDate(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   const isOverdue = (dueDate: string) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return new Date(dueDate) < today;
+    return parseLocalDate(dueDate) < today;
   };
 
   if (loading) {
@@ -357,7 +394,17 @@ export default function BoardScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
-      <ScrollView
+      {offline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
+        </View>
+      )}
+      {fetchError && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>⚠ Failed to load tasks. Pull down to retry.</Text>
+        </View>
+      )}
+      <NestableScrollContainer
         style={styles.mainScroll}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchAndDecrypt(); }} tintColor="#6366f1" />}
@@ -408,7 +455,7 @@ export default function BoardScreen() {
           <TextInput
             style={styles.search}
             placeholder="Search tasks…"
-            placeholderTextColor="#475569"
+            placeholderTextColor={colors.placeholder}
             value={searchText}
             onChangeText={setSearchText}
             autoCorrect={false}
@@ -516,7 +563,8 @@ export default function BoardScreen() {
                   renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
                     const projectColor = projectMap[item.projectId]?.color ?? hashProjectColor(item.projectId);
                     const projectName = projectMap[item.projectId]?.name;
-                    const displayTitle = (item.locked || (privacyMode && item.sensitive)) ? '••••••••••' : (item.title || '(Untitled)');
+                    const isRedacted = (item.locked && !isUnlocked) || (privacyMode && item.sensitive);
+                    const displayTitle = isRedacted ? '••••••••••' : (item.title || '(Untitled)');
                     const stageIdx = STAGES.indexOf(item.stage);
                     const nextStage = STAGES[stageIdx + 1] ?? null;
                     const prevStage = STAGES[stageIdx - 1] ?? null;
@@ -546,7 +594,8 @@ export default function BoardScreen() {
                             style={[styles.taskCard, isActive && styles.taskCardDragging]}
                             activeOpacity={0.75}
                             onPress={() => {
-                              if (item.locked && !isUnlocked) {
+                              if ((item.locked && !isUnlocked) || (privacyMode && item.sensitive && !isUnlocked)) {
+                                setPendingTaskId(item.id);
                                 setVaultUnlockVisible(true);
                                 return;
                               }
@@ -572,6 +621,9 @@ export default function BoardScreen() {
                                   <Text style={styles.priorityText}>{item.priority}</Text>
                                 </View>
                               ) : null}
+                              {item.sensitive && !isRedacted && (
+                                <Text style={styles.sensitiveBadge}>🔒</Text>
+                              )}
                               <Text style={styles.dragHint}>⠿</Text>
                             </View>
                           </TouchableOpacity>
@@ -586,18 +638,16 @@ export default function BoardScreen() {
         </ScrollView>
 
         <View style={{ height: 100 }} />
-      </ScrollView>
+      </NestableScrollContainer>
 
-      {/* FAB — creates task in currently selected project */}
-      {selectedProject && (
-        <TouchableOpacity
-          style={styles.fab}
-          activeOpacity={0.85}
-          onPress={() => router.push({ pathname: '/task/new', params: { projectId: selectedProject } })}
-        >
-          <Text style={styles.fabIcon}>+</Text>
-        </TouchableOpacity>
-      )}
+      {/* FAB — creates task, optionally in the selected project */}
+      <TouchableOpacity
+        style={styles.fab}
+        activeOpacity={0.85}
+        onPress={() => router.push({ pathname: '/task/new', params: { projectId: selectedProject ?? '' } })}
+      >
+        <Text style={styles.fabIcon}>+</Text>
+      </TouchableOpacity>
 
       {/* New Project Modal */}
       <Modal
@@ -612,7 +662,7 @@ export default function BoardScreen() {
             <TextInput
               style={styles.modalInput}
               placeholder="Project name"
-              placeholderTextColor="#475569"
+              placeholderTextColor={colors.placeholder}
               value={newProjectName}
               onChangeText={setNewProjectName}
               autoFocus
@@ -652,7 +702,7 @@ export default function BoardScreen() {
             <TextInput
               style={styles.modalInput}
               placeholder="Project name"
-              placeholderTextColor="#475569"
+              placeholderTextColor={colors.placeholder}
               value={editProjectName}
               onChangeText={setEditProjectName}
               autoCorrect={false}
@@ -726,6 +776,7 @@ export default function BoardScreen() {
                     const updated = { ...stageColors, [colorPickerStage]: color };
                     setStageColors(updated);
                     await SecureStore.setItemAsync(STAGE_COLORS_KEY, JSON.stringify(updated));
+                    apiFetch('/api/settings/stage-colors', { method: 'PATCH', body: JSON.stringify(updated) }).catch(() => {});
                     setColorPickerStage(null);
                   }}
                 />
@@ -745,169 +796,183 @@ export default function BoardScreen() {
 
       <VaultUnlockModal
         visible={vaultUnlockVisible}
-        onSuccess={() => { setVaultUnlockVisible(false); setPrivacyMode(false); }}
-        onCancel={() => setVaultUnlockVisible(false)}
+        onSuccess={() => {
+          setVaultUnlockVisible(false);
+          setPrivacyMode(false);
+          if (pendingTaskId) {
+            router.push(`/task/${pendingTaskId}`);
+            setPendingTaskId(null);
+          }
+        }}
+        onCancel={() => { setVaultUnlockVisible(false); setPendingTaskId(null); }}
       />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' },
-  mainScroll: { flex: 1 },
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    offlineBanner: { backgroundColor: '#7c2d12', paddingHorizontal: 16, paddingVertical: 8 },
+    offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
+    errorBanner: { backgroundColor: '#450a0a', paddingHorizontal: 16, paddingVertical: 8 },
+    errorBannerText: { color: '#fca5a5', fontSize: 12, fontWeight: '600', lineHeight: 16 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
+    mainScroll: { flex: 1 },
 
-  // Heading row
-  headingRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
-  },
-  heading: { color: '#f1f5f9', fontSize: 26, fontWeight: '800' },
-  headingActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  searchIconBtn: {
-    width: 36, height: 36, borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  searchIconText: { fontSize: 16 },
-  newProjectBtn: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 8, backgroundColor: 'rgba(99,102,241,0.15)',
-    borderWidth: 1, borderColor: '#6366f1',
-  },
-  newProjectBtnText: { color: '#a5b4fc', fontSize: 13, fontWeight: '700' },
-  newTaskBtn: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#6366f1',
-  },
-  newTaskBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+    // Heading row
+    headingRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
+    },
+    heading: { color: c.tx, fontSize: 26, fontWeight: '800' },
+    headingActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    searchIconBtn: {
+      width: 36, height: 36, borderRadius: 8,
+      backgroundColor: c.surface2,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    searchIconText: { fontSize: 16 },
+    newProjectBtn: {
+      paddingHorizontal: 12, paddingVertical: 6,
+      borderRadius: 8, backgroundColor: 'rgba(99,102,241,0.15)',
+      borderWidth: 1, borderColor: '#6366f1',
+    },
+    newProjectBtnText: { color: '#a5b4fc', fontSize: 13, fontWeight: '700' },
+    newTaskBtn: {
+      paddingHorizontal: 12, paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: '#6366f1',
+    },
+    newTaskBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
-  // Search
-  searchWrap: { paddingHorizontal: 16, paddingBottom: 10 },
-  search: {
-    backgroundColor: '#1e293b', borderRadius: 10, borderWidth: 1, borderColor: '#334155',
-    color: '#f1f5f9', fontSize: 15, paddingHorizontal: 14, paddingVertical: 10,
-  },
+    // Search
+    searchWrap: { paddingHorizontal: 16, paddingBottom: 10 },
+    search: {
+      backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      color: c.tx, fontSize: 15, paddingHorizontal: 14, paddingVertical: 10,
+    },
 
-  // Project tabs
-  projectTabs: { flexGrow: 0, paddingBottom: 4 },
-  projectTabsContent: { paddingHorizontal: 16, gap: 8 },
-  projectTab: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155' },
-  projectTabActive: { backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1' },
-  projectTabText: { color: '#64748b', fontSize: 13, fontWeight: '600' },
-  projectTabTextActive: { color: '#a5b4fc' },
+    // Project tabs
+    projectTabs: { flexGrow: 0, paddingBottom: 4 },
+    projectTabsContent: { paddingHorizontal: 16, gap: 8 },
+    projectTab: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+    projectTabActive: { backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1' },
+    projectTabText: { color: c.tx3, fontSize: 13, fontWeight: '600' },
+    projectTabTextActive: { color: '#a5b4fc' },
 
-  // Filter row
-  filterRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingRight: 12, marginBottom: 4,
-  },
-  stageChipsScroll: { flexShrink: 1 },
-  stageChips: { paddingHorizontal: 16, gap: 6, alignItems: 'center' },
-  stageChip: {
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 20, backgroundColor: '#1e293b',
-    borderWidth: 1, borderColor: '#334155',
-  },
-  stageChipAllActive: { backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1' },
-  stageChipText: { color: '#64748b', fontSize: 12, fontWeight: '600' },
-  stageChipAllActiveText: { color: '#a5b4fc' },
-  privacyChipActive: { backgroundColor: 'rgba(239,68,68,0.15)', borderColor: '#ef4444' },
-  privacyChipActiveText: { color: '#f87171' },
-  archivedChipActive: { backgroundColor: 'rgba(245,158,11,0.15)', borderColor: '#f59e0b' },
-  archivedChipActiveText: { color: '#fbbf24' },
+    // Filter row
+    filterRow: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingRight: 12, marginBottom: 4,
+    },
+    stageChipsScroll: { flexShrink: 1 },
+    stageChips: { paddingHorizontal: 16, gap: 6, alignItems: 'center' },
+    stageChip: {
+      paddingHorizontal: 10, paddingVertical: 5,
+      borderRadius: 20, backgroundColor: c.surface,
+      borderWidth: 1, borderColor: c.border,
+    },
+    stageChipAllActive: { backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1' },
+    stageChipText: { color: c.tx3, fontSize: 12, fontWeight: '600' },
+    stageChipAllActiveText: { color: '#a5b4fc' },
+    privacyChipActive: { backgroundColor: 'rgba(239,68,68,0.15)', borderColor: '#ef4444' },
+    privacyChipActiveText: { color: '#f87171' },
+    archivedChipActive: { backgroundColor: 'rgba(245,158,11,0.15)', borderColor: '#f59e0b' },
+    archivedChipActiveText: { color: '#fbbf24' },
 
-  // Kanban
-  columns: { padding: 16, gap: 12, alignItems: 'flex-start' },
-  column: { width: 220, backgroundColor: '#1e293b', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#334155' },
-  columnHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  stageDot: { width: 8, height: 8, borderRadius: 4 },
-  stageLabel: { color: '#94a3b8', fontSize: 12, fontWeight: '700', flex: 1, textTransform: 'uppercase', letterSpacing: 0.5 },
-  stageCount: { color: '#475569', fontSize: 12, fontWeight: '600' },
-  stagePaletteBtn: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
-  stagePaletteBtnText: { fontSize: 13 },
-  stageColorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', paddingVertical: 4 },
-  archiveDoneBtn: {
-    paddingHorizontal: 6, paddingVertical: 2,
-    borderRadius: 4, backgroundColor: 'rgba(100,116,139,0.15)',
-    borderWidth: 1, borderColor: '#334155',
-  },
-  archiveDoneBtnText: { color: '#64748b', fontSize: 10, fontWeight: '600' },
-  columnCards: { gap: 8 },
-  taskCard: { backgroundColor: '#0f172a', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#1e293b', gap: 4 },
-  taskCardDragging: { borderColor: '#6366f1', shadowColor: '#6366f1', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
-  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
-  dragHint: { color: '#334155', fontSize: 14, opacity: 0.6 },
-  swipeAction: {
-    justifyContent: 'center', alignItems: 'center',
-    width: 110, borderRadius: 8, marginBottom: 0,
-  },
-  swipeActionText: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center', paddingHorizontal: 8 },
-  cardProject: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  taskTitle: { color: '#e2e8f0', fontSize: 13, fontWeight: '600', lineHeight: 18 },
-  cardDueDate: { fontSize: 11, color: '#64748b', marginTop: 1 },
-  cardDueDateOverdue: { color: '#ef4444' },
-  emptyCol: { color: '#334155', fontSize: 12, textAlign: 'center', paddingVertical: 12 },
-  priorityBadge: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 2 },
-  priorityText: { color: '#fff', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+    // Kanban
+    columns: { padding: 16, gap: 12, alignItems: 'flex-start' },
+    column: { width: 220, backgroundColor: c.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: c.border },
+    columnHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+    stageDot: { width: 8, height: 8, borderRadius: 4 },
+    stageLabel: { color: c.tx2, fontSize: 12, fontWeight: '700', flex: 1, textTransform: 'uppercase', letterSpacing: 0.5 },
+    stageCount: { color: c.tx4, fontSize: 12, fontWeight: '600' },
+    stagePaletteBtn: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+    stagePaletteBtnText: { fontSize: 13 },
+    stageColorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', paddingVertical: 4 },
+    archiveDoneBtn: {
+      paddingHorizontal: 6, paddingVertical: 2,
+      borderRadius: 4, backgroundColor: c.surface2,
+      borderWidth: 1, borderColor: c.border,
+    },
+    archiveDoneBtnText: { color: c.tx3, fontSize: 10, fontWeight: '600' },
+    columnCards: { gap: 8 },
+    taskCard: { backgroundColor: c.bg, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: c.border, gap: 4 },
+    taskCardDragging: { borderColor: '#6366f1', shadowColor: '#6366f1', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+    cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
+    dragHint: { color: c.border, fontSize: 14, opacity: 0.6 },
+    swipeAction: {
+      justifyContent: 'center', alignItems: 'center',
+      width: 110, borderRadius: 8, marginBottom: 0,
+    },
+    swipeActionText: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center', paddingHorizontal: 8 },
+    cardProject: { fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
+    taskTitle: { color: c.tx, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+    cardDueDate: { fontSize: 11, color: c.tx3, marginTop: 1 },
+    cardDueDateOverdue: { color: '#ef4444' },
+    emptyCol: { color: c.border2, fontSize: 12, textAlign: 'center', paddingVertical: 12 },
+    priorityBadge: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 2 },
+    priorityText: { color: '#fff', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+    sensitiveBadge: { fontSize: 11, opacity: 0.7 },
 
-  // FAB
-  fab: {
-    position: 'absolute', bottom: 28, right: 24,
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#6366f1', shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  fabIcon: { color: '#fff', fontSize: 28, lineHeight: 32 },
+    // FAB
+    fab: {
+      position: 'absolute', bottom: 28, right: 24,
+      width: 56, height: 56, borderRadius: 28,
+      backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center',
+      shadowColor: '#6366f1', shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
+      elevation: 8,
+    },
+    fabIcon: { color: '#fff', fontSize: 28, lineHeight: 32 },
 
-  // Modals (shared)
-  modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center', alignItems: 'center', padding: 32,
-  },
-  modalCard: {
-    width: '100%', backgroundColor: '#1e293b',
-    borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#334155', gap: 16,
-  },
-  modalTitle: { color: '#f1f5f9', fontSize: 18, fontWeight: '800' },
-  modalInput: {
-    backgroundColor: '#0f172a', borderRadius: 10, borderWidth: 1, borderColor: '#334155',
-    color: '#f1f5f9', fontSize: 15, paddingHorizontal: 14, paddingVertical: 12,
-  },
-  modalActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  modalCancelBtn: {
-    paddingHorizontal: 16, paddingVertical: 9,
-    borderRadius: 8, backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155',
-  },
-  modalCancelText: { color: '#94a3b8', fontSize: 14, fontWeight: '600' },
-  modalCreateBtn: {
-    paddingHorizontal: 16, paddingVertical: 9,
-    borderRadius: 8, backgroundColor: '#6366f1',
-  },
-  modalCreateBtnDisabled: { opacity: 0.45 },
-  modalCreateText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  modalDeleteBtn: {
-    paddingHorizontal: 12, paddingVertical: 9,
-    borderRadius: 8, backgroundColor: 'rgba(239,68,68,0.12)',
-    borderWidth: 1, borderColor: '#ef4444',
-  },
-  modalDeleteText: { color: '#f87171', fontSize: 14, fontWeight: '600' },
+    // Modals (shared)
+    modalOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'center', alignItems: 'center', padding: 32,
+    },
+    modalCard: {
+      width: '100%', backgroundColor: c.surface,
+      borderRadius: 16, padding: 24, borderWidth: 1, borderColor: c.border, gap: 16,
+    },
+    modalTitle: { color: c.tx, fontSize: 18, fontWeight: '800' },
+    modalInput: {
+      backgroundColor: c.bg, borderRadius: 10, borderWidth: 1, borderColor: c.border,
+      color: c.tx, fontSize: 15, paddingHorizontal: 14, paddingVertical: 12,
+    },
+    modalActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+    modalCancelBtn: {
+      paddingHorizontal: 16, paddingVertical: 9,
+      borderRadius: 8, backgroundColor: c.bg, borderWidth: 1, borderColor: c.border,
+    },
+    modalCancelText: { color: c.tx2, fontSize: 14, fontWeight: '600' },
+    modalCreateBtn: {
+      paddingHorizontal: 16, paddingVertical: 9,
+      borderRadius: 8, backgroundColor: '#6366f1',
+    },
+    modalCreateBtnDisabled: { opacity: 0.45 },
+    modalCreateText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+    modalDeleteBtn: {
+      paddingHorizontal: 12, paddingVertical: 9,
+      borderRadius: 8, backgroundColor: 'rgba(239,68,68,0.12)',
+      borderWidth: 1, borderColor: '#ef4444',
+    },
+    modalDeleteText: { color: '#f87171', fontSize: 14, fontWeight: '600' },
 
-  // Color picker
-  colorPickerRow: { flexDirection: 'row', gap: 12, justifyContent: 'center', paddingVertical: 4 },
-  colorCircle: { width: 32, height: 32, borderRadius: 16 },
-  colorCircleSelected: { borderWidth: 3, borderColor: '#fff', transform: [{ scale: 1.15 }] },
+    // Color picker
+    colorPickerRow: { flexDirection: 'row', gap: 12, justifyContent: 'center', paddingVertical: 4 },
+    colorCircle: { width: 32, height: 32, borderRadius: 16 },
+    colorCircleSelected: { borderWidth: 3, borderColor: c.tx, transform: [{ scale: 1.15 }] },
 
-  // Undo banner
-  undoBanner: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#1e293b', marginHorizontal: 16, marginBottom: 8,
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
-    borderWidth: 1, borderColor: '#334155',
-  },
-  undoBannerText: { color: '#94a3b8', fontSize: 13, flex: 1 },
-  undoBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6, backgroundColor: 'rgba(99,102,241,0.2)', marginLeft: 8 },
-  undoBtnText: { color: '#a5b4fc', fontSize: 13, fontWeight: '700' },
-});
+    // Undo banner
+    undoBanner: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      backgroundColor: c.surface, marginHorizontal: 16, marginBottom: 8,
+      borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+      borderWidth: 1, borderColor: c.border,
+    },
+    undoBannerText: { color: c.tx2, fontSize: 13, flex: 1 },
+    undoBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6, backgroundColor: 'rgba(99,102,241,0.2)', marginLeft: 8 },
+    undoBtnText: { color: '#a5b4fc', fontSize: 13, fontWeight: '700' },
+  });
+}

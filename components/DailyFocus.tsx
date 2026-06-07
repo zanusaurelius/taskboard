@@ -41,6 +41,7 @@ import {
   useSortable,
   arrayMove,
   verticalListSortingStrategy,
+  rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DailyGoal, Habit, Task } from "@/lib/types";
@@ -141,7 +142,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     const viewRes = await fetch(`/api/daily-goals?date=${viewDate}`);
     const raw: DailyGoal[] = viewRes.ok ? await viewRes.json() : [];
     const viewGoals = await vaultDecryptGoals(raw);
-    setGoals(viewGoals);
+    setGoals([...viewGoals.filter(g => !g.completed), ...viewGoals.filter(g => g.completed)]);
     if (isToday) {
       const carryRes = await fetch(`/api/daily-goals?carryover=true&today=${today}`);
       const carryRaw: DailyGoal[] = carryRes.ok ? await carryRes.json() : [];
@@ -314,6 +315,25 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     );
   };
 
+  const handleHabitDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = displayHabits.findIndex((h) => h.id === active.id);
+    const newIndex = displayHabits.findIndex((h) => h.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(displayHabits, oldIndex, newIndex);
+    setHabits(reordered);
+    await Promise.all(
+      reordered.map((h, i) =>
+        fetch(`/api/habits/${h.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ position: i }),
+        })
+      )
+    );
+  };
+
   const handleAddAnother = () => {
     const newSlotIndex = totalSlots;
     setExtraSlots((e) => e + 1);
@@ -323,18 +343,27 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   };
 
   const handleCarryOver = async () => {
+    if (carryOver.some((g) => g.encText) && !vault.masterKey) {
+      window.alert("Unlock your vault first to carry over encrypted goals.");
+      return;
+    }
     const limit = Math.min(goals.length + carryOver.length, 20);
     for (let i = 0; i < carryOver.length; i++) {
       const g = carryOver[i];
       const encFields = await vaultEncrypt(g.text);
-      const res = await fetch("/api/daily-goals", {
+      const createRes = await fetch("/api/daily-goals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...encFields, taskId: g.taskId, date: today, position: goals.length + i, limit }),
       });
-      if (!res.ok) continue;
+      if (!createRes.ok) continue;
+      const created = await createRes.json();
       // Delete the original so it no longer appears as "unfinished from yesterday"
-      await fetch(`/api/daily-goals/${g.id}`, { method: "DELETE" });
+      const deleteRes = await fetch(`/api/daily-goals/${g.id}`, { method: "DELETE" });
+      if (!deleteRes.ok) {
+        // Rollback: remove the just-created goal to avoid duplication
+        await fetch(`/api/daily-goals/${created.id}`, { method: "DELETE" });
+      }
     }
     setCarryOver([]);
     await fetchGoals();
@@ -358,16 +387,19 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   };
 
   const handleToggleHabit = async (habit: Habit) => {
+    const flip = (v: boolean) =>
+      setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: v } : h));
+    flip(!habit.completedToday); // optimistic
     if (habit.completedToday) {
       const res = await fetch(`/api/habits/${habit.id}/complete?date=${today}`, { method: "DELETE" });
-      if (res.ok) setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: false } : h));
+      if (!res.ok) flip(true); // rollback
     } else {
       const res = await fetch(`/api/habits/${habit.id}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: today }),
       });
-      if (res.ok) setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: true } : h));
+      if (!res.ok) flip(false); // rollback
     }
   };
 
@@ -387,11 +419,12 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     const body = "encText" in encFields
       ? { date: today, encNote: (encFields as { encText: string }).encText, note: "" }
       : { date: today, note };
-    fetch("/api/daily-reflections", {
+    const res = await fetch("/api/daily-reflections", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then(flashSaved);
+    });
+    if (res.ok) flashSaved();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today, flashSaved, vault.masterKey]);
 
@@ -400,11 +433,12 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     const body = "encText" in encFields
       ? { date: today, encGratitude: (encFields as { encText: string }).encText, gratitude: "" }
       : { date: today, gratitude };
-    fetch("/api/daily-reflections", {
+    const res = await fetch("/api/daily-reflections", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then(flashSaved);
+    });
+    if (res.ok) flashSaved();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today, flashSaved, vault.masterKey]);
 
@@ -432,9 +466,9 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
 
   const reflectionFieldSx = {
     "& .MuiOutlinedInput-root": {
-      borderRadius: 2, fontSize: "0.875rem", backgroundColor: "#f8fafc",
-      "& fieldset": { borderColor: "#e2e8f0" },
-      "&:hover fieldset": { borderColor: "#cbd5e1" },
+      borderRadius: 2, fontSize: "0.875rem", backgroundColor: "var(--surface-2)",
+      "& fieldset": { borderColor: "var(--border)" },
+      "&:hover fieldset": { borderColor: "var(--border-2)" },
       "&.Mui-focused fieldset": { borderColor: "#6366f1", borderWidth: 1.5 },
     },
     "& textarea": { py: 1, px: 0.5, lineHeight: 1.5 },
@@ -446,10 +480,14 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   const allSlotsFilled = goals.length >= totalSlots;
   const completedGoals = goals.filter((g) => g.completed).length;
   const completedHabits = habits.filter((h) => h.completedToday).length;
+  const displayHabits = [...habits].sort((a, b) => {
+    if (a.completedToday === b.completedToday) return 0;
+    return a.completedToday ? 1 : -1;
+  });
 
   return (
     <Box sx={{
-      backgroundColor: "#fff",
+      backgroundColor: "var(--surface)",
       borderRadius: 2.5,
       boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
       mb: 3,
@@ -460,31 +498,31 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
       <Box sx={{
         px: 3, py: 1.5,
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        borderBottom: collapsed ? "none" : "1px solid #f1f5f9",
+        borderBottom: collapsed ? "none" : "1px solid var(--border)",
         cursor: "pointer",
-        "&:hover": { backgroundColor: "#fafafa" },
+        "&:hover": { backgroundColor: "var(--surface-hover)" },
         transition: "background-color 0.15s",
       }} onClick={toggleCollapsed}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", color: "#1e293b" }}>
+          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--tx)" }}>
             Daily Focus
           </Typography>
-          <Box sx={{ display: "flex", alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 2, px: 0.25, backgroundColor: "#f8fafc" }} onClick={(e) => e.stopPropagation()}>
+          <Box sx={{ display: "flex", alignItems: "center", border: "1px solid var(--border)", borderRadius: 2, px: 0.25, backgroundColor: "var(--surface-2)" }} onClick={(e) => e.stopPropagation()}>
             <IconButton
               size="small"
               onClick={(e) => { e.stopPropagation(); setDayOffset((o) => o - 1); }}
-              sx={{ p: 0.4, color: "#64748b", borderRadius: 1.5, "&:hover": { color: "#1e293b", backgroundColor: "#e2e8f0" } }}
+              sx={{ p: 0.4, color: "var(--tx-3)", borderRadius: 1.5, "&:hover": { color: "var(--tx)", backgroundColor: "var(--border)" } }}
             >
               <ChevronLeftIcon sx={{ fontSize: 16 }} />
             </IconButton>
-            <Typography sx={{ fontSize: "0.8rem", color: "#475569", fontWeight: 600, mx: 0.75, userSelect: "none" }}>
+            <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-2)", fontWeight: 600, mx: 0.75, userSelect: "none" }}>
               {formatDate(viewDate)}
             </Typography>
             <IconButton
               size="small"
               onClick={(e) => { e.stopPropagation(); setDayOffset((o) => Math.min(o + 1, MAX_FUTURE)); }}
               disabled={dayOffset >= MAX_FUTURE}
-              sx={{ p: 0.4, color: "#64748b", borderRadius: 1.5, "&:hover": { color: "#1e293b", backgroundColor: "#e2e8f0" }, "&.Mui-disabled": { color: "#cbd5e1" } }}
+              sx={{ p: 0.4, color: "var(--tx-3)", borderRadius: 1.5, "&:hover": { color: "var(--tx)", backgroundColor: "var(--border)" }, "&.Mui-disabled": { color: "var(--border-2)" } }}
             >
               <ChevronRightIcon sx={{ fontSize: 16 }} />
             </IconButton>
@@ -498,7 +536,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               if (relativeLabel) {
                 return (
                   <Box sx={{ ml: 0.75, px: 1, py: 0.2, borderRadius: 99,
-                    backgroundColor: "#f5f3ff", display: "inline-flex", alignItems: "center" }}>
+                    backgroundColor: "var(--accent-tint)", display: "inline-flex", alignItems: "center" }}>
                     <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: "#6366f1", lineHeight: 1 }}>
                       {relativeLabel}
                     </Typography>
@@ -511,8 +549,8 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                   size="small"
                   onClick={(e) => { e.stopPropagation(); setDayOffset(0); }}
                   sx={{ ml: 0.5, textTransform: "none", fontSize: "0.72rem", fontWeight: 600,
-                    color: "#6366f1", backgroundColor: "#f5f3ff", borderRadius: 99,
-                    px: 1, py: 0.15, minWidth: 0, "&:hover": { backgroundColor: "#ede9fe" } }}
+                    color: "#6366f1", backgroundColor: "var(--accent-tint)", borderRadius: 99,
+                    px: 1, py: 0.15, minWidth: 0, "&:hover": { backgroundColor: "var(--accent-tint)", opacity: 0.8 } }}
                 >
                   Today
                 </Button>
@@ -523,20 +561,20 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
             <Box sx={{ display: "flex", gap: 1 }}>
               {goals.length > 0 && (
                 <Box sx={{
-                  backgroundColor: completedGoals === goals.length ? "#dcfce7" : "#f1f5f9",
+                  backgroundColor: completedGoals === goals.length ? "#dcfce7" : "var(--surface-2)",
                   borderRadius: 99, px: 1.25, py: 0.2,
                 }}>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: completedGoals === goals.length ? "#16a34a" : "#64748b" }}>
+                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: completedGoals === goals.length ? "#16a34a" : "var(--tx-3)" }}>
                     {completedGoals}/{goals.length} goals
                   </Typography>
                 </Box>
               )}
               {habits.length > 0 && (
                 <Box sx={{
-                  backgroundColor: completedHabits === habits.length ? "#dcfce7" : "#f1f5f9",
+                  backgroundColor: completedHabits === habits.length ? "#dcfce7" : "var(--surface-2)",
                   borderRadius: 99, px: 1.25, py: 0.2,
                 }}>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: completedHabits === habits.length ? "#16a34a" : "#64748b" }}>
+                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: completedHabits === habits.length ? "#16a34a" : "var(--tx-3)" }}>
                     {completedHabits}/{habits.length} habits
                   </Typography>
                 </Box>
@@ -544,7 +582,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
             </Box>
           )}
         </Box>
-        <IconButton size="small" sx={{ color: "#94a3b8" }}>
+        <IconButton size="small" sx={{ color: "var(--tx-4)" }}>
           {collapsed ? <ExpandMoreIcon sx={{ fontSize: 18 }} /> : <ExpandLessIcon sx={{ fontSize: 18 }} />}
         </IconButton>
       </Box>
@@ -574,7 +612,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               <Typography sx={{ fontSize: "0.72rem", fontWeight: 800, color: "#6366f1", textTransform: "uppercase", letterSpacing: 0.8, flexShrink: 0, mt: "1px" }}>
                 One thing to do better today
               </Typography>
-              <Typography sx={{ fontSize: "0.85rem", color: "#475569", fontWeight: 500, lineHeight: 1.4 }}>
+              <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-2)", fontWeight: 500, lineHeight: 1.4 }}>
                 {prevDayReflection}
               </Typography>
             </Box>
@@ -583,19 +621,21 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
           {/* ── Habits ── (today only) */}
           {isToday && <Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.25 }}>
-              <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.1 }}>
+              <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 1.1 }}>
                 Daily Habits
               </Typography>
             </Box>
-            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }}>
-              {habits.map((habit) => (
-                <HabitChip
-                  key={habit.id}
-                  habit={habit}
-                  onToggle={() => handleToggleHabit(habit)}
-                  onDelete={() => handleDeleteHabit(habit.id)}
-                />
-              ))}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleHabitDragEnd}>
+              <SortableContext items={displayHabits.map((h) => h.id)} strategy={rectSortingStrategy}>
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }}>
+                  {displayHabits.map((habit) => (
+                    <HabitChip
+                      key={habit.id}
+                      habit={habit}
+                      onToggle={() => handleToggleHabit(habit)}
+                      onDelete={() => handleDeleteHabit(habit.id)}
+                    />
+                  ))}
               {addingHabit ? (
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
                   <TextField
@@ -625,7 +665,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                     Add
                   </Button>
                   <Button size="small" onClick={() => { setAddingHabit(false); setHabitInput(""); }}
-                    sx={{ textTransform: "none", fontSize: "0.8rem", color: "#94a3b8", minWidth: 0 }}>
+                    sx={{ textTransform: "none", fontSize: "0.8rem", color: "var(--tx-4)", minWidth: 0 }}>
                     Cancel
                   </Button>
                 </Box>
@@ -633,8 +673,8 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                 <Tooltip title="Add a daily habit" placement="top">
                   <IconButton size="small" onClick={() => setAddingHabit(true)}
                     sx={{
-                      border: "1.5px dashed #cbd5e1", borderRadius: 1.5, p: 0.6,
-                      color: "#94a3b8",
+                      border: "1.5px dashed var(--border)", borderRadius: 1.5, p: 0.6,
+                      color: "var(--tx-4)",
                       "&:hover": { borderColor: "#6366f1", color: "#6366f1", backgroundColor: "#f5f3ff" },
                       transition: "all 0.15s",
                     }}>
@@ -642,16 +682,18 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                   </IconButton>
                 </Tooltip>
               )}
-            </Box>
+                </Box>
+              </SortableContext>
+            </DndContext>
           </Box>}
 
-          {isToday && <Box sx={{ borderTop: "1px solid #f1f5f9" }} />}
+          {isToday && <Box sx={{ borderTop: "1px solid var(--divider)" }} />}
 
           {/* ── Goals ── */}
           <Box>
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.25 }}>
-              <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.1 }}>
-                {isToday ? `Today's Top ${goalLimit}` : dayOffset === 1 ? `Tomorrow's Top ${goalLimit}` : dayOffset === -1 ? `Yesterday's Top ${goalLimit}` : `${formatDate(viewDate).split(",")[0]}'s Top ${goalLimit}`}
+              <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 1.1 }}>
+                {isToday ? `Today's Top Goals` : dayOffset === 1 ? `Tomorrow's Goals` : dayOffset === -1 ? `Yesterday's Goals` : `${formatDate(viewDate).split(",")[0]}'s Goals`}
               </Typography>
               {isToday && carryOver.length > 0 && (
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -732,7 +774,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                         display: "flex", alignItems: "center", gap: 0.75,
                         px: 1.5, py: 0.75, mt: 0.25,
                         cursor: "pointer", width: "fit-content",
-                        color: "#94a3b8",
+                        color: "var(--tx-4)",
                         borderRadius: 1.5,
                         transition: "color 0.15s, background-color 0.15s",
                         "&:hover": { color: "#6366f1", backgroundColor: "#f5f3ff" },
@@ -750,10 +792,10 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
           {/* ── Reflection ── (today only) */}
           {isToday && (
             <>
-              <Box sx={{ borderTop: "1px solid #f1f5f9" }} />
+              <Box sx={{ borderTop: "1px solid var(--divider)" }} />
               <Box>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-                  <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.1 }}>
+                  <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 1.1 }}>
                     One thing to do better tomorrow
                   </Typography>
                   {reflectionSaved && (
@@ -780,7 +822,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               </Box>
 
               <Box>
-                <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.1, mb: 1 }}>
+                <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 1.1, mb: 1 }}>
                   One thing I&apos;m grateful for
                 </Typography>
                 <TextField
@@ -808,34 +850,42 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
 }
 
 function HabitChip({ habit, onToggle, onDelete }: { habit: Habit; onToggle: () => void; onDelete: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: habit.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   return (
-    <Box sx={{
+    <Box ref={setNodeRef} style={style} sx={{
       display: "flex", alignItems: "center", gap: 0.5,
-      backgroundColor: habit.completedToday ? "#dcfce7" : "#f8fafc",
-      border: `1.5px solid ${habit.completedToday ? "#86efac" : "#e2e8f0"}`,
+      backgroundColor: habit.completedToday ? "#dcfce7" : "var(--surface-2)",
+      border: `1.5px solid ${habit.completedToday ? "#86efac" : "var(--border)"}`,
       borderRadius: 99,
       pl: 0.5, pr: 0.75, py: 0.4,
       transition: "all 0.2s",
       "&:hover .habit-delete": { opacity: 1 },
+      "&:hover .habit-drag": { opacity: 1 },
     }}>
+      {/* Drag handle — appears on hover */}
+      <Box className="habit-drag" {...attributes} {...listeners}
+        sx={{ cursor: "grab", opacity: 0, transition: "opacity 0.15s", display: "flex", alignItems: "center", color: "var(--tx-4)", px: 0.25 }}>
+        <DragIndicatorIcon sx={{ fontSize: 13 }} />
+      </Box>
       <Checkbox
         checked={habit.completedToday}
         onChange={onToggle}
         size="small"
-        icon={<RadioButtonUncheckedIcon sx={{ fontSize: 16, color: "#cbd5e1" }} />}
+        icon={<RadioButtonUncheckedIcon sx={{ fontSize: 16, color: "var(--tx-4)" }} />}
         checkedIcon={<CheckCircleIcon sx={{ fontSize: 16, color: "#22c55e" }} />}
         sx={{ p: 0.25 }}
       />
       <Typography sx={{
         fontSize: "0.82rem", fontWeight: 500,
-        color: habit.completedToday ? "#15803d" : "#475569",
+        color: habit.completedToday ? "#15803d" : "var(--tx-2)",
         textDecoration: habit.completedToday ? "line-through" : "none",
         transition: "all 0.2s",
       }}>
         {habit.text}
       </Typography>
       <IconButton className="habit-delete" size="small" onClick={onDelete}
-        sx={{ p: 0.2, opacity: 0, transition: "opacity 0.15s", color: "#cbd5e1",
+        sx={{ p: 0.2, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
           "&:hover": { color: "#ef4444" }, ml: 0.25 }}>
         <DeleteOutlineIcon sx={{ fontSize: 13 }} />
       </IconButton>
@@ -902,8 +952,8 @@ function GoalSlot({
       <Box sx={{
         display: "flex", alignItems: "center", gap: 1,
         p: 1.25, borderRadius: 2,
-        backgroundColor: goal.completed ? "#f0fdf4" : "#f8fafc",
-        border: `1.5px solid ${isEditing ? "#6366f1" : goal.completed ? "#86efac" : "#e2e8f0"}`,
+        backgroundColor: goal.completed ? "#f0fdf4" : "var(--surface-2)",
+        border: `1.5px solid ${isEditing ? "#6366f1" : goal.completed ? "#86efac" : "var(--border)"}`,
         transition: "all 0.2s",
         opacity: isDragging ? 0.4 : 1,
         "&:hover .goal-action": { opacity: 1 },
@@ -915,9 +965,9 @@ function GoalSlot({
             {...dragHandleAttributes}
             sx={{
               cursor: "grab", opacity: 0, flexShrink: 0,
-              color: "#cbd5e1", display: "flex", alignItems: "center",
+              color: "var(--border-2)", display: "flex", alignItems: "center",
               transition: "opacity 0.15s, color 0.15s",
-              "&:hover": { color: "#94a3b8" },
+              "&:hover": { color: "var(--tx-4)" },
               "&:active": { cursor: "grabbing" },
             }}
           >
@@ -926,11 +976,11 @@ function GoalSlot({
         )}
         <Box sx={{
           width: 22, height: 22, borderRadius: 99, flexShrink: 0,
-          backgroundColor: goal.completed ? "#22c55e" : "#e2e8f0",
+          backgroundColor: goal.completed ? "#22c55e" : "var(--border)",
           display: "flex", alignItems: "center", justifyContent: "center",
           transition: "background-color 0.2s",
         }}>
-          <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: goal.completed ? "#fff" : "#94a3b8" }}>
+          <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: goal.completed ? "#fff" : "var(--tx-4)" }}>
             {numberLabel}
           </Typography>
         </Box>
@@ -938,7 +988,7 @@ function GoalSlot({
           checked={goal.completed}
           onChange={onToggleGoal}
           size="small"
-          icon={<RadioButtonUncheckedIcon sx={{ fontSize: 18, color: "#cbd5e1" }} />}
+          icon={<RadioButtonUncheckedIcon sx={{ fontSize: 18, color: "var(--tx-4)" }} />}
           checkedIcon={<CheckCircleIcon sx={{ fontSize: 18, color: "#22c55e" }} />}
           sx={{ p: 0.25 }}
         />
@@ -968,7 +1018,7 @@ function GoalSlot({
             onDoubleClick={() => !goal.completed && setIsEditing(true)}
             sx={{
               flex: 1, fontSize: "0.875rem", fontWeight: 500,
-              color: goal.completed ? "#15803d" : "#334155",
+              color: goal.completed ? "#15803d" : "var(--tx)",
               textDecoration: goal.completed ? "line-through" : "none",
               transition: "all 0.2s",
               cursor: goal.completed ? "default" : "text",
@@ -978,14 +1028,14 @@ function GoalSlot({
           </Typography>
         )}
         {goal.taskId && !isEditing && (
-          <Typography sx={{ fontSize: "0.7rem", color: "#94a3b8", fontWeight: 500, flexShrink: 0 }}>
+          <Typography sx={{ fontSize: "0.7rem", color: "var(--tx-4)", fontWeight: 500, flexShrink: 0 }}>
             linked
           </Typography>
         )}
         {!goal.completed && !isEditing && (
           <Tooltip title="Edit" placement="top">
             <IconButton className="goal-action" size="small" onClick={() => setIsEditing(true)}
-              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "#cbd5e1",
+              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
                 "&:hover": { color: "#6366f1" } }}>
               <EditOutlinedIcon sx={{ fontSize: 14 }} />
             </IconButton>
@@ -995,7 +1045,7 @@ function GoalSlot({
         {!goal.completed && !isEditing && (
           <Tooltip title={goal.taskId ? "Mark done & move task to Done" : "Mark done"} placement="top">
             <IconButton className="goal-action" size="small" onClick={onToggleGoal}
-              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "#cbd5e1",
+              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
                 "&:hover": { color: "#22c55e" } }}>
               <TaskAltIcon sx={{ fontSize: 16 }} />
             </IconButton>
@@ -1004,7 +1054,7 @@ function GoalSlot({
         {!goal.completed && !isEditing && onMoveToNextDay && (
           <Tooltip title="Move to next day" placement="top">
             <IconButton className="goal-action" size="small" onClick={onMoveToNextDay}
-              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "#cbd5e1",
+              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
                 "&:hover": { color: "#6366f1" } }}>
               <ArrowForwardIcon sx={{ fontSize: 14 }} />
             </IconButton>
@@ -1013,7 +1063,7 @@ function GoalSlot({
         {!goal.completed && !isEditing && onSendToBoard && (
           <Tooltip title="Send to board" placement="top">
             <IconButton className="goal-action" size="small" onClick={onSendToBoard}
-              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "#cbd5e1",
+              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
                 "&:hover": { color: "#6366f1" } }}>
               <ReplyIcon sx={{ fontSize: 14 }} />
             </IconButton>
@@ -1022,7 +1072,7 @@ function GoalSlot({
         {!isEditing && (
           <Tooltip title="Remove" placement="top">
             <IconButton className="goal-action" size="small" onClick={onDeleteGoal}
-              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "#cbd5e1",
+              sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
                 "&:hover": { color: "#ef4444" } }}>
               <DeleteOutlineIcon sx={{ fontSize: 15 }} />
             </IconButton>
@@ -1034,7 +1084,7 @@ function GoalSlot({
 
   if (isAdding) {
     return (
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 1, p: 1.25, borderRadius: 2, border: "1.5px solid #6366f1", backgroundColor: "#f5f3ff" }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1, p: 1.25, borderRadius: 2, border: "1.5px solid #6366f1", backgroundColor: "var(--accent-tint)" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Box sx={{
             width: 22, height: 22, borderRadius: 99, flexShrink: 0,
@@ -1071,7 +1121,7 @@ function GoalSlot({
                 }}
                 sx={{
                   "& .MuiOutlinedInput-root": {
-                    borderRadius: 1.5, fontSize: "0.875rem", backgroundColor: "#fff",
+                    borderRadius: 1.5, fontSize: "0.875rem", backgroundColor: "var(--surface)",
                     "& fieldset": { border: "none" },
                   },
                   "& input": { py: "6px" },
@@ -1084,12 +1134,12 @@ function GoalSlot({
               return (
                 <Box component="li" {...props} sx={{ fontSize: "0.85rem", opacity: isLocked ? 0.65 : 1 }}>
                   <Box sx={{ display: "flex", flexDirection: "column" }}>
-                    <Typography sx={{ fontSize: "0.85rem", fontWeight: 500, color: isLocked ? "#94a3b8" : "inherit" }}>
+                    <Typography sx={{ fontSize: "0.85rem", fontWeight: 500, color: isLocked ? "var(--tx-2)" : "inherit" }}>
                       {isLocked ? "🔒 Locked task" : option.title}
                     </Typography>
                     {isLocked
-                      ? <Typography sx={{ fontSize: "0.7rem", color: "#64748b" }}>Unlock vault to link this task</Typography>
-                      : option.project && <Typography sx={{ fontSize: "0.72rem", color: "#94a3b8" }}>{option.project.name}</Typography>
+                      ? <Typography sx={{ fontSize: "0.7rem", color: "var(--tx-3)" }}>Unlock vault to link this task</Typography>
+                      : option.project && <Typography sx={{ fontSize: "0.72rem", color: "var(--tx-4)" }}>{option.project.name}</Typography>
                     }
                   </Box>
                 </Box>
@@ -1099,7 +1149,7 @@ function GoalSlot({
         </Box>
         <Box sx={{ display: "flex", gap: 0.75, justifyContent: "flex-end" }}>
           <Button size="small" onClick={onCancelAdd}
-            sx={{ textTransform: "none", fontSize: "0.8rem", color: "#94a3b8", minWidth: 0 }}>
+            sx={{ textTransform: "none", fontSize: "0.8rem", color: "var(--tx-4)", minWidth: 0 }}>
             Cancel
           </Button>
           <Button size="small" variant="contained" onClick={onAddGoal}
@@ -1120,7 +1170,7 @@ function GoalSlot({
       sx={{
         display: "flex", alignItems: "center", gap: 1,
         p: 1.25, borderRadius: 2,
-        border: "1.5px dashed #e2e8f0",
+        border: "1.5px dashed var(--border)",
         cursor: canAdd ? "pointer" : "default",
         opacity: canAdd ? 1 : 0.4,
         "&:hover": canAdd ? { borderColor: "#6366f1", backgroundColor: "#f5f3ff" } : {},
@@ -1128,12 +1178,12 @@ function GoalSlot({
       }}>
       <Box sx={{
         width: 22, height: 22, borderRadius: 99, flexShrink: 0,
-        backgroundColor: "#f1f5f9",
+        backgroundColor: "var(--bg)",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>
-        <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "#cbd5e1" }}>{numberLabel}</Typography>
+        <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--border-2)" }}>{numberLabel}</Typography>
       </Box>
-      <Typography sx={{ fontSize: "0.85rem", color: "#cbd5e1", fontWeight: 500 }}>
+      <Typography sx={{ fontSize: "0.85rem", color: "var(--border-2)", fontWeight: 500 }}>
         {canAdd ? "Add a goal…" : "—"}
       </Typography>
     </Box>

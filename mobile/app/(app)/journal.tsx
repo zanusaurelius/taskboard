@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput,
   StyleSheet, ActivityIndicator, ScrollView, RefreshControl,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -10,6 +10,7 @@ import { apiFetch, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
 import { enqueue } from '@/lib/offline-db';
 import type { DailyReflection } from '@/lib/types';
+import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 const localDateStr = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -32,10 +33,13 @@ interface DecryptedReflection extends DailyReflection {
 
 export default function JournalScreen() {
   const { encrypt, decrypt, isUnlocked } = useVault();
+  const colors = useThemeColors();
+  const styles = makeStyles(colors);
   const { date: paramDate } = useLocalSearchParams<{ date?: string }>();
   const [entries, setEntries] = useState<DecryptedReflection[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [offline, setOffline] = useState(false);
   const today = localDateStr(new Date());
 
   const [selectedDate, setSelectedDate] = useState(paramDate ?? today);
@@ -72,6 +76,7 @@ export default function JournalScreen() {
 
   const fetchAndDecrypt = useCallback(async () => {
     const result = await apiFetch<DailyReflection[]>('/api/daily-reflections');
+    setOffline(!result.ok && (result as { status?: number }).status === 0);
     if (!isOk(result)) { setLoading(false); setRefreshing(false); return; }
 
     const decrypted = await Promise.all(result.data.map(async (e) => ({
@@ -112,6 +117,23 @@ export default function JournalScreen() {
     const encGratitudeBlob = g.trim() ? await encrypt(g) : null;
     const encBodyBlob = b.trim() ? await encrypt(b) : null;
 
+    // Guard: if vault was active but locked mid-edit, abort rather than downgrading to plaintext
+    const existingEntry = entries.find((e) => e.date === selectedDate);
+    const wasEncrypted = !!(existingEntry?.encNote || existingEntry?.encGratitude || existingEntry?.encBody);
+    if (wasEncrypted) {
+      const wouldLoseData =
+        (n.trim() && !encNoteBlob) ||
+        (g.trim() && !encGratitudeBlob) ||
+        (b.trim() && !encBodyBlob);
+      if (wouldLoseData) {
+        Alert.alert(
+          'Vault locked',
+          'Your vault locked while you were editing. Unlock your vault to save these changes.',
+        );
+        return;
+      }
+    }
+
     const encNote = encNoteBlob ? JSON.stringify(encNoteBlob) : null;
     const encGratitude = encGratitudeBlob ? JSON.stringify(encGratitudeBlob) : null;
     const encBody = encBodyBlob ? JSON.stringify(encBodyBlob) : null;
@@ -146,7 +168,7 @@ export default function JournalScreen() {
       await enqueue('PUT', '/api/daily-reflections', payload);
       flashSaved();
     }
-  }, [selectedDate, encrypt, flashSaved]);
+  }, [selectedDate, encrypt, flashSaved, entries]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNote = (v: string) => {
     setNote(v);
@@ -269,6 +291,11 @@ export default function JournalScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
+      {offline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
+        </View>
+      )}
       <View style={styles.titleRow}>
         <Text style={styles.heading}>Journal</Text>
         {saved && <Text style={styles.savedFlash}>Saved</Text>}
@@ -283,7 +310,7 @@ export default function JournalScreen() {
             value={search}
             onChangeText={setSearch}
             placeholder="Search journal..."
-            placeholderTextColor="#475569"
+            placeholderTextColor={colors.placeholder}
             clearButtonMode="while-editing"
             returnKeyType="search"
             autoCorrect={false}
@@ -358,7 +385,7 @@ export default function JournalScreen() {
             onChangeText={handleNote}
             onBlur={handleNoteBlur}
             placeholder="What could go better?"
-            placeholderTextColor="#334155"
+            placeholderTextColor={colors.placeholder}
             multiline
           />
 
@@ -374,7 +401,7 @@ export default function JournalScreen() {
             onChangeText={handleGrat}
             onBlur={handleGratBlur}
             placeholder="Something you appreciated today"
-            placeholderTextColor="#334155"
+            placeholderTextColor={colors.placeholder}
             multiline
           />
 
@@ -390,7 +417,7 @@ export default function JournalScreen() {
             onChangeText={handleBody}
             onBlur={handleBodyBlur}
             placeholder="How did today go?"
-            placeholderTextColor="#334155"
+            placeholderTextColor={colors.placeholder}
             multiline
             textAlignVertical="top"
           />
@@ -401,64 +428,68 @@ export default function JournalScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  flex: { flex: 1 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' },
-  titleRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
-  },
-  heading: { color: '#f1f5f9', fontSize: 26, fontWeight: '800' },
-  savedFlash: { color: '#22c55e', fontSize: 13, fontWeight: '600' },
-  sidebar: { maxHeight: 220, borderBottomWidth: 1, borderColor: '#1e293b' },
-  sidebarExpanded: { flex: 1, maxHeight: 9999 },
-  detailToggleRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
-    borderTopWidth: 1, borderTopColor: '#1e293b',
-  },
-  detailToggleIcon: { color: '#475569', fontSize: 14 },
-  searchRow: { paddingHorizontal: 14, paddingVertical: 8 },
-  searchInput: {
-    backgroundColor: '#1e293b', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
-    color: '#cbd5e1', fontSize: 14, borderWidth: 1, borderColor: '#334155',
-  },
-  monthHeader: {
-    color: '#475569', fontSize: 10, fontWeight: '800',
-    textTransform: 'uppercase', letterSpacing: 1.1,
-    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 4,
-  },
-  entryRow: { paddingHorizontal: 20, paddingVertical: 10, borderLeftWidth: 3, borderLeftColor: 'transparent' },
-  entryRowActive: { backgroundColor: 'rgba(99,102,241,0.08)', borderLeftColor: '#6366f1' },
-  entryDate: { color: '#94a3b8', fontSize: 14, fontWeight: '600' },
-  entryDateActive: { color: '#a5b4fc' },
-  entrySubDate: { color: '#475569', fontSize: 12, marginTop: 1 },
-  entryPreview: { color: '#475569', fontSize: 12, marginTop: 1 },
-  noResults: { color: '#475569', fontSize: 14, textAlign: 'center', paddingTop: 16, paddingHorizontal: 20 },
-  detail: { flex: 1 },
-  detailContent: { padding: 20, gap: 10, paddingBottom: 60 },
-  detailDate: { color: '#f1f5f9', fontSize: 18, fontWeight: '700', marginBottom: 0 },
-  detailDateSub: { color: '#475569', fontSize: 12, marginTop: 2, marginBottom: 4 },
-  fieldLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  fieldLabel: { color: '#64748b', fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
-  viewAllBtn: { color: '#6366f1', fontSize: 11 },
-  fieldInput: {
-    backgroundColor: '#1e293b', borderRadius: 10, padding: 14,
-    borderWidth: 1, borderColor: '#334155', color: '#cbd5e1', fontSize: 14, lineHeight: 20,
-  },
-  fieldInputTall: { minHeight: 120, textAlignVertical: 'top' },
-  // Stream view styles
-  streamHeader: {
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14,
-    borderBottomWidth: 1, borderColor: '#1e293b', gap: 6,
-  },
-  streamBack: { color: '#6366f1', fontSize: 15 },
-  streamTitle: { color: '#f1f5f9', fontSize: 20, fontWeight: '800' },
-  streamContent: { padding: 20, paddingBottom: 60 },
-  streamEmpty: { color: '#64748b', fontSize: 15, textAlign: 'center', marginTop: 40 },
-  streamItem: { paddingVertical: 16 },
-  streamItemDivider: { borderBottomWidth: 1, borderBottomColor: '#1e293b' },
-  streamItemDate: { color: '#f1f5f9', fontWeight: '700', fontSize: 16 },
-  streamItemText: { color: '#94a3b8', fontSize: 14, lineHeight: 20, marginTop: 6 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    root: { flex: 1, backgroundColor: c.bg },
+    offlineBanner: { backgroundColor: '#7c2d12', paddingHorizontal: 16, paddingVertical: 8 },
+    offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
+    flex: { flex: 1 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
+    titleRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
+    },
+    heading: { color: c.tx, fontSize: 26, fontWeight: '800' },
+    savedFlash: { color: '#22c55e', fontSize: 13, fontWeight: '600' },
+    sidebar: { maxHeight: 220, borderBottomWidth: 1, borderColor: c.border },
+    sidebarExpanded: { flex: 1, maxHeight: 9999 },
+    detailToggleRow: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
+      borderTopWidth: 1, borderTopColor: c.border,
+    },
+    detailToggleIcon: { color: c.tx2, fontSize: 14 },
+    searchRow: { paddingHorizontal: 14, paddingVertical: 8 },
+    searchInput: {
+      backgroundColor: c.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+      color: c.tx, fontSize: 14, borderWidth: 1, borderColor: c.border,
+    },
+    monthHeader: {
+      color: c.tx2, fontSize: 10, fontWeight: '800',
+      textTransform: 'uppercase', letterSpacing: 1.1,
+      paddingHorizontal: 20, paddingTop: 10, paddingBottom: 4,
+    },
+    entryRow: { paddingHorizontal: 20, paddingVertical: 10, borderLeftWidth: 3, borderLeftColor: 'transparent' },
+    entryRowActive: { backgroundColor: 'rgba(99,102,241,0.08)', borderLeftColor: '#6366f1' },
+    entryDate: { color: c.tx2, fontSize: 14, fontWeight: '600' },
+    entryDateActive: { color: '#a5b4fc' },
+    entrySubDate: { color: c.tx4, fontSize: 12, marginTop: 1 },
+    entryPreview: { color: c.tx4, fontSize: 12, marginTop: 1 },
+    noResults: { color: c.tx2, fontSize: 14, textAlign: 'center', paddingTop: 16, paddingHorizontal: 20 },
+    detail: { flex: 1 },
+    detailContent: { padding: 20, gap: 10, paddingBottom: 60 },
+    detailDate: { color: c.tx, fontSize: 18, fontWeight: '700', marginBottom: 0 },
+    detailDateSub: { color: c.tx2, fontSize: 12, marginTop: 2, marginBottom: 4 },
+    fieldLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    fieldLabel: { color: c.tx3, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 },
+    viewAllBtn: { color: '#6366f1', fontSize: 11 },
+    fieldInput: {
+      backgroundColor: c.surface, borderRadius: 10, padding: 14,
+      borderWidth: 1, borderColor: c.border, color: c.tx, fontSize: 14, lineHeight: 20,
+    },
+    fieldInputTall: { minHeight: 120, textAlignVertical: 'top' },
+    // Stream view styles
+    streamHeader: {
+      paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14,
+      borderBottomWidth: 1, borderColor: c.border, gap: 6,
+    },
+    streamBack: { color: '#6366f1', fontSize: 15 },
+    streamTitle: { color: c.tx, fontSize: 20, fontWeight: '800' },
+    streamContent: { padding: 20, paddingBottom: 60 },
+    streamEmpty: { color: c.tx3, fontSize: 15, textAlign: 'center', marginTop: 40 },
+    streamItem: { paddingVertical: 16 },
+    streamItemDivider: { borderBottomWidth: 1, borderBottomColor: c.border },
+    streamItemDate: { color: c.tx, fontWeight: '700', fontSize: 16 },
+    streamItemText: { color: c.tx2, fontSize: 14, lineHeight: 20, marginTop: 6 },
+  });
+}

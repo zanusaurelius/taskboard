@@ -8,7 +8,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import InputAdornment from "@mui/material/InputAdornment";
 import SearchIcon from "@mui/icons-material/Search";
 import { useVault } from "@/lib/vault-context";
-import type { Task, Note } from "@/lib/types";
+import type { Task, Note, UploadFile } from "@/lib/types";
 
 interface DailyReflection {
   id: string;
@@ -24,13 +24,14 @@ interface DailyReflection {
 interface GlobalSearchProps {
   open: boolean;
   onClose: () => void;
-  onNavigate: (view: "board" | "notes" | "journal") => void;
+  onNavigate: (view: "board" | "notes" | "journal" | "files") => void;
 }
 
 interface SearchResults {
   tasks: Task[];
   notes: Note[];
   journal: DailyReflection[];
+  files: UploadFile[];
 }
 
 function snippet(text: string | null | undefined, query: string, maxLen = 100): string {
@@ -82,16 +83,18 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
     const gen = ++searchGenRef.current;
     setLoading(true);
     try {
-      const [tasksRes, notesRes, journalRes] = await Promise.all([
-        fetch("/api/tasks"),
-        fetch("/api/notes"),
-        fetch("/api/daily-reflections"),
+      const [tasksRes, notesRes, journalRes, filesRes] = await Promise.all([
+        fetch("/api/tasks").catch(() => null),
+        fetch("/api/notes").catch(() => null),
+        fetch("/api/daily-reflections").catch(() => null),
+        fetch("/api/files?all=true").catch(() => null),
       ]);
 
-      const [rawTasks, rawNotes, rawJournal] = await Promise.all([
-        tasksRes.ok ? tasksRes.json() : [],
-        notesRes.ok ? notesRes.json() : [],
-        journalRes.ok ? journalRes.json() : [],
+      const [rawTasks, rawNotes, rawJournal, rawFiles] = await Promise.all([
+        tasksRes?.ok ? tasksRes.json() : [],
+        notesRes?.ok ? notesRes.json() : [],
+        journalRes?.ok ? journalRes.json() : [],
+        filesRes?.ok ? filesRes.json() : [],
       ]);
 
       if (gen !== searchGenRef.current) return; // superseded by a newer search
@@ -155,10 +158,15 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
         }
       }
 
+      // Filter files by original name
+      const files: UploadFile[] = (rawFiles as UploadFile[]).filter((f) =>
+        f.originalName.toLowerCase().includes(lower)
+      );
+
       if (gen !== searchGenRef.current) return; // superseded while decrypting
-      setResults({ tasks, notes, journal });
+      setResults({ tasks, notes, journal, files });
     } catch {
-      if (gen === searchGenRef.current) setResults({ tasks: [], notes: [], journal: [] });
+      if (gen === searchGenRef.current) setResults({ tasks: [], notes: [], journal: [], files: [] });
     } finally {
       if (gen === searchGenRef.current) setLoading(false);
     }
@@ -182,7 +190,7 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
     }
   };
 
-  const totalResults = results ? results.tasks.length + results.notes.length + results.journal.length : 0;
+  const totalResults = results ? results.tasks.length + results.notes.length + results.journal.length + results.files.length : 0;
   const hasQuery = query.length >= 2;
 
   return (
@@ -212,7 +220,7 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
           autoFocus
           fullWidth
           size="small"
-          placeholder="Search tasks, notes, journal…"
+          placeholder="Search tasks, notes, journal, files…"
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -247,7 +255,7 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
         {!hasQuery && (
           <Box sx={{ textAlign: "center", py: 4, px: 2 }}>
             <Typography sx={{ color: "rgba(255,255,255,0.3)", fontSize: "0.85rem" }}>
-              Search tasks, notes, and journal entries
+              Search tasks, notes, journal, and files
             </Typography>
           </Box>
         )}
@@ -330,6 +338,34 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
                     />
                   );
                 })}
+              </Box>
+            )}
+
+            {/* Files section */}
+            {results.files.length > 0 && (
+              <Box>
+                <Typography sx={{
+                  fontSize: "0.65rem", fontWeight: 700, letterSpacing: 1,
+                  color: "rgba(255,255,255,0.3)", textTransform: "uppercase",
+                  px: 2, py: 0.75,
+                }}>
+                  Files
+                </Typography>
+                {results.files.map((file) => (
+                  <ResultRow
+                    key={file.id}
+                    title={file.originalName}
+                    meta={file.mimeType.split("/")[1]?.toUpperCase() ?? "FILE"}
+                    snippetText={file.fileFolderId ? "In a folder" : ""}
+                    onClick={() => {
+                      if (file.fileFolderId) {
+                        window.dispatchEvent(new CustomEvent("files:openFolder", { detail: { folderId: file.fileFolderId } }));
+                      }
+                      onNavigate("files");
+                      onClose();
+                    }}
+                  />
+                ))}
               </Box>
             )}
           </Box>

@@ -2,6 +2,19 @@ import { NextResponse } from "next/server";
 import { getUserId } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
 
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const userId = await getUserId(request);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const folder = await prisma.fileFolder.findFirst({
+    where: { id, userId },
+    select: { id: true, name: true, parentId: true, createdAt: true, updatedAt: true, _count: { select: { uploads: true, children: true } } },
+  });
+  if (!folder) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json(folder);
+}
+
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

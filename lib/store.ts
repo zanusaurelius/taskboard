@@ -49,7 +49,7 @@ interface TaskBoardStore {
   projects: Project[];
   notes: Note[];
   trashNotes: Note[];
-  fetchAll: (includeArchivedTasks?: boolean, includeArchivedProjects?: boolean) => Promise<void>;
+  fetchAll: (includeArchivedTasks?: boolean, includeArchivedProjects?: boolean) => Promise<boolean>;
   createTask: (fields: Partial<Task>) => Promise<Task>;
   updateTask: (id: string, fields: Partial<Task>) => Promise<Task>;
   deleteTask: (id: string) => Promise<void>;
@@ -193,20 +193,25 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
   },
 
   fetchAll: async (includeArchivedTasks = false, includeArchivedProjects = false) => {
-    const [tasksRes, projectsRes] = await Promise.all([
-      fetch(`/api/tasks${includeArchivedTasks ? "?includeArchived=true" : ""}`),
-      fetch(`/api/projects${includeArchivedProjects ? "?includeArchived=true" : ""}`),
-    ]);
-    if (!tasksRes.ok || !projectsRes.ok) return;
-    let [tasks, projects]: [Task[], Project[]] = await Promise.all([tasksRes.json(), projectsRes.json()]);
-    const { masterKey } = get();
-    if (masterKey) {
-      [tasks, projects] = await Promise.all([
-        Promise.all(tasks.map((t) => decryptTask(t, masterKey))),
-        Promise.all(projects.map((p) => decryptProject(p, masterKey))),
+    try {
+      const [tasksRes, projectsRes] = await Promise.all([
+        fetch(`/api/tasks${includeArchivedTasks ? "?includeArchived=true" : ""}`),
+        fetch(`/api/projects${includeArchivedProjects ? "?includeArchived=true" : ""}`),
       ]);
+      if (!tasksRes.ok || !projectsRes.ok) return false;
+      let [tasks, projects]: [Task[], Project[]] = await Promise.all([tasksRes.json(), projectsRes.json()]);
+      const { masterKey } = get();
+      if (masterKey) {
+        [tasks, projects] = await Promise.all([
+          Promise.all(tasks.map((t) => decryptTask(t, masterKey))),
+          Promise.all(projects.map((p) => decryptProject(p, masterKey))),
+        ]);
+      }
+      set({ tasks, projects: projects.sort((a, b) => a.name.localeCompare(b.name)) });
+      return true;
+    } catch {
+      return false;
     }
-    set({ tasks, projects: projects.sort((a, b) => a.name.localeCompare(b.name)) });
   },
 
   createTask: async (fields) => {

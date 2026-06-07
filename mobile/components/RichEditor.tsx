@@ -1,23 +1,33 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef } from 'react';
 import { StyleProp, ViewStyle } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { useThemeColors } from '@/lib/theme-context';
 
-// Dark-themed contenteditable editor that produces TipTap-compatible HTML.
-// Uses document.execCommand (supported in all mobile WebViews) so text is
-// visually formatted (bold renders as bold, bullets as bullets, etc.).
+// Generates theme-aware HTML for the contenteditable editor.
+function buildEditorHtml(dark: boolean): string {
+  const bg = dark ? '#1e293b' : '#ffffff';
+  const text = dark ? '#cbd5e1' : '#1e293b';
+  const placeholder = dark ? '#334155' : '#94a3b8';
+  const strong = dark ? '#e2e8f0' : '#0f172a';
+  const codeBg = dark ? '#0f172a' : '#f1f5f9';
+  const codeColor = dark ? '#7dd3fc' : '#0369a1';
+  const h1 = dark ? '#f1f5f9' : '#0f172a';
+  const h2h3 = dark ? '#e2e8f0' : '#1e293b';
+  const quote = dark ? '#94a3b8' : '#475569';
+  const link = dark ? '#818cf8' : '#6366f1';
 
-const EDITOR_HTML = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; background: #1e293b; }
+  html, body { height: 100%; background: ${bg}; }
   body { padding: 0 20px 60px; }
   #editor {
     outline: none;
     min-height: 300px;
-    color: #cbd5e1;
+    color: ${text};
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-size: 16px;
     line-height: 1.625;
@@ -26,22 +36,22 @@ const EDITOR_HTML = `<!DOCTYPE html>
   }
   #editor:empty::before {
     content: attr(data-placeholder);
-    color: #334155;
+    color: ${placeholder};
     pointer-events: none;
   }
-  b, strong { font-weight: 700; color: #e2e8f0; }
+  b, strong { font-weight: 700; color: ${strong}; }
   i, em { font-style: italic; }
   u { text-decoration: underline; }
   code {
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
     font-size: 14px;
-    background: #1e293b;
-    color: #7dd3fc;
+    background: ${codeBg};
+    color: ${codeColor};
     border-radius: 4px;
     padding: 1px 6px;
   }
   pre {
-    background: #1e293b;
+    background: ${codeBg};
     border-radius: 8px;
     padding: 12px 16px;
     margin: 8px 0;
@@ -53,17 +63,17 @@ const EDITOR_HTML = `<!DOCTYPE html>
   ul li { list-style-type: disc; }
   ol li { list-style-type: decimal; }
   p { margin: 2px 0; }
-  h1 { font-size: 22px; font-weight: 800; color: #f1f5f9; margin: 8px 0 4px; }
-  h2 { font-size: 18px; font-weight: 700; color: #e2e8f0; margin: 6px 0 4px; }
-  h3 { font-size: 16px; font-weight: 700; color: #e2e8f0; margin: 4px 0 2px; }
+  h1 { font-size: 22px; font-weight: 800; color: ${h1}; margin: 8px 0 4px; }
+  h2 { font-size: 18px; font-weight: 700; color: ${h2h3}; margin: 6px 0 4px; }
+  h3 { font-size: 16px; font-weight: 700; color: ${h2h3}; margin: 4px 0 2px; }
   blockquote {
     border-left: 3px solid #6366f1;
     margin: 8px 0;
     padding-left: 14px;
-    color: #94a3b8;
+    color: ${quote};
   }
   img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
-  a { color: #818cf8; }
+  a { color: ${link}; }
 </style>
 </head>
 <body>
@@ -144,6 +154,7 @@ const EDITOR_HTML = `<!DOCTYPE html>
 </script>
 </body>
 </html>`;
+}
 
 export interface RichEditorRef {
   bold: () => void;
@@ -168,6 +179,9 @@ interface Props {
 
 const RichEditor = forwardRef<RichEditorRef, Props>(
   ({ initialContent, onChange, onFocus, onBlur, style, onHeightChange }, ref) => {
+    const colors = useThemeColors();
+    const isDark = colors.statusBar === 'light'; // light statusBar = dark background
+    const editorHtml = buildEditorHtml(isDark);
     const webRef = useRef<WebView>(null);
 
     const post = useCallback((msg: object) => {
@@ -204,14 +218,14 @@ const RichEditor = forwardRef<RichEditorRef, Props>(
     return (
       <AnyWebView
         ref={webRef}
-        source={{ html: EDITOR_HTML }}
+        source={{ html: editorHtml }}
         onMessage={onMessage}
         onLoadEnd={() => {
           if (initialContent) post({ type: 'setContent', html: initialContent });
         }}
         scrollEnabled={false}
         style={style}
-        backgroundColor="#1e293b"
+        backgroundColor={colors.surface}
         keyboardDisplayRequiresUserAction={false}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}

@@ -16,6 +16,9 @@ import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import WifiOffIcon from "@mui/icons-material/WifiOff";
 import SyncIcon from "@mui/icons-material/Sync";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import SettingsBrightnessIcon from "@mui/icons-material/SettingsBrightness";
 import TaskBoard from "./TaskBoard";
 import NotesView from "./NotesView";
 import JournalView from "./JournalView";
@@ -30,6 +33,7 @@ import { useReminders } from "@/lib/useReminders";
 import { useOnlineSync } from "@/lib/useOnlineSync";
 import { VaultProvider, useVault } from "@/lib/vault-context";
 import { useTaskBoardStore } from "@/lib/store";
+import { useAppTheme, type ThemeMode } from "@/lib/theme-context";
 
 type View = "board" | "notes" | "journal" | "files" | "settings";
 type VaultState = "loading" | "not-setup" | "locked" | "unlocked";
@@ -209,6 +213,14 @@ function AppShellInner() {
     navigate("board");
   };
 
+  const { mode: themeMode, setMode: setThemeMode } = useAppTheme();
+
+  const themeIcon = themeMode === "dark" ? <DarkModeIcon sx={{ fontSize: 16 }} />
+    : themeMode === "light" ? <LightModeIcon sx={{ fontSize: 16 }} />
+    : <SettingsBrightnessIcon sx={{ fontSize: 16 }} />;
+  const nextThemeMode: Record<ThemeMode, ThemeMode> = { light: "dark", dark: "system", system: "light" };
+  const themeModeLabel: Record<ThemeMode, string> = { light: "Light", dark: "Dark", system: "Auto" };
+
   const username = session?.user?.name ?? "";
   const initials = username.slice(0, 2).toUpperCase() || "?";
 
@@ -232,7 +244,7 @@ function AppShellInner() {
   // ── Full app ────────────────────────────────────────────────────────────────
 
   return (
-    <Box sx={{ display: "flex", height: "100vh", overflow: "hidden", backgroundColor: "#f1f5f9" }}>
+    <Box sx={{ display: "flex", height: "100vh", overflow: "hidden", backgroundColor: "var(--bg)" }}>
       {/* Silent background reversal — decrypts all non-vault data once after vault unlocks */}
       {!reversalDone && <E2EReversal onComplete={(didRun) => { setReversalDone(true); if (didRun) window.location.reload(); }} />}
 
@@ -275,6 +287,25 @@ function AppShellInner() {
         <NavItem icon={<SettingsOutlinedIcon sx={{ fontSize: 22 }} />} label="Settings" active={view === "settings"} onClick={() => navigate("settings")} />
 
         <Box sx={{ flex: 1 }} />
+
+        <Tooltip title={`Theme: ${themeModeLabel[themeMode]} (click to change)`} placement="right" arrow>
+          <Box
+            onClick={() => setThemeMode(nextThemeMode[themeMode])}
+            sx={{
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 0.5,
+              px: 1, py: 0.75, borderRadius: 2, cursor: "pointer", mb: 0.5,
+              color: "rgba(255,255,255,0.45)",
+              transition: "color 0.15s, background-color 0.15s",
+              "&:hover": { color: "rgba(255,255,255,0.85)", backgroundColor: "rgba(255,255,255,0.07)" },
+              userSelect: "none",
+            }}
+          >
+            {themeIcon}
+            <Typography sx={{ fontSize: "0.58rem", fontWeight: 600, letterSpacing: 0.3, lineHeight: 1 }}>
+              {themeModeLabel[themeMode]}
+            </Typography>
+          </Box>
+        </Tooltip>
 
         {session?.user && (
           <Tooltip title="Settings" placement="right" arrow>
