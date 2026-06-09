@@ -1,10 +1,9 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
-import { unlink, readFile } from "fs/promises";
-import { existsSync } from "fs";
-import { join } from "path";
+import { del } from "@vercel/blob";
 import { getUserId, getUserIdWithQueryToken } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
-import { UPLOAD_DIR } from "@/lib/file-utils";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getUserIdWithQueryToken(request);
@@ -13,40 +12,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const attachment = await prisma.attachment.findFirst({
     where: { id, userId },
-    select: { id: true, filename: true, originalName: true, mimeType: true, size: true, uploadId: true },
+    select: { id: true, filename: true, originalName: true, mimeType: true, size: true, uploadId: true, blobUrl: true },
   });
   if (!attachment) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Linked attachments serve from the Upload's file on disk
-  let filePath: string;
-  if (attachment.uploadId) {
+  // For linked attachments, resolve blob URL from the source Upload
+  let blobUrl = attachment.blobUrl;
+  if (!blobUrl && attachment.uploadId) {
     const upload = await prisma.upload.findFirst({
       where: { id: attachment.uploadId, userId, deletedAt: null },
+      select: { blobUrl: true },
     });
-    if (!upload) return NextResponse.json({ error: "File not found" }, { status: 404 });
-    filePath = join(UPLOAD_DIR, upload.filename);
-  } else {
-    filePath = join(UPLOAD_DIR, attachment.filename);
+    blobUrl = upload?.blobUrl ?? null;
   }
 
-  if (!existsSync(filePath)) return NextResponse.json({ error: "File not found" }, { status: 404 });
+  if (blobUrl) {
+    return NextResponse.redirect(blobUrl);
+  }
 
-  const buffer = await readFile(filePath);
-
-  const inlineMimes = ["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "video/mp4", "video/quicktime", "audio/mpeg", "audio/mp4", "text/plain", "text/markdown"];
-  const safeName = encodeURIComponent(attachment.originalName ?? "file");
-  const disposition = inlineMimes.includes(attachment.mimeType)
-    ? `inline; filename*=UTF-8''${safeName}`
-    : `attachment; filename*=UTF-8''${safeName}`;
-
-  return new Response(buffer, {
-    headers: {
-      "Content-Type": attachment.mimeType,
-      "Content-Disposition": disposition,
-      "Content-Length": String(buffer.length),
-      "Cache-Control": "private, max-age=3600",
-    },
-  });
+  return NextResponse.json({ error: "File not found" }, { status: 404 });
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -56,16 +40,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
   const attachment = await prisma.attachment.findFirst({
     where: { id, userId },
-    select: { id: true, filename: true, uploadId: true },
+    select: { id: true, filename: true, uploadId: true, blobUrl: true },
   });
   if (!attachment) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await prisma.attachment.delete({ where: { id } });
 
-  // Only delete the physical file for non-linked attachments
-  if (!attachment.uploadId) {
-    const filePath = join(UPLOAD_DIR, attachment.filename);
-    await unlink(filePath).catch(() => {});
+  // Only delete the blob for non-linked attachments (linked ones share the Upload's blob)
+  if (!attachment.uploadId && attachment.blobUrl) {
+    del(attachment.blobUrl).catch(() => {});
   }
 
   return new Response(null, { status: 204 });

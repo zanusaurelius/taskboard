@@ -1,12 +1,10 @@
 generator client {
   provider      = "prisma-client-js"
-  engineType    = "client"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
 }
 
 model User {
@@ -15,6 +13,8 @@ model User {
   passwordHash      String
   recoveryCodeHash  String
   passwordChangedAt DateTime     @default(now())
+  isAnonymous       Boolean      @default(false)
+  anonymousExpiresAt DateTime?
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   notes             Note[]
@@ -39,7 +39,7 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tasks     Task[]
   notes     Note[]
 }
@@ -54,7 +54,7 @@ model Folder {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   notes     Note[]
 }
 
@@ -74,7 +74,7 @@ model Note {
   projectId   String?
   project     Project?     @relation(fields: [projectId], references: [id])
   userId      String
-  user        User         @relation(fields: [userId], references: [id])
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   attachments Attachment[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -85,12 +85,12 @@ model NoteVault {
   id                    String   @id @default(cuid())
   userId                String   @unique
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  encryptedMasterKey    String   // JSON {iv,ct} — master key encrypted with password-derived key
-  masterKeySalt         String   // base64 PBKDF2 salt
-  encryptedMasterKeyBak String   // JSON {iv,ct} — master key encrypted with recovery-code-derived key
-  backupKeySalt         String   // base64 PBKDF2 salt
-  verifier              String   // base64 SHA-256(masterKey) for server-side unlock verification
-  webAuthnCredentials   String   @default("[]") // JSON: [{id,publicKey,counter,transports,name}]
+  encryptedMasterKey    String
+  masterKeySalt         String
+  encryptedMasterKeyBak String
+  backupKeySalt         String
+  verifier              String
+  webAuthnCredentials   String   @default("[]")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
@@ -110,7 +110,7 @@ model Task {
   locked         Boolean      @default(false)
   doneAt         DateTime?
   projectId      String
-  project        Project      @relation(fields: [projectId], references: [id])
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   attachments    Attachment[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -124,7 +124,7 @@ model FileFolder {
   children  FileFolder[] @relation("FileFolderTree")
   uploads   Upload[]
   userId    String
-  user      User         @relation(fields: [userId], references: [id])
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -138,11 +138,12 @@ model Upload {
   originalName String      @default("")
   mimeType     String
   size         Int         @default(0)
+  blobUrl      String?
   thumbnail    String?
   fileFolderId String?
   fileFolder   FileFolder? @relation(fields: [fileFolderId], references: [id])
   userId       String
-  user         User        @relation(fields: [userId], references: [id])
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   attachments  Attachment[]
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
@@ -158,12 +159,13 @@ model Attachment {
   originalName String
   mimeType     String
   size         Int
+  blobUrl      String?
   noteId       String?
   note         Note?    @relation(fields: [noteId], references: [id])
   taskId       String?
   task         Task?    @relation(fields: [taskId], references: [id])
   userId       String
-  user         User     @relation(fields: [userId], references: [id])
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   uploadId     String?
   upload       Upload?  @relation(fields: [uploadId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
@@ -203,7 +205,7 @@ model DailyGoal {
   completed Boolean  @default(false)
   position  Int      @default(0)
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -216,7 +218,7 @@ model Habit {
   encText     String?
   position    Int               @default(0)
   userId      String
-  user        User              @relation(fields: [userId], references: [id])
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   completions HabitCompletion[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
@@ -234,18 +236,18 @@ model HabitCompletion {
 }
 
 model DailyReflection {
-  id          String  @id @default(cuid())
-  date        String
-  note        String?
-  encNote     String?
-  gratitude   String?
+  id           String  @id @default(cuid())
+  date         String
+  note         String?
+  encNote      String?
+  gratitude    String?
   encGratitude String?
-  body        String?
-  encBody     String?
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  body         String?
+  encBody      String?
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([userId, date])
   @@index([userId, date])

@@ -3,14 +3,12 @@ import { verifyApiToken } from "@/lib/api-token";
 import { NextResponse, type NextRequest } from "next/server";
 
 function buildCSP(nonce: string): string {
-  // React dev mode uses eval() for call stack reconstruction; blocked by CSP without unsafe-eval.
-  // Only relax this in development — production never uses eval().
   const evalDirective = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${evalDirective}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' blob:",
+    "img-src 'self' blob: https://*.public.blob.vercel-storage.com",
     "font-src 'self'",
     "connect-src 'self'",
     "worker-src 'self'",
@@ -37,10 +35,6 @@ function applySecurityHeaders(res: NextResponse, nonce: string): void {
   }
 }
 
-// NextAuth rewrites req.nextUrl to its computed base URL (often localhost:3000),
-// so redirects built from req.nextUrl would send the browser to localhost on the
-// user's machine. Instead, read the forwarded host/protocol set by the reverse
-// proxy so the Location header uses the actual external address.
 function externalUrl(req: NextRequest, path: string): URL {
   const host  = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? req.nextUrl.host;
   const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
@@ -50,8 +44,6 @@ function externalUrl(req: NextRequest, path: string): URL {
 export default auth(async (req) => {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
 
-  // Check Bearer token (for native app) — signature only, no DB in Edge runtime.
-  // Full passwordChangedAt validation happens inside each API route via getUserId().
   let bearerAuthenticated = false;
   const authHeader = req.headers.get("authorization");
   if (authHeader?.startsWith("Bearer ")) {
@@ -62,33 +54,10 @@ export default auth(async (req) => {
   const isAuthenticated = !!req.auth?.user?.id || bearerAuthenticated;
   const { pathname } = req.nextUrl;
 
-  const isPublicPage = pathname === "/login" || pathname === "/register" || pathname === "/recover" || pathname === "/unlock";
+  const isPublicPage = pathname === "/login" || pathname === "/register" || pathname === "/recover";
   const isAuthApi    = pathname.startsWith("/api/auth");
 
-  // DB lock gate — reads process.env.NEXT_DB_UNLOCKED set by the unlock() route
-  // handler. Both middleware and route handlers run in the same Node.js process in
-  // standalone mode, so process.env changes are immediately visible here. No cookie
-  // needed — this is purely in-process state, cleared on server restart.
-  const isDbUnlocked = process.env.NODE_ENV !== "production"
-    || process.env.NEXT_DB_UNLOCKED === "1";
-
-  if (process.env.NODE_ENV === "production") {
-    const isDbApi = pathname === "/api/auth/db-status" || pathname === "/api/auth/db-unlock"
-      || pathname === "/api/health" || pathname === "/api/auth/token";
-    if (!isDbUnlocked && !isDbApi && pathname !== "/unlock") {
-      if (pathname.startsWith("/api/")) {
-        const res = NextResponse.json({ error: "Service unavailable" }, { status: 423 });
-        applySecurityHeaders(res, nonce);
-        return res;
-      }
-      const res = NextResponse.redirect(externalUrl(req, "/unlock"));
-      applySecurityHeaders(res, nonce);
-      return res;
-    }
-  }
-
-  // Don't redirect authenticated users away from /unlock when DB is locked.
-  if (isAuthenticated && isPublicPage && (isDbUnlocked || pathname !== "/unlock")) {
+  if (isAuthenticated && isPublicPage) {
     const res = NextResponse.redirect(externalUrl(req, "/"));
     applySecurityHeaders(res, nonce);
     return res;
@@ -100,12 +69,14 @@ export default auth(async (req) => {
       applySecurityHeaders(res, nonce);
       return res;
     }
-    const res = NextResponse.redirect(externalUrl(req, "/login"));
+    // Send visitors to anon-start which creates an anonymous session and redirects back
+    const anonUrl = externalUrl(req, `/api/auth/anon-start`);
+    anonUrl.searchParams.set("next", pathname);
+    const res = NextResponse.redirect(anonUrl);
     applySecurityHeaders(res, nonce);
     return res;
   }
 
-  // Forward nonce to server components via request header
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
 

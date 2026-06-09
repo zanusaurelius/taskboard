@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:https": "next dev --experimental-https",
-    "build": "next build",
+    "build": "prisma generate && prisma db push && next build",
     "start": "next start",
     "lint": "eslint"
   },
@@ -18,9 +18,9 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.0",
     "@mui/material": "^9.0.0",
-    "@prisma/adapter-better-sqlite3": "^6.19.3",
-    "@prisma/client": "^6.19.3",
-    "better-sqlite3-multiple-ciphers": "^12.9.0",
+    "@neondatabase/serverless": "^1.1.0",
+    "@prisma/adapter-neon": "^7.8.0",
+    "@prisma/client": "^7.8.0",
     "@simplewebauthn/browser": "^9.0.1",
     "@simplewebauthn/server": "^9.0.3",
     "@tiptap/extension-image": "^3.22.5",
@@ -29,6 +29,7 @@
     "@tiptap/react": "^3.22.5",
     "@tiptap/starter-kit": "^3.22.5",
     "@types/bcryptjs": "^2.4.6",
+    "@vercel/blob": "^2.4.0",
     "bcryptjs": "^3.0.3",
     "dayjs": "^1.11.20",
     "dotenv": "^17.4.2",
@@ -39,15 +40,15 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
-    "prisma": "^6.19.3",
+    "pg": "^8.21.0",
+    "prisma": "^7.8.0",
     "typescript": "^5"
-  },
-  "overrides": {
-    "better-sqlite3": "npm:better-sqlite3-multiple-ciphers@^12.9.0"
   }
 }

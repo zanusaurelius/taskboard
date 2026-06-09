@@ -1,13 +1,14 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
-import { writeFile, unlink } from "fs/promises";
-import { join } from "path";
+import { put } from "@vercel/blob";
 import { randomBytes } from "crypto";
 import { getUserId } from "@/lib/get-user-id";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { detectFileType, ensureFileDirs, UPLOAD_DIR } from "@/lib/file-utils";
+import { detectFileType } from "@/lib/file-utils";
 
-const MAX_BYTES = 50 * 1024 * 1024; // 50 MB per file
+const MAX_BYTES = 50 * 1024 * 1024;
 const QUOTA_BYTES = parseInt(process.env.UPLOAD_QUOTA_BYTES ?? "") || 500 * 1024 * 1024;
 
 export async function GET(request: Request) {
@@ -20,7 +21,6 @@ export async function GET(request: Request) {
 
   if (!noteId && !taskId) return NextResponse.json({ error: "noteId or taskId required" }, { status: 400 });
 
-  // Verify ownership — also check note is not trashed
   if (noteId) {
     const note = await prisma.note.findFirst({ where: { id: noteId, userId, deletedAt: null } });
     if (!note) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -33,11 +33,10 @@ export async function GET(request: Request) {
   const attachments = await prisma.attachment.findMany({
     where: {
       ...(noteId ? { noteId, userId } : { taskId, userId }),
-      // Exclude linked attachments whose source upload has been soft-deleted
       OR: [{ uploadId: null }, { upload: { deletedAt: null } }],
     },
     orderBy: { createdAt: "asc" },
-    select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadId: true },
+    select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadId: true, blobUrl: true },
   });
 
   return NextResponse.json(attachments);
@@ -73,8 +72,6 @@ export async function POST(request: Request) {
       if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    // No quota check — bytes already counted in the Upload record.
-    // Use a link: prefix so this filename can never collide with a real file in UPLOAD_DIR.
     const linkFilename = `link:${randomBytes(16).toString("hex")}`;
 
     const attachment = await prisma.attachment.create({
@@ -87,8 +84,9 @@ export async function POST(request: Request) {
         noteId: noteId ?? undefined,
         taskId: taskId ?? undefined,
         uploadId,
+        blobUrl: upload.blobUrl,
       },
-      select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadId: true },
+      select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadId: true, blobUrl: true },
     });
 
     return NextResponse.json(attachment, { status: 201 });
@@ -102,9 +100,7 @@ export async function POST(request: Request) {
   const taskId = formData.get("taskId") as string | null;
 
   if (!noteId && !taskId) return NextResponse.json({ error: "noteId or taskId is required" }, { status: 400 });
-
   if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
-
   if (file.size > MAX_BYTES) return NextResponse.json({ error: "File exceeds 50 MB limit" }, { status: 413 });
 
   const bytes = await file.arrayBuffer();
@@ -119,7 +115,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Verify ownership — also check note is not trashed
   if (noteId) {
     const note = await prisma.note.findFirst({ where: { id: noteId, userId, deletedAt: null } });
     if (!note) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -129,7 +124,6 @@ export async function POST(request: Request) {
     if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Quota check (uploads + attachments combined; exclude soft-deleted uploads)
   const [uploadUsage, attachUsage] = await Promise.all([
     prisma.upload.aggregate({ where: { userId, deletedAt: null }, _sum: { size: true } }),
     prisma.attachment.aggregate({ where: { userId }, _sum: { size: true } }),
@@ -139,37 +133,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Storage quota exceeded" }, { status: 413 });
   }
 
-  await ensureFileDirs();
+  const filename = `${randomBytes(16).toString("hex")}.${detected.ext}`;
+  const blob = await put(`attachments/${filename}`, buffer, { access: "public", contentType: detected.mime });
 
-  // Retry on filename collision (astronomically rare but @@unique would throw)
-  let filename: string | undefined;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const candidate = `${randomBytes(16).toString("hex")}.${detected.ext}`;
-    const existing = await prisma.attachment.findUnique({ where: { filename: candidate } });
-    if (!existing) { filename = candidate; break; }
-  }
-  if (!filename) return NextResponse.json({ error: "Upload failed (filename conflict)" }, { status: 500 });
-
-  await writeFile(join(UPLOAD_DIR, filename), buffer);
-
-  let attachment;
-  try {
-    attachment = await prisma.attachment.create({
-      data: {
-        filename,
-        originalName: file.name,
-        mimeType: detected.mime,
-        size: buffer.length,
-        userId,
-        noteId: noteId ?? undefined,
-        taskId: taskId ?? undefined,
-      },
-      select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadId: true },
-    });
-  } catch {
-    await unlink(join(UPLOAD_DIR, filename)).catch(() => {});
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
-  }
+  const attachment = await prisma.attachment.create({
+    data: {
+      filename,
+      originalName: file.name,
+      mimeType: detected.mime,
+      size: buffer.length,
+      userId,
+      noteId: noteId ?? undefined,
+      taskId: taskId ?? undefined,
+      blobUrl: blob.url,
+    },
+    select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, uploadId: true, blobUrl: true },
+  });
 
   return NextResponse.json(attachment, { status: 201 });
 }

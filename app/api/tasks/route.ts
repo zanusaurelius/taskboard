@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   const project = await prisma.project.findFirst({ where: { id: projectId, userId } });
   if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
-  const task = await prisma.task.create({
+  const created = await prisma.task.create({
     data: {
       title: title ?? "",
       ...(encTitle !== undefined && { encTitle }),
@@ -66,7 +66,8 @@ export async function POST(request: Request) {
       sensitive: sensitive === true,
       locked: locked === true,
     },
-    include: { project: true },
   });
+  // Neon HTTP: create+include uses an implicit transaction — fetch separately
+  const task = await prisma.task.findUnique({ where: { id: created.id }, include: { project: true } });
   return NextResponse.json(task, { status: 201 });
 }

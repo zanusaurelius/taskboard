@@ -3,17 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { issueApiToken } from "@/lib/api-token";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { audit } from "@/lib/audit";
-import { isDbUnlocked } from "@/lib/db-state";
 import bcrypt from "bcryptjs";
 import { MAX_USERNAME_LEN, MAX_PASSWORD_LEN } from "@/lib/constants";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  if (!isDbUnlocked()) {
-    return NextResponse.json({ error: "db_locked" }, { status: 423 });
-  }
-
   const ip = getClientIp(request);
   if (!await checkRateLimit(`api-token:${ip}`, 10, 15 * 60 * 1000)) {
     audit("rate_limit_exceeded", { ip, detail: "api-token" });

@@ -16,11 +16,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "date required (YYYY-MM-DD)" }, { status: 400 });
   }
 
-  await prisma.habitCompletion.upsert({
-    where: { habitId_date: { habitId, date } },
-    create: { habitId, date },
-    update: {},
-  });
+  // Neon HTTP: upsert needs an implicit transaction — use find-or-create instead
+  const existing = await prisma.habitCompletion.findUnique({ where: { habitId_date: { habitId, date } } });
+  if (!existing) await prisma.habitCompletion.create({ data: { habitId, date } });
   return new NextResponse(null, { status: 204 });
 }
 

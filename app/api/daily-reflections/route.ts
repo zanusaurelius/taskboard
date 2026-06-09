@@ -70,10 +70,13 @@ export async function PUT(request: Request) {
     return NextResponse.json(null);
   }
 
-  const reflection = await prisma.dailyReflection.upsert({
-    where: { userId_date: { userId, date } },
-    create: { userId, date, note: mergedNote, gratitude: mergedGratitude, body: mergedBody, encNote: mergedEncNote, encGratitude: mergedEncGratitude, encBody: mergedEncBody },
-    update: { note: mergedNote, gratitude: mergedGratitude, body: mergedBody, encNote: mergedEncNote, encGratitude: mergedEncGratitude, encBody: mergedEncBody },
-  });
+  // Neon HTTP: upsert needs an implicit transaction — use find-then-create/update instead
+  const data = { note: mergedNote, gratitude: mergedGratitude, body: mergedBody, encNote: mergedEncNote, encGratitude: mergedEncGratitude, encBody: mergedEncBody };
+  let reflection;
+  if (existing) {
+    reflection = await prisma.dailyReflection.update({ where: { userId_date: { userId, date } }, data });
+  } else {
+    reflection = await prisma.dailyReflection.create({ data: { userId, date, ...data } });
+  }
   return NextResponse.json(reflection);
 }
