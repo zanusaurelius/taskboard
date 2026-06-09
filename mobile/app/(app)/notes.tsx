@@ -101,9 +101,9 @@ export default function NotesScreen() {
   }, [isSelecting]);
 
   const hideSelected = useCallback(() => {
-    if (!isUnlocked) {
+    if (!isUnlocked || !revealToken) {
       if (!verifier) { Alert.alert('No vault set up', 'Open the web app to configure your vault, then come back.'); return; }
-      setVaultUnlockModalVisible(true);
+      setVaultRevealModalVisible(true);
       return;
     }
     const ids = [...selectedIds];
@@ -129,7 +129,7 @@ export default function NotesScreen() {
                   });
                 }
               }
-              return apiFetch(`/api/notes/${note.id}`, { method: 'PUT', body: JSON.stringify(body) });
+              return apiFetch(`/api/notes/${note.id}`, { method: 'PUT', headers: { 'x-reveal-token': revealToken }, body: JSON.stringify(body) });
             }));
             const succeeded = new Set(
               notesToHide.filter((_, i) => isOk(results[i])).map((n) => n.id)
@@ -145,7 +145,7 @@ export default function NotesScreen() {
         },
       ]
     );
-  }, [selectedIds, notes, isUnlocked, masterKey, encrypt]);
+  }, [selectedIds, notes, isUnlocked, masterKey, encrypt, revealToken]);
 
   const deleteSelected = useCallback(() => {
     const ids = [...selectedIds];
@@ -620,7 +620,7 @@ export default function NotesScreen() {
               activeOpacity={0.7}
               onPress={() => {
                 if (isSelecting) { toggleSelect(item.id); return; }
-                router.push(item.hidden && revealToken
+                router.push(revealToken
                   ? { pathname: `/note/${item.id}`, params: { revealToken } }
                   : `/note/${item.id}`);
               }}

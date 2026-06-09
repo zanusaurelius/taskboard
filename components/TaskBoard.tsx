@@ -469,6 +469,8 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     }
     setEditingTask(null);
     setDefaultStage(stage);
+    setModalDefaultTitle("");
+    setModalDefaultDescription("");
     setModalOpen(true);
   };
   const openEdit = (task: Task) => {

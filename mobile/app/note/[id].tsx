@@ -24,7 +24,7 @@ export default function NoteEditorScreen() {
   const isNew = id === 'new';
   // "fresh" = note was just pre-created by the FAB; skip loading spinner and show full UI immediately
   const isFresh = fresh === '1';
-  const { masterKey, isUnlocked, encrypt, decrypt } = useVault();
+  const { masterKey, isUnlocked, encrypt, decrypt, verifier, unlockWithPassword } = useVault();
   const colors = useThemeColors();
   const s = makeStyles(colors);
 
@@ -40,6 +40,13 @@ export default function NoteEditorScreen() {
   const [folderModalVisible, setFolderModalVisible] = useState(false);
   const [editorFocused, setEditorFocused] = useState(false);
   const [editorHeight, setEditorHeight] = useState(300);
+  const [localRevealToken, setLocalRevealToken] = useState<string | null>(null);
+  const [revealPromptVisible, setRevealPromptVisible] = useState(false);
+  const [revealPromptPassword, setRevealPromptPassword] = useState('');
+  const [revealPromptLoading, setRevealPromptLoading] = useState(false);
+  const pendingRevealActionRef = useRef<(() => void | Promise<void>) | null>(null);
+  const effectiveRevealTokenRef = useRef<string | null>(null);
+  effectiveRevealTokenRef.current = (revealToken as string | undefined) ?? localRevealToken;
 
   const titleRef = useRef<TextInput>(null);
   const editorRef = useRef<RichEditorRef>(null);
@@ -273,6 +280,43 @@ export default function NoteEditorScreen() {
     else setNote((p) => p ? { ...p, pinned: v } : p);
   }, [note, pinned, id]);
 
+  const ensureRevealToken = useCallback((action: () => void | Promise<void>) => {
+    if (effectiveRevealTokenRef.current) { action(); return; }
+    if (!verifier) { Alert.alert('Vault not configured', 'Set up your vault in the web app first.'); return; }
+    pendingRevealActionRef.current = action;
+    setRevealPromptVisible(true);
+  }, [verifier]);
+
+  const submitReveal = async () => {
+    if (!revealPromptPassword || !verifier) return;
+    setRevealPromptLoading(true);
+    const result = await unlockWithPassword(revealPromptPassword);
+    if (result !== 'ok') {
+      setRevealPromptLoading(false);
+      setRevealPromptPassword('');
+      Alert.alert('Incorrect password', 'Could not open vault.');
+      return;
+    }
+    const res = await apiFetch<{ token: string }>('/api/notes/vault/reveal', {
+      method: 'POST',
+      body: JSON.stringify({ verifier }),
+    });
+    setRevealPromptLoading(false);
+    if (isOk(res)) {
+      const tok = res.data.token;
+      setLocalRevealToken(tok);
+      effectiveRevealTokenRef.current = tok;
+      setRevealPromptVisible(false);
+      setRevealPromptPassword('');
+      const action = pendingRevealActionRef.current;
+      pendingRevealActionRef.current = null;
+      if (action) action();
+    } else {
+      setRevealPromptPassword('');
+      Alert.alert('Incorrect password', 'Could not open vault.');
+    }
+  };
+
   const toggleHidden = useCallback(async () => {
     if (!note) return;
     const nowHidden = !note.hidden;
@@ -280,22 +324,24 @@ export default function NoteEditorScreen() {
       Alert.alert('Vault locked', 'Unlock your vault first to vault notes.');
       return;
     }
-    let body: Record<string, unknown> = { hidden: nowHidden };
-    if (nowHidden && masterKey) {
-      const html = htmlRef.current;
-      const [eb1, eb2] = await Promise.all([encrypt(title), encrypt(html)]);
-      if (!eb1 || !eb2) { Alert.alert('Error', 'Encryption failed.'); return; }
-      body = { hidden: true, encTitle: JSON.stringify(eb1), encContent: JSON.stringify(eb2), title: '', content: '' };
-    }
-    const r = await apiFetch<Note>(`/api/notes/${id}`, {
-      method: 'PUT',
-      headers: revealToken ? { 'x-reveal-token': revealToken } : {},
-      body: JSON.stringify(body),
+    ensureRevealToken(async () => {
+      let body: Record<string, unknown> = { hidden: nowHidden };
+      if (nowHidden && masterKey) {
+        const html = htmlRef.current;
+        const [eb1, eb2] = await Promise.all([encrypt(title), encrypt(html)]);
+        if (!eb1 || !eb2) { Alert.alert('Error', 'Encryption failed.'); return; }
+        body = { hidden: true, encTitle: JSON.stringify(eb1), encContent: JSON.stringify(eb2), title: '', content: '' };
+      }
+      const r = await apiFetch<Note>(`/api/notes/${id}`, {
+        method: 'PUT',
+        headers: effectiveRevealTokenRef.current ? { 'x-reveal-token': effectiveRevealTokenRef.current } : {},
+        body: JSON.stringify(body),
+      });
+      if (!isOk(r)) { Alert.alert('Error', 'Could not update note.'); return; }
+      setNote((p) => p ? { ...p, hidden: nowHidden } : p);
+      if (nowHidden) router.back();
     });
-    if (!isOk(r)) { Alert.alert('Error', 'Could not update note.'); return; }
-    setNote((p) => p ? { ...p, hidden: nowHidden } : p);
-    if (nowHidden) router.back();
-  }, [note, id, isUnlocked, masterKey, title, revealToken, encrypt, router]);
+  }, [note, id, isUnlocked, masterKey, title, encrypt, router, ensureRevealToken]);
 
   const handleMoveToFolder = async (newFolderId: string | null) => {
     setFolderModalVisible(false);
@@ -317,35 +363,40 @@ export default function NoteEditorScreen() {
 
   const handleLockToggle = useCallback(async () => {
     if (!note) return;
-    const html = htmlRef.current;
     if (!note.locked) {
-      const eb1 = await encrypt(title); const eb2 = await encrypt(html);
-      if (!eb1 || !eb2) { Alert.alert('Error', 'Vault not unlocked or encryption failed.'); return; }
-      const r = await apiFetch<Note>(`/api/notes/${id}`, {
-        method: 'PUT',
-        headers: revealToken ? { 'x-reveal-token': revealToken } : {},
-        body: JSON.stringify({ locked: true, encTitle: JSON.stringify(eb1), encContent: JSON.stringify(eb2), title: '', content: '' }),
+      ensureRevealToken(async () => {
+        const html = htmlRef.current;
+        const eb1 = await encrypt(title); const eb2 = await encrypt(html);
+        if (!eb1 || !eb2) { Alert.alert('Error', 'Vault not unlocked or encryption failed.'); return; }
+        const r = await apiFetch<Note>(`/api/notes/${id}`, {
+          method: 'PUT',
+          headers: effectiveRevealTokenRef.current ? { 'x-reveal-token': effectiveRevealTokenRef.current } : {},
+          body: JSON.stringify({ locked: true, encTitle: JSON.stringify(eb1), encContent: JSON.stringify(eb2), title: '', content: '' }),
+        });
+        if (isOk(r)) { setNote((p) => p ? { ...p, locked: true } : p); flashSaved(); }
+        else Alert.alert('Error', 'Could not lock note.');
       });
-      if (isOk(r)) { setNote((p) => p ? { ...p, locked: true } : p); flashSaved(); }
-      else Alert.alert('Error', 'Could not lock note.');
     } else {
-      const decTitle = note.encTitle ? await decrypt(note.encTitle) : title;
-      const decHtml = note.encContent ? await decrypt(note.encContent) : html;
-      if (!decTitle || !decHtml) { Alert.alert('Error', 'Could not decrypt.'); return; }
-      const r = await apiFetch<Note>(`/api/notes/${id}`, {
-        method: 'PUT',
-        headers: revealToken ? { 'x-reveal-token': revealToken } : {},
-        body: JSON.stringify({ locked: false, title: decTitle, content: decHtml, encTitle: null, encContent: null }),
+      ensureRevealToken(async () => {
+        const html = htmlRef.current;
+        const decTitle = note.encTitle ? await decrypt(note.encTitle) : title;
+        const decHtml = note.encContent ? await decrypt(note.encContent) : html;
+        if (!decTitle || !decHtml) { Alert.alert('Error', 'Could not decrypt.'); return; }
+        const r = await apiFetch<Note>(`/api/notes/${id}`, {
+          method: 'PUT',
+          headers: effectiveRevealTokenRef.current ? { 'x-reveal-token': effectiveRevealTokenRef.current } : {},
+          body: JSON.stringify({ locked: false, title: decTitle, content: decHtml, encTitle: null, encContent: null }),
+        });
+        if (isOk(r)) {
+          setNote((p) => p ? { ...p, locked: false } : p);
+          setTitle(decTitle);
+          htmlRef.current = decHtml;
+          editorRef.current?.setContent(decHtml);
+          flashSaved();
+        } else Alert.alert('Error', 'Could not unlock note.');
       });
-      if (isOk(r)) {
-        setNote((p) => p ? { ...p, locked: false } : p);
-        setTitle(decTitle);
-        htmlRef.current = decHtml;
-        editorRef.current?.setContent(decHtml);
-        flashSaved();
-      } else Alert.alert('Error', 'Could not unlock note.');
     }
-  }, [note, title, id, encrypt, decrypt, flashSaved, revealToken]);
+  }, [note, title, id, encrypt, decrypt, flashSaved, ensureRevealToken]);
 
   if (loading) {
     return <View style={s.center}><ActivityIndicator color="#6366f1" size="large" /></View>;
@@ -411,6 +462,35 @@ export default function NoteEditorScreen() {
               </TouchableOpacity>
             ))}
           </View>
+        </Pressable>
+      </Modal>
+
+      {/* Vault open prompt — shown when lock/hide needs a reveal token */}
+      <Modal visible={revealPromptVisible} transparent animationType="fade" onRequestClose={() => { setRevealPromptVisible(false); pendingRevealActionRef.current = null; setRevealPromptPassword(''); }}>
+        <Pressable style={s.overlay} onPress={() => { setRevealPromptVisible(false); pendingRevealActionRef.current = null; setRevealPromptPassword(''); }}>
+          <Pressable style={s.vaultCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={s.vaultTitle}>Open Vault</Text>
+            <Text style={s.vaultSubtitle}>Enter your vault password to lock or hide this note.</Text>
+            <TextInput
+              style={s.vaultInput}
+              placeholder="Vault password"
+              placeholderTextColor={colors.tx3}
+              value={revealPromptPassword}
+              onChangeText={(v) => setRevealPromptPassword(v)}
+              secureTextEntry
+              returnKeyType="done"
+              onSubmitEditing={submitReveal}
+              autoFocus
+            />
+            <View style={s.vaultActions}>
+              <TouchableOpacity style={s.vaultCancelBtn} onPress={() => { setRevealPromptVisible(false); pendingRevealActionRef.current = null; setRevealPromptPassword(''); }}>
+                <Text style={s.vaultCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.vaultConfirmBtn, (!revealPromptPassword || revealPromptLoading) && { opacity: 0.5 }]} onPress={submitReveal} disabled={!revealPromptPassword || revealPromptLoading}>
+                {revealPromptLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.vaultConfirmText}>Open</Text>}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -528,5 +608,14 @@ function makeStyles(c: ThemeColors) {
     folderOptActive: { backgroundColor: 'rgba(99,102,241,0.2)' },
     folderOptText: { color: c.tx2, fontSize: 15, fontWeight: '600' },
     folderOptTextActive: { color: '#a5b4fc' },
+    vaultCard: { backgroundColor: c.surface, borderRadius: 16, padding: 24, width: '88%', maxWidth: 340, borderWidth: 1, borderColor: c.border },
+    vaultTitle: { color: c.tx, fontSize: 17, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
+    vaultSubtitle: { color: c.tx3, fontSize: 13, textAlign: 'center', marginBottom: 20 },
+    vaultInput: { backgroundColor: c.bg, borderRadius: 10, borderWidth: 1, borderColor: c.border, color: c.tx, fontSize: 15, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16 },
+    vaultActions: { flexDirection: 'row' as const, gap: 10 },
+    vaultCancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: c.border, alignItems: 'center' as const },
+    vaultCancelText: { color: c.tx3, fontSize: 15, fontWeight: '600' as const },
+    vaultConfirmBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#6366f1', alignItems: 'center' as const },
+    vaultConfirmText: { color: '#fff', fontSize: 15, fontWeight: '700' as const },
   });
 }

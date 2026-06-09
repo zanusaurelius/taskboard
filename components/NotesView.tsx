@@ -153,6 +153,8 @@ function NotesViewInner({ onCreateTask }: Props) {
   notesRef.current = notes;
   const isUnlockedRef = useRef(isUnlocked);
   isUnlockedRef.current = isUnlocked;
+  const revealTokenRef = useRef(revealToken);
+  revealTokenRef.current = revealToken;
 
   const handleCloseVault = () => {
     hideVault();
@@ -518,9 +520,9 @@ function NotesViewInner({ onCreateTask }: Props) {
     const targetFolder = folderId ? folders.find(f => f.id === folderId) : null;
     const isVaultFolder = !!(targetFolder?.hidden || targetFolder?.locked);
 
-    if (isVaultFolder && !isUnlocked) {
+    if (isVaultFolder && (!isUnlocked || !revealToken)) {
       pendingActionRef.current = () => moveNotesToFolder(noteIds, folderId);
-      setUnlockModalOpen({ open: true, mode: "unlock" });
+      setUnlockModalOpen({ open: true, mode: "reveal" });
       return;
     }
 
@@ -542,7 +544,7 @@ function NotesViewInner({ onCreateTask }: Props) {
             });
           }
         }
-        await updateNote(id, updates as Partial<Note>, revealToken ?? undefined);
+        await updateNote(id, updates as Partial<Note>, revealTokenRef.current ?? undefined);
       } else {
         await updateNote(id, { folderId });
       }
@@ -661,7 +663,7 @@ function NotesViewInner({ onCreateTask }: Props) {
     }
     // Lock: encrypt content
     if (!vaultExists) { setSetupModalOpen(true); return; }
-    if (!isUnlocked) {
+    if (!isUnlocked || !revealToken) {
       pendingActionRef.current = async () => {
         const [encContent, encTitle] = await Promise.all([
           encryptRef.current(note.content),
@@ -672,10 +674,10 @@ function NotesViewInner({ onCreateTask }: Props) {
           locked: true, content: "", title: "",
           encContent: JSON.stringify(encContent),
           encTitle: JSON.stringify(encTitle),
-        } as Partial<Note>, revealToken ?? undefined);
+        } as Partial<Note>, revealTokenRef.current ?? undefined);
         setHintDialog({ noteId: note.id }); setHintValue("");
       };
-      setUnlockModalOpen({ open: true, mode: "unlock" });
+      setUnlockModalOpen({ open: true, mode: "reveal" });
       return;
     }
     const [encContent, encTitle] = await Promise.all([
@@ -726,10 +728,10 @@ function NotesViewInner({ onCreateTask }: Props) {
               Object.assign(updates, { locked: true, content: "", title: "", encContent: JSON.stringify(encContent), encTitle: JSON.stringify(encTitle) });
             }
           }
-          await updateNote(n.id, updates, revealToken ?? undefined);
+          await updateNote(n.id, updates, revealTokenRef.current ?? undefined);
         }));
       };
-      if (!isUnlocked) { pendingActionRef.current = doHideAll; setUnlockModalOpen({ open: true, mode: "unlock" }); return; }
+      if (!isUnlocked || !revealToken) { pendingActionRef.current = doHideAll; setUnlockModalOpen({ open: true, mode: "reveal" }); return; }
       await doHideAll();
       return;
     }
@@ -739,7 +741,7 @@ function NotesViewInner({ onCreateTask }: Props) {
       return;
     }
     if (!vaultExists) { setSetupModalOpen(true); return; }
-    if (!isUnlocked) {
+    if (!isUnlocked || !revealToken) {
       pendingActionRef.current = async () => {
         const updates: Partial<Note> = { hidden: true };
         if (!note.locked) {
@@ -751,9 +753,9 @@ function NotesViewInner({ onCreateTask }: Props) {
             Object.assign(updates, { locked: true, content: "", title: "", encContent: JSON.stringify(encContent), encTitle: JSON.stringify(encTitle) });
           }
         }
-        await updateNote(note.id, updates, revealToken ?? undefined);
+        await updateNote(note.id, updates, revealTokenRef.current ?? undefined);
       };
-      setUnlockModalOpen({ open: true, mode: "unlock" });
+      setUnlockModalOpen({ open: true, mode: "reveal" });
       return;
     }
     const updates: Partial<Note> = { hidden: true };
@@ -843,7 +845,7 @@ function NotesViewInner({ onCreateTask }: Props) {
       return;
     }
     if (!vaultExists) { setSetupModalOpen(true); return; }
-    if (!isUnlocked) {
+    if (!isUnlocked || !revealToken) {
       pendingActionRef.current = async () => {
         await patchFolder(folder.id, { hidden: true });
         // Lock and hide all unlocked notes in this folder
@@ -858,11 +860,11 @@ function NotesViewInner({ onCreateTask }: Props) {
               locked: true, hidden: true, content: "", title: "",
               encContent: JSON.stringify(encContent),
               encTitle: JSON.stringify(encTitle),
-            } as Partial<Note>);
+            } as Partial<Note>, revealTokenRef.current ?? undefined);
           }
         }));
       };
-      setUnlockModalOpen({ open: true, mode: "unlock" });
+      setUnlockModalOpen({ open: true, mode: "reveal" });
       return;
     }
     await patchFolder(folder.id, { hidden: true });
@@ -877,7 +879,7 @@ function NotesViewInner({ onCreateTask }: Props) {
           locked: true, hidden: true, content: "", title: "",
           encContent: JSON.stringify(encContent),
           encTitle: JSON.stringify(encTitle),
-        } as Partial<Note>);
+        } as Partial<Note>, revealToken ?? undefined);
       }
     }));
   };
