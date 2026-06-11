@@ -74,7 +74,9 @@ const viewAllSx = {
 export default function JournalView() {
   const vault = useVault();
   const isMobile = useMediaQuery("(max-width: 599px)");
-  const [mobilePanel, setMobilePanel] = useState<"list" | "detail">("list");
+  const [mobilePanel, setMobilePanel] = useState<"list" | "detail">(() =>
+    typeof window !== "undefined" && window.innerWidth <= 599 ? "detail" : "list"
+  );
 
   const [today] = useState(todayStr);
   const [entries, setEntries] = useState<Reflection[]>([]);
