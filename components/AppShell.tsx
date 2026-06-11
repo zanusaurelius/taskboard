@@ -359,7 +359,7 @@ function AppShellInner() {
           </Box>
         )}
 
-        <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden" }}>
+        <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", pb: { xs: "60px", sm: 0 } }}>
           {view === "board" && (
             <TaskBoard
               pendingNoteTask={pendingNoteTask}
@@ -376,8 +376,12 @@ function AppShellInner() {
 
         <Box sx={{
           display: { xs: "flex", sm: "none" },
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
           height: "60px",
-          flexShrink: 0,
+          zIndex: 100,
           backgroundColor: "#0f172a",
           borderTop: "1px solid rgba(255,255,255,0.08)",
           alignItems: "center",
