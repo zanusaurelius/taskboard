@@ -705,24 +705,27 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
               <SearchIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
-          <Button
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={() => setNewProjectOpen(true)}
-            variant="outlined"
-            sx={{
-              color: "var(--tx-2)",
-              borderColor: "var(--border-2)",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              textTransform: "none",
-              borderRadius: 2,
-              px: { xs: 1, sm: 2 },
-              minWidth: 0,
-              "&:hover": { borderColor: "var(--tx-4)", backgroundColor: "var(--surface-2)" },
-            }}>
-            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Project</Box>
-          </Button>
+          <Tooltip title="New Project" placement="bottom" arrow>
+            <Button
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setNewProjectOpen(true)}
+              variant="outlined"
+              sx={{
+                color: "var(--tx-2)",
+                borderColor: "var(--border-2)",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                textTransform: "none",
+                borderRadius: 2,
+                px: { xs: 1, sm: 2 },
+                minWidth: 0,
+                "&:hover": { borderColor: "var(--tx-4)", backgroundColor: "var(--surface-2)" },
+              }}>
+              <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Project</Box>
+              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Project</Box>
+            </Button>
+          </Tooltip>
           <Tooltip title="New Task" placement="bottom" arrow>
             <Button
               size="small"
@@ -740,6 +743,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                 boxShadow: "0 2px 8px rgba(99,102,241,0.4)",
                 "&:hover": { background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)" },
               }}>
+              <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Task</Box>
               <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Task</Box>
             </Button>
           </Tooltip>
