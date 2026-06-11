@@ -74,7 +74,9 @@ const viewAllSx = {
 export default function JournalView() {
   const vault = useVault();
   const isMobile = useMediaQuery("(max-width: 599px)");
-  const [mobilePanel, setMobilePanel] = useState<"list" | "detail">("list");
+  const [mobilePanel, setMobilePanel] = useState<"list" | "detail">(() =>
+    typeof window !== "undefined" && window.innerWidth <= 599 ? "detail" : "list"
+  );
 
   const [today] = useState(todayStr);
   const [entries, setEntries] = useState<Reflection[]>([]);
@@ -128,7 +130,7 @@ export default function JournalView() {
 
   // C shortcut → jump to today's entry
   useEffect(() => {
-    const handler = () => { setSelectedDate(today); setMobilePanel("list"); };
+    const handler = () => { setSelectedDate(today); setMobilePanel("detail"); };
     window.addEventListener("journal:newentry", handler);
     return () => window.removeEventListener("journal:newentry", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -243,111 +245,60 @@ export default function JournalView() {
   return (
     <Box sx={{ display: "flex", height: "100%", overflow: "hidden" }}>
 
-      {/* ── Mobile: single-scroll (today + past entries) ── */}
-      {isMobile && mobilePanel === "list" && (
-        <Box sx={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-
-          {/* Sticky search */}
+      {/* ── Left panel ── */}
+      <Box sx={{
+        width: { xs: "100%", sm: 260 }, flexShrink: 0,
+        borderRight: "1px solid var(--border)",
+        display: isMobile && mobilePanel === "detail" ? "none" : "flex",
+        flexDirection: "column",
+        backgroundColor: "var(--surface-2)",
+      }}>
+        {/* Search */}
+        <Box sx={{ px: 1.5, pt: 1.5, pb: 1 }}>
           <Box sx={{
-            px: 1.5, pt: 1.5, pb: 1, position: "sticky", top: 0, zIndex: 10,
-            backgroundColor: "var(--surface-2)", borderBottom: "1px solid var(--border)",
+            display: "flex", alignItems: "center", gap: 1,
+            backgroundColor: "var(--surface)", borderRadius: 2,
+            border: "1px solid var(--border)", px: 1.25, py: 0.6,
           }}>
-            <Box sx={{
-              display: "flex", alignItems: "center", gap: 1,
-              backgroundColor: "var(--surface)", borderRadius: 2,
-              border: "1px solid var(--border)", px: 1.25, py: 0.6,
-            }}>
-              <SearchIcon sx={{ fontSize: 16, color: "var(--tx-4)", flexShrink: 0 }} />
-              <InputBase
-                placeholder="Search journal…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                sx={{ fontSize: "0.82rem", flex: 1, color: "var(--tx-2)" }}
-              />
-            </Box>
+            <SearchIcon sx={{ fontSize: 16, color: "var(--tx-4)", flexShrink: 0 }} />
+            <InputBase
+              placeholder="Search journal…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ fontSize: "0.82rem", flex: 1, color: "var(--tx-2)" }}
+            />
           </Box>
+        </Box>
 
-          {/* Today's editable entry */}
-          <Box sx={{ px: 2, py: 2.5, borderBottom: "1px solid var(--border)" }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 2 }}>
-              <Box>
-                <Typography sx={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--tx)", lineHeight: 1.2 }}>Today</Typography>
-                <Typography sx={{ fontSize: "0.78rem", color: "var(--tx-4)", mt: 0.2 }}>{formatDayFull(today)}</Typography>
-              </Box>
-              {saved && <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#22c55e" }}>Saved</Typography>}
-            </Box>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
-                  <Typography sx={{ ...labelSx, mb: 0 }}>One thing to do better tomorrow</Typography>
-                  <Box component="span" sx={viewAllSx} onClick={() => { setFocusField("note"); setMobilePanel("detail"); }}>View all →</Box>
-                </Box>
-                <TextField
-                  fullWidth multiline minRows={1} maxRows={4}
-                  placeholder="Write one thing you can improve tomorrow…"
-                  value={editNote}
-                  onChange={(e) => handleNote(e.target.value)}
-                  onBlur={handleNoteBlur}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
-                  slotProps={{ htmlInput: { maxLength: 500 } }}
-                  sx={inputFieldSx}
-                />
-              </Box>
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
-                  <Typography sx={{ ...labelSx, mb: 0 }}>One thing I&apos;m grateful for</Typography>
-                  <Box component="span" sx={viewAllSx} onClick={() => { setFocusField("gratitude"); setMobilePanel("detail"); }}>View all →</Box>
-                </Box>
-                <TextField
-                  fullWidth multiline minRows={1} maxRows={4}
-                  placeholder="Write one thing you're grateful for today…"
-                  value={editGratitude}
-                  onChange={(e) => handleGrat(e.target.value)}
-                  onBlur={handleGratBlur}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
-                  slotProps={{ htmlInput: { maxLength: 500 } }}
-                  sx={inputFieldSx}
-                />
-              </Box>
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
-                  <Typography sx={{ ...labelSx, mb: 0 }}>Journal</Typography>
-                  <Box component="span" sx={viewAllSx} onClick={() => { setFocusField("body"); setMobilePanel("detail"); }}>View all →</Box>
-                </Box>
-                <TextField
-                  fullWidth multiline minRows={5}
-                  placeholder="Write anything on your mind…"
-                  value={editBody}
-                  onChange={(e) => handleBody(e.target.value)}
-                  onBlur={handleBodyBlur}
-                  slotProps={{ htmlInput: { maxLength: 10000 } }}
-                  sx={{
-                    "& .MuiOutlinedInput-root": {
-                      borderRadius: 2, fontSize: "0.95rem", backgroundColor: "var(--surface)",
-                      alignItems: "flex-start",
-                      "& fieldset": { borderColor: "var(--border)" },
-                      "&:hover fieldset": { borderColor: "var(--border-2)" },
-                      "&.Mui-focused fieldset": { borderColor: "#6366f1", borderWidth: 1.5 },
-                    },
-                    "& textarea": { lineHeight: 1.8, py: 1.5, px: 0.5 },
-                  }}
-                />
-              </Box>
-            </Box>
-          </Box>
-
-          {/* Past entries */}
+        {/* Entry list */}
+        <Box sx={{ flex: 1, overflowY: "auto" }}>
           {loading ? (
             <Box sx={{ display: "flex", justifyContent: "center", pt: 4 }}>
               <CircularProgress size={22} sx={{ color: "#6366f1" }} />
             </Box>
-          ) : months.length > 0 ? (
-            <Box sx={{ pb: 4 }}>
-              <Typography sx={{
-                fontSize: "0.65rem", fontWeight: 800, color: "var(--tx-4)",
-                textTransform: "uppercase", letterSpacing: 1,
-                px: 2, pt: 2, pb: 0.5,
-              }}>Past entries</Typography>
+          ) : (
+            <>
+              {/* Today */}
+              {showTodayInList && (
+                <Box
+                  onClick={() => { setSelectedDate(today); if (isMobile) setMobilePanel("detail"); }}
+                  sx={{
+                    px: 2, py: 1.25, cursor: "pointer",
+                    backgroundColor: selectedDate === today ? "rgba(99,102,241,0.08)" : "transparent",
+                    borderLeft: selectedDate === today ? "3px solid #6366f1" : "3px solid transparent",
+                    "&:hover": { backgroundColor: selectedDate === today ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.03)" },
+                  }}
+                >
+                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: selectedDate === today ? "#6366f1" : "var(--tx)" }}>
+                    Today
+                  </Typography>
+                  <Typography sx={{ fontSize: "0.72rem", color: "var(--tx-4)", mt: 0.1 }}>
+                    {formatDayShort(today)}
+                  </Typography>
+                </Box>
+              )}
+
+              {/* Past entries grouped by month */}
               {months.map((month) => (
                 <Box key={month}>
                   <Typography sx={{
@@ -360,14 +311,15 @@ export default function JournalView() {
                   {grouped[month].map((entry) => (
                     <Box
                       key={entry.date}
-                      onClick={() => { setSelectedDate(entry.date); setMobilePanel("detail"); }}
+                      onClick={() => { setSelectedDate(entry.date); if (isMobile) setMobilePanel("detail"); }}
                       sx={{
-                        px: 2, py: 1.25, cursor: "pointer",
-                        borderLeft: "3px solid transparent",
-                        "&:hover": { backgroundColor: "rgba(0,0,0,0.03)" },
+                        px: 2, py: 1, cursor: "pointer",
+                        backgroundColor: selectedDate === entry.date ? "rgba(99,102,241,0.08)" : "transparent",
+                        borderLeft: selectedDate === entry.date ? "3px solid #6366f1" : "3px solid transparent",
+                        "&:hover": { backgroundColor: selectedDate === entry.date ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.03)" },
                       }}
                     >
-                      <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--tx)" }}>
+                      <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: selectedDate === entry.date ? "#6366f1" : "var(--tx)" }}>
                         {formatDayShort(entry.date)}
                       </Typography>
                       {(entry.note || entry.gratitude || entry.body) && (
@@ -382,261 +334,185 @@ export default function JournalView() {
                   ))}
                 </Box>
               ))}
-            </Box>
-          ) : search.trim() ? (
-            <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)", px: 2, pt: 3, textAlign: "center" }}>
-              No past entries match your search.
-            </Typography>
-          ) : null}
-        </Box>
-      )}
 
-      {/* ── Desktop left panel ── */}
-      {!isMobile && (
-        <Box sx={{
-          width: 260, flexShrink: 0,
-          borderRight: "1px solid var(--border)",
-          display: "flex", flexDirection: "column",
-          backgroundColor: "var(--surface-2)",
-        }}>
-          <Box sx={{ px: 1.5, pt: 1.5, pb: 1 }}>
-            <Box sx={{
-              display: "flex", alignItems: "center", gap: 1,
-              backgroundColor: "var(--surface)", borderRadius: 2,
-              border: "1px solid var(--border)", px: 1.25, py: 0.6,
-            }}>
-              <SearchIcon sx={{ fontSize: 16, color: "var(--tx-4)", flexShrink: 0 }} />
-              <InputBase
-                placeholder="Search journal…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                sx={{ fontSize: "0.82rem", flex: 1, color: "var(--tx-2)" }}
+              {!loading && months.length === 0 && !showTodayInList && (
+                <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)", px: 2, pt: 3, textAlign: "center" }}>
+                  No entries match your search.
+                </Typography>
+              )}
+            </>
+          )}
+        </Box>
+      </Box>
+
+      {/* ── Right panel ── */}
+      <Box sx={{ flex: 1, overflowY: "auto", display: isMobile && mobilePanel === "list" ? "none" : "flex", flexDirection: "column" }}>
+        {isMobile && (
+          <Box sx={{ px: 1.5, py: 0.75, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 0.5, backgroundColor: "var(--surface-2)", flexShrink: 0 }}>
+            <IconButton size="small" onClick={() => setMobilePanel("list")} sx={{ color: "var(--tx-2)" }}>
+              <ArrowBackIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--tx-2)" }}>Journal</Typography>
+          </Box>
+        )}
+        {!loading && focusField === null && (
+          <Box sx={{ maxWidth: 860, px: { xs: 2, sm: 4 }, py: { xs: 2, sm: 4 }, display: "flex", flexDirection: "column", gap: 3 }}>
+
+            {/* Date header */}
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Box>
+                <Typography sx={{ fontWeight: 800, fontSize: "1.25rem", color: "var(--tx)", lineHeight: 1.2 }}>
+                  {isToday ? "Today" : formatDayShort(selectedDate)}
+                </Typography>
+                <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", mt: 0.25 }}>
+                  {formatDayFull(selectedDate)}
+                </Typography>
+              </Box>
+              {saved && (
+                <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#22c55e" }}>
+                  Saved
+                </Typography>
+              )}
+            </Box>
+
+            {/* Better tomorrow */}
+            <Box>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
+                <Typography sx={{ ...labelSx, mb: 0 }}>One thing to do better tomorrow</Typography>
+                <Box component="span" sx={viewAllSx} onClick={() => setFocusField("note")}>View all →</Box>
+              </Box>
+              <TextField
+                fullWidth multiline minRows={1} maxRows={4}
+                placeholder="Write one thing you can improve tomorrow…"
+                value={editNote}
+                onChange={(e) => handleNote(e.target.value)}
+                onBlur={handleNoteBlur}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
+                slotProps={{ htmlInput: { maxLength: 500 } }}
+                sx={inputFieldSx}
               />
             </Box>
-          </Box>
-          <Box sx={{ flex: 1, overflowY: "auto" }}>
-            {loading ? (
-              <Box sx={{ display: "flex", justifyContent: "center", pt: 4 }}>
-                <CircularProgress size={22} sx={{ color: "#6366f1" }} />
+
+            {/* Grateful for */}
+            <Box>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
+                <Typography sx={{ ...labelSx, mb: 0 }}>One thing I&apos;m grateful for</Typography>
+                <Box component="span" sx={viewAllSx} onClick={() => setFocusField("gratitude")}>View all →</Box>
               </Box>
-            ) : (
-              <>
-                {showTodayInList && (
-                  <Box
-                    onClick={() => setSelectedDate(today)}
-                    sx={{
-                      px: 2, py: 1.25, cursor: "pointer",
-                      backgroundColor: selectedDate === today ? "rgba(99,102,241,0.08)" : "transparent",
-                      borderLeft: selectedDate === today ? "3px solid #6366f1" : "3px solid transparent",
-                      "&:hover": { backgroundColor: selectedDate === today ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.03)" },
-                    }}
-                  >
-                    <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: selectedDate === today ? "#6366f1" : "var(--tx)" }}>
-                      Today
-                    </Typography>
-                    <Typography sx={{ fontSize: "0.72rem", color: "var(--tx-4)", mt: 0.1 }}>
-                      {formatDayShort(today)}
-                    </Typography>
-                  </Box>
-                )}
-                {months.map((month) => (
-                  <Box key={month}>
-                    <Typography sx={{
-                      fontSize: "0.65rem", fontWeight: 800, color: "var(--tx-4)",
-                      textTransform: "uppercase", letterSpacing: 1,
-                      px: 2, pt: 1.5, pb: 0.5,
-                    }}>
-                      {monthLabel(month)}
-                    </Typography>
-                    {grouped[month].map((entry) => (
-                      <Box
-                        key={entry.date}
-                        onClick={() => setSelectedDate(entry.date)}
-                        sx={{
-                          px: 2, py: 1, cursor: "pointer",
-                          backgroundColor: selectedDate === entry.date ? "rgba(99,102,241,0.08)" : "transparent",
-                          borderLeft: selectedDate === entry.date ? "3px solid #6366f1" : "3px solid transparent",
-                          "&:hover": { backgroundColor: selectedDate === entry.date ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.03)" },
-                        }}
-                      >
-                        <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: selectedDate === entry.date ? "#6366f1" : "var(--tx)" }}>
-                          {formatDayShort(entry.date)}
-                        </Typography>
-                        {(entry.note || entry.gratitude || entry.body) && (
-                          <Typography sx={{
-                            fontSize: "0.72rem", color: "var(--tx-4)", mt: 0.1,
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          }}>
-                            {entry.body ?? entry.note ?? entry.gratitude}
+              <TextField
+                fullWidth multiline minRows={1} maxRows={4}
+                placeholder="Write one thing you're grateful for today…"
+                value={editGratitude}
+                onChange={(e) => handleGrat(e.target.value)}
+                onBlur={handleGratBlur}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
+                slotProps={{ htmlInput: { maxLength: 500 } }}
+                sx={inputFieldSx}
+              />
+            </Box>
+
+            {/* Free-write journal */}
+            <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
+                <Typography sx={{ ...labelSx, mb: 0 }}>Journal</Typography>
+                <Box component="span" sx={viewAllSx} onClick={() => setFocusField("body")}>View all →</Box>
+              </Box>
+              <TextField
+                fullWidth multiline minRows={12}
+                placeholder="Write anything on your mind…"
+                value={editBody}
+                onChange={(e) => handleBody(e.target.value)}
+                onBlur={handleBodyBlur}
+                slotProps={{ htmlInput: { maxLength: 10000 } }}
+                sx={{
+                  flex: 1,
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: 2, fontSize: "0.95rem", backgroundColor: "var(--surface)",
+                    alignItems: "flex-start",
+                    "& fieldset": { borderColor: "var(--border)" },
+                    "&:hover fieldset": { borderColor: "var(--border-2)" },
+                    "&.Mui-focused fieldset": { borderColor: "#6366f1", borderWidth: 1.5 },
+                  },
+                  "& textarea": { lineHeight: 1.8, py: 1.5, px: 0.5 },
+                }}
+              />
+            </Box>
+
+          </Box>
+        )}
+
+        {/* ── Stream view ── */}
+        {!loading && focusField !== null && (() => {
+          const fieldLabel =
+            focusField === "note" ? "One thing to do better tomorrow" :
+            focusField === "gratitude" ? "One thing I'm grateful for" :
+            "Journal";
+          const streamItems = entries
+            .filter((e) => !!(focusField === "note" ? e.note : focusField === "gratitude" ? e.gratitude : e.body)?.trim())
+            .sort((a, b) => b.date.localeCompare(a.date));
+          return (
+            <Box sx={{ maxWidth: 860, px: { xs: 2, sm: 4 }, py: { xs: 2, sm: 4 }, display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* Back button */}
+              <Box
+                sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, cursor: "pointer", width: "fit-content" }}
+                onClick={() => setFocusField(null)}
+              >
+                <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "#6366f1", "&:hover": { textDecoration: "underline" } }}>
+                  ← Back to entry
+                </Typography>
+              </Box>
+
+              {/* Heading */}
+              <Typography sx={{ fontWeight: 800, fontSize: "1.15rem", color: "var(--tx)", lineHeight: 1.3 }}>
+                {fieldLabel} — all entries
+              </Typography>
+
+              {/* Items */}
+              {streamItems.length === 0 ? (
+                <Typography sx={{ fontSize: "0.88rem", color: "var(--tx-4)", mt: 1 }}>
+                  No entries yet for this field.
+                </Typography>
+              ) : (
+                <Box sx={{ display: "flex", flexDirection: "column" }}>
+                  {streamItems.map((entry, idx) => {
+                    const content = (focusField === "note" ? entry.note : focusField === "gratitude" ? entry.gratitude : entry.body) ?? "";
+                    return (
+                      <Box key={entry.date}>
+                        <Box
+                          sx={{
+                            py: 2, px: 2, backgroundColor: "var(--surface-2)", borderRadius: 2,
+                            cursor: "pointer",
+                            "&:hover": { backgroundColor: "rgba(99,102,241,0.05)" },
+                          }}
+                          onClick={() => { setSelectedDate(entry.date); setFocusField(null); if (isMobile) setMobilePanel("detail"); }}
+                        >
+                          <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--tx)", mb: 0.5 }}>
+                            {formatDayFull(entry.date)}
                           </Typography>
+                          <Typography sx={{ fontSize: "0.9rem", color: "var(--tx-2)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                            {content}
+                          </Typography>
+                        </Box>
+                        {idx < streamItems.length - 1 && (
+                          <Box sx={{ borderBottom: "1px solid var(--divider)", mx: 2 }} />
                         )}
                       </Box>
-                    ))}
-                  </Box>
-                ))}
-                {months.length === 0 && !showTodayInList && (
-                  <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)", px: 2, pt: 3, textAlign: "center" }}>
-                    No entries match your search.
-                  </Typography>
-                )}
-              </>
-            )}
+                    );
+                  })}
+                </Box>
+              )}
+            </Box>
+          );
+        })()}
+
+        {/* Empty state when nothing selected */}
+        {!loading && !selectedDate && (
+          <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--tx-4)" }}>
+            <AutoStoriesOutlinedIcon sx={{ fontSize: 48, mb: 1.5, opacity: 0.4 }} />
+            <Typography sx={{ fontSize: "0.875rem" }}>Select a day to view your entry</Typography>
           </Box>
-        </Box>
-      )}
-
-      {/* ── Right panel (desktop always; mobile only for past-entry detail / stream) ── */}
-      {(!isMobile || mobilePanel === "detail") && (
-        <Box sx={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-          {isMobile && (
-            <Box sx={{ px: 1.5, py: 0.75, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 0.5, backgroundColor: "var(--surface-2)", flexShrink: 0 }}>
-              <IconButton size="small" onClick={() => { setMobilePanel("list"); setSelectedDate(today); setFocusField(null); }} sx={{ color: "var(--tx-2)" }}>
-                <ArrowBackIcon sx={{ fontSize: 20 }} />
-              </IconButton>
-              <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--tx-2)" }}>
-                {focusField ? "All entries" : formatDayShort(selectedDate)}
-              </Typography>
-            </Box>
-          )}
-          {!loading && focusField === null && (
-            <Box sx={{ maxWidth: 860, px: { xs: 2, sm: 4 }, py: { xs: 2, sm: 4 }, display: "flex", flexDirection: "column", gap: 3 }}>
-
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <Box>
-                  <Typography sx={{ fontWeight: 800, fontSize: "1.25rem", color: "var(--tx)", lineHeight: 1.2 }}>
-                    {isToday ? "Today" : formatDayShort(selectedDate)}
-                  </Typography>
-                  <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", mt: 0.25 }}>
-                    {formatDayFull(selectedDate)}
-                  </Typography>
-                </Box>
-                {saved && (
-                  <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#22c55e" }}>Saved</Typography>
-                )}
-              </Box>
-
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
-                  <Typography sx={{ ...labelSx, mb: 0 }}>One thing to do better tomorrow</Typography>
-                  <Box component="span" sx={viewAllSx} onClick={() => setFocusField("note")}>View all →</Box>
-                </Box>
-                <TextField
-                  fullWidth multiline minRows={1} maxRows={4}
-                  placeholder="Write one thing you can improve tomorrow…"
-                  value={editNote}
-                  onChange={(e) => handleNote(e.target.value)}
-                  onBlur={handleNoteBlur}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
-                  slotProps={{ htmlInput: { maxLength: 500 } }}
-                  sx={inputFieldSx}
-                />
-              </Box>
-
-              <Box>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
-                  <Typography sx={{ ...labelSx, mb: 0 }}>One thing I&apos;m grateful for</Typography>
-                  <Box component="span" sx={viewAllSx} onClick={() => setFocusField("gratitude")}>View all →</Box>
-                </Box>
-                <TextField
-                  fullWidth multiline minRows={1} maxRows={4}
-                  placeholder="Write one thing you're grateful for today…"
-                  value={editGratitude}
-                  onChange={(e) => handleGrat(e.target.value)}
-                  onBlur={handleGratBlur}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
-                  slotProps={{ htmlInput: { maxLength: 500 } }}
-                  sx={inputFieldSx}
-                />
-              </Box>
-
-              <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                <Box sx={{ display: "flex", alignItems: "center", mb: 0.75 }}>
-                  <Typography sx={{ ...labelSx, mb: 0 }}>Journal</Typography>
-                  <Box component="span" sx={viewAllSx} onClick={() => setFocusField("body")}>View all →</Box>
-                </Box>
-                <TextField
-                  fullWidth multiline minRows={12}
-                  placeholder="Write anything on your mind…"
-                  value={editBody}
-                  onChange={(e) => handleBody(e.target.value)}
-                  onBlur={handleBodyBlur}
-                  slotProps={{ htmlInput: { maxLength: 10000 } }}
-                  sx={{
-                    flex: 1,
-                    "& .MuiOutlinedInput-root": {
-                      borderRadius: 2, fontSize: "0.95rem", backgroundColor: "var(--surface)",
-                      alignItems: "flex-start",
-                      "& fieldset": { borderColor: "var(--border)" },
-                      "&:hover fieldset": { borderColor: "var(--border-2)" },
-                      "&.Mui-focused fieldset": { borderColor: "#6366f1", borderWidth: 1.5 },
-                    },
-                    "& textarea": { lineHeight: 1.8, py: 1.5, px: 0.5 },
-                  }}
-                />
-              </Box>
-            </Box>
-          )}
-
-          {/* ── Stream view ── */}
-          {!loading && focusField !== null && (() => {
-            const fieldLabel =
-              focusField === "note" ? "One thing to do better tomorrow" :
-              focusField === "gratitude" ? "One thing I'm grateful for" :
-              "Journal";
-            const streamItems = entries
-              .filter((e) => !!(focusField === "note" ? e.note : focusField === "gratitude" ? e.gratitude : e.body)?.trim())
-              .sort((a, b) => b.date.localeCompare(a.date));
-            return (
-              <Box sx={{ maxWidth: 860, px: { xs: 2, sm: 4 }, py: { xs: 2, sm: 4 }, display: "flex", flexDirection: "column", gap: 2 }}>
-                <Box
-                  sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, cursor: "pointer", width: "fit-content" }}
-                  onClick={() => setFocusField(null)}
-                >
-                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "#6366f1", "&:hover": { textDecoration: "underline" } }}>
-                    ← Back to entry
-                  </Typography>
-                </Box>
-                <Typography sx={{ fontWeight: 800, fontSize: "1.15rem", color: "var(--tx)", lineHeight: 1.3 }}>
-                  {fieldLabel} — all entries
-                </Typography>
-                {streamItems.length === 0 ? (
-                  <Typography sx={{ fontSize: "0.88rem", color: "var(--tx-4)", mt: 1 }}>
-                    No entries yet for this field.
-                  </Typography>
-                ) : (
-                  <Box sx={{ display: "flex", flexDirection: "column" }}>
-                    {streamItems.map((entry, idx) => {
-                      const content = (focusField === "note" ? entry.note : focusField === "gratitude" ? entry.gratitude : entry.body) ?? "";
-                      return (
-                        <Box key={entry.date}>
-                          <Box
-                            sx={{
-                              py: 2, px: 2, backgroundColor: "var(--surface-2)", borderRadius: 2,
-                              cursor: "pointer",
-                              "&:hover": { backgroundColor: "rgba(99,102,241,0.05)" },
-                            }}
-                            onClick={() => { setSelectedDate(entry.date); setFocusField(null); }}
-                          >
-                            <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--tx)", mb: 0.5 }}>
-                              {formatDayFull(entry.date)}
-                            </Typography>
-                            <Typography sx={{ fontSize: "0.9rem", color: "var(--tx-2)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-                              {content}
-                            </Typography>
-                          </Box>
-                          {idx < streamItems.length - 1 && (
-                            <Box sx={{ borderBottom: "1px solid var(--divider)", mx: 2 }} />
-                          )}
-                        </Box>
-                      );
-                    })}
-                  </Box>
-                )}
-              </Box>
-            );
-          })()}
-        </Box>
-      )}
+        )}
+      </Box>
     </Box>
   );
 }
