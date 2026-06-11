@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
@@ -69,6 +70,7 @@ interface DailyFocusProps {
 }
 
 export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps) {
+  const isMobile = useMediaQuery("(max-width: 600px)");
   const vault = useVault();
 
   const vaultEncrypt = async (text: string): Promise<{ encText: string; text: string } | { text: string }> => {
@@ -496,7 +498,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     }}>
       {/* Header */}
       <Box sx={{
-        px: 3, py: 1.5,
+        px: { xs: 2, sm: 3 }, py: 1.5,
         display: "flex", alignItems: "center", justifyContent: "space-between",
         borderBottom: collapsed ? "none" : "1px solid var(--border)",
         cursor: "pointer",
@@ -516,7 +518,9 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               <ChevronLeftIcon sx={{ fontSize: 16 }} />
             </IconButton>
             <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-2)", fontWeight: 600, mx: 0.75, userSelect: "none" }}>
-              {formatDate(viewDate)}
+              {isMobile
+                ? new Date(viewDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+                : formatDate(viewDate)}
             </Typography>
             <IconButton
               size="small"
@@ -557,7 +561,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               );
             })()}
           </Box>
-          {!collapsed && (goals.length > 0 || habits.length > 0) && (
+          {!collapsed && !isMobile && (goals.length > 0 || habits.length > 0) && (
             <Box sx={{ display: "flex", gap: 1 }}>
               {goals.length > 0 && (
                 <Box sx={{
@@ -600,7 +604,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
       </Snackbar>
 
       <Collapse in={!collapsed}>
-        <Box sx={{ px: 3, py: 2.5, display: "flex", flexDirection: "column", gap: 2.5 }}>
+        <Box sx={{ px: { xs: 2, sm: 3 }, py: 2.5, display: "flex", flexDirection: "column", gap: 2.5 }}>
 
           {/* ── Previous day's reflection banner ── */}
           {prevDayReflection && (
@@ -649,7 +653,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                       if (e.key === "Escape") { setAddingHabit(false); setHabitInput(""); }
                     }}
                     sx={{
-                      width: 220,
+                      width: "100%", maxWidth: 220,
                       "& .MuiOutlinedInput-root": {
                         borderRadius: 2, fontSize: "0.85rem",
                         "& fieldset": { borderColor: "#6366f1" },
