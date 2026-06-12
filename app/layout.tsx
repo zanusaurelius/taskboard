@@ -9,8 +9,23 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Task Board",
-  description: "A standalone kanban task board",
+  metadataBase: new URL("https://taskboard.spartanatlas.com"),
+  title: "Taskboard — Tasks, notes, and journal",
+  description: "A full-featured task board with notes, journal, encrypted vault, and file storage.",
+  openGraph: {
+    title: "Taskboard — Tasks, notes, and journal",
+    description: "A full-featured task board with notes, journal, encrypted vault, and file storage.",
+    url: "https://taskboard.spartanatlas.com",
+    siteName: "Taskboard",
+    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Taskboard — Tasks, notes, and journal",
+    description: "A full-featured task board with notes, journal, encrypted vault, and file storage.",
+    images: ["/opengraph-image"],
+  },
 };
 
 export const viewport: Viewport = {
