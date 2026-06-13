@@ -54,7 +54,7 @@ export default auth(async (req) => {
   const isAuthenticated = !!req.auth?.user?.id || bearerAuthenticated;
   const { pathname } = req.nextUrl;
 
-  const isPublicPage = pathname === "/login" || pathname === "/register" || pathname === "/recover" || pathname === "/opengraph-image";
+  const isPublicPage = pathname === "/login" || pathname === "/register" || pathname === "/recover" || pathname.startsWith("/opengraph-image");
   const isAuthApi    = pathname.startsWith("/api/auth");
 
   if (isAuthenticated && isPublicPage) {
