@@ -17,14 +17,12 @@ export const metadata: Metadata = {
     description: "A full-featured task board with notes, journal, encrypted vault, and file storage.",
     url: "https://taskboard.spartanatlas.com",
     siteName: "Taskboard",
-    images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Taskboard — Tasks, notes, and journal",
     description: "A full-featured task board with notes, journal, encrypted vault, and file storage.",
-    images: ["/opengraph-image"],
   },
 };
 
