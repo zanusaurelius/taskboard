@@ -16,10 +16,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "date required (YYYY-MM-DD)" }, { status: 400 });
   }
 
+  // Kept for app versions that predate W/L logging: "complete" records a W.
   await prisma.habitCompletion.upsert({
     where: { habitId_date: { habitId, date } },
     create: { habitId, date },
-    update: {},
+    update: { isLoss: false },
   });
   return new NextResponse(null, { status: 204 });
 }

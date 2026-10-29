@@ -65,11 +65,17 @@ export interface DailyGoal {
   position: number;
 }
 
+export type HabitOutcome = "W" | "L";
+
 export interface Habit {
   id: string;
   text: string;
   encText: string | null;
+  kind: "GOOD" | "BAD";
+  archivedAt: string | null;
   position: number;
+  createdAt: string;
+  todayOutcome: HabitOutcome | null;
   completedToday: boolean;
 }
 

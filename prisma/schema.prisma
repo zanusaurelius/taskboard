@@ -28,6 +28,7 @@ model User {
   habits            Habit[]
   noteVault         NoteVault?
   stageColorsJson   String?
+  weekStartsOn      Int          @default(0) // 0 = Sunday, 1 = Monday
 }
 
 model Project {
@@ -214,6 +215,8 @@ model Habit {
   id          String            @id @default(cuid())
   text        String
   encText     String?
+  kind        String            @default("GOOD") // GOOD (building) or BAD (breaking)
+  archivedAt  DateTime?
   position    Int               @default(0)
   userId      String
   user        User              @relation(fields: [userId], references: [id])
@@ -227,6 +230,7 @@ model HabitCompletion {
   habitId   String
   habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
   date      String
+  isLoss    Boolean  @default(false)
   createdAt DateTime @default(now())
 
   @@unique([habitId, date])
