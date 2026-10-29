@@ -1,20 +1,31 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, TextInput, ScrollView, RefreshControl, Modal, Pressable,
+  View, Text, TouchableOpacity, TextInput, ScrollView, RefreshControl, Modal, Pressable, Switch,
   StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DraggableFlatList, { ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
 import { useHabits, statsFor, habitLogs, nextOutcome, type HabitItem } from '@/lib/habits';
 import { KIND_COPY, PRESETS } from '@/lib/habit-kind';
-import { addDays, overallStats, weekRecords, type HabitKind, type WeekStart } from '@/lib/habit-stats';
-import { WeekStrip, OutcomeButtons, StreakText, winLossColors } from '@/components/HabitParts';
+import {
+  addDays, habitStatsFor, monthRecords, overallStats, weekRecords, yearsWithLogs,
+  type HabitKind, type WeekStart,
+} from '@/lib/habit-stats';
+import {
+  WeekStrip, OutcomeButtons, StreakText, MonthCalendar, Segmented, periodOptions, periodFromKey, winLossColors,
+} from '@/components/HabitParts';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
+import { usePrivacyMode } from '@/lib/privacy';
+import { useVault } from '@/lib/vault-context';
+import { apiFetch, isOk } from '@/lib/api';
+import VaultUnlockModal from '@/components/VaultUnlockModal';
 
 const KINDS: HabitKind[] = ['GOOD', 'BAD'];
 
 const shortDate = (d: string) =>
   new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const monthName = (m: string) =>
+  new Date(m + '-01T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 const displayName = (h: HabitItem) => (h.locked ? '🔒 Locked habit' : h.name || 'Untitled habit');
 
@@ -27,12 +38,33 @@ export default function HabitsScreen() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [reordering, setReordering] = useState<HabitKind | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [periodKey, setPeriodKey] = useState(h.today.slice(0, 4));
+  const [privacyOn, setPrivacyOn] = usePrivacyMode();
+  const { lock } = useVault();
+  const [vaultExists, setVaultExists] = useState(false);
+  const [unlockVisible, setUnlockVisible] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ exists: boolean }>('/api/notes/vault').then((r) => { if (isOk(r)) setVaultExists(!!r.data.exists); });
+  }, []);
+
+  // Revealing private habits asks for the vault password when a vault is set up.
+  const togglePrivacy = () => {
+    if (privacyOn) {
+      if (vaultExists && h.privateCount > 0) setUnlockVisible(true);
+      else setPrivacyOn(false);
+    } else {
+      lock();
+      setPrivacyOn(true);
+    }
+  };
 
   const active = h.habits.filter((x) => !x.archivedAt);
   const archived = h.habits.filter((x) => x.archivedAt);
+  const years = useMemo(() => yearsWithLogs(active.flatMap(habitLogs), h.today), [active, h.today]);
   const overall = useMemo(
-    () => overallStats(active.map((x) => statsFor(x, h.today, h.weekStartsOn))),
-    [active, h.today, h.weekStartsOn],
+    () => overallStats(active.map((x) => habitStatsFor(habitLogs(x), x.createdDate, h.today, h.weekStartsOn, periodFromKey(periodKey)))),
+    [active, h.today, h.weekStartsOn, periodKey],
   );
   const detail = h.habits.find((x) => x.id === detailId) ?? null;
 
@@ -42,9 +74,15 @@ export default function HabitsScreen() {
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <Text style={s.title}>Habits</Text>
-        <TouchableOpacity style={s.newBtn} onPress={() => setCreating('pick')} accessibilityRole="button">
-          <Text style={s.newBtnText}>+ New</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity style={[s.privacyBtn, privacyOn && s.privacyBtnOn]} onPress={togglePrivacy} accessibilityRole="button"
+            accessibilityLabel={privacyOn ? 'Privacy on. Show private habits' : 'Privacy off. Hide private habits'}>
+            <Text style={[s.privacyBtnText, privacyOn && s.privacyBtnTextOn]}>{privacyOn ? '🔒 Private' : '🔓 Showing all'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.newBtn} onPress={() => setCreating('pick')} accessibilityRole="button">
+            <Text style={s.newBtnText}>+ New</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {h.offline && (
@@ -61,12 +99,21 @@ export default function HabitsScreen() {
           refreshControl={<RefreshControl refreshing={h.refreshing} onRefresh={h.refresh} tintColor="#6366f1" />}
         >
           {active.length > 0 && (
-            <View style={s.statsRow}>
-              <Stat s={s} label="Wins" value={overall.wins} color={wl.winFg} />
-              <Stat s={s} label="Losses" value={overall.losses} color={wl.lossFg} />
-              <Stat s={s} label="Days" value={overall.days} />
-              <Stat s={s} label="Win rate" value={overall.days ? `${overall.winRate}%` : '–'} />
+            <View style={{ gap: 10 }}>
+              <Segmented colors={colors} options={periodOptions(years)} value={periodKey} onChange={setPeriodKey} />
+              <View style={s.statsRow}>
+                <Stat s={s} label="Wins" value={overall.wins} color={wl.winFg} />
+                <Stat s={s} label="Losses" value={overall.losses} color={wl.lossFg} />
+                <Stat s={s} label="Days" value={overall.days} />
+                <Stat s={s} label="Win rate" value={overall.days ? `${overall.winRate}%` : '–'} />
+              </View>
             </View>
+          )}
+
+          {h.hiddenCount > 0 && (
+            <Text style={s.hint}>
+              {h.hiddenCount} private habit{h.hiddenCount === 1 ? ' is' : 's are'} hidden. Turn off privacy to see {h.hiddenCount === 1 ? 'it' : 'them'}.
+            </Text>
           )}
 
           {KINDS.map((kind) => {
@@ -116,7 +163,7 @@ export default function HabitsScreen() {
               {showArchived && (
                 <View style={s.card}>
                   {archived.map((x) => {
-                    const st = statsFor(x, h.today, h.weekStartsOn);
+                    const st = habitStatsFor(habitLogs(x), x.createdDate, h.today, h.weekStartsOn, { kind: 'all' });
                     return (
                       <View key={x.id} style={s.archivedRow}>
                         <TouchableOpacity style={{ flex: 1 }} onPress={() => setDetailId(x.id)}>
@@ -141,7 +188,7 @@ export default function HabitsScreen() {
           colors={colors}
           initialKind={creating === 'pick' ? null : creating}
           onClose={() => setCreating(null)}
-          onCreate={async (kind, name) => { if (report(await h.createHabit(kind, name))) setCreating(null); }}
+          onCreate={async (kind, name, isPrivate) => { if (report(await h.createHabit(kind, name, isPrivate))) setCreating(null); }}
         />
       )}
 
@@ -156,6 +203,7 @@ export default function HabitsScreen() {
           onCycle={(date) => h.setOutcome(detail.id, date, nextOutcome(detail.outcomes[date]))}
           onRename={async (name) => { report(await h.updateHabit(detail.id, { name })); }}
           onArchive={async () => { if (report(await h.updateHabit(detail.id, { archived: !detail.archivedAt }))) setDetailId(null); }}
+          onPrivate={async (isPrivate) => { report(await h.updateHabit(detail.id, { private: isPrivate })); }}
           onDelete={() => Alert.alert('Delete habit', 'This deletes the habit and its whole record. Archiving keeps the record.', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete', style: 'destructive', onPress: async () => { if (report(await h.deleteHabit(detail.id))) setDetailId(null); } },
@@ -172,6 +220,11 @@ export default function HabitsScreen() {
           onSave={(ids) => { h.reorder(reordering, ids).then(report); }}
         />
       )}
+      <VaultUnlockModal
+        visible={unlockVisible}
+        onSuccess={() => { setUnlockVisible(false); setPrivacyOn(false); }}
+        onCancel={() => setUnlockVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -191,17 +244,18 @@ function NewHabitModal({ colors, initialKind, onClose, onCreate }: {
   colors: ThemeColors;
   initialKind: HabitKind | null;
   onClose: () => void;
-  onCreate: (kind: HabitKind, name: string) => Promise<void>;
+  onCreate: (kind: HabitKind, name: string, isPrivate: boolean) => Promise<void>;
 }) {
   const s = makeStyles(colors);
   const [kind, setKind] = useState<HabitKind | null>(initialKind);
   const [name, setName] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
     if (!kind || !name.trim() || saving) return;
     setSaving(true);
-    await onCreate(kind, name.trim());
+    await onCreate(kind, name.trim(), isPrivate);
     setSaving(false);
   };
 
@@ -218,7 +272,7 @@ function NewHabitModal({ colors, initialKind, onClose, onCreate }: {
               <View style={{ gap: 10 }}>
                 {KINDS.map((k) => (
                   <TouchableOpacity key={k} style={s.kindCard} onPress={() => setKind(k)} accessibilityRole="button">
-                    <Text style={s.kindTitle}>{KIND_COPY[k].title} <Text style={s.kindTag}>{KIND_COPY[k].group.toUpperCase()}</Text></Text>
+                    <Text style={s.kindTitle}>{KIND_COPY[k].title}</Text>
                     <Text style={s.kindExplainer}>{KIND_COPY[k].explainer}</Text>
                   </TouchableOpacity>
                 ))}
@@ -245,6 +299,10 @@ function NewHabitModal({ colors, initialKind, onClose, onCreate }: {
                     </TouchableOpacity>
                   ))}
                 </View>
+                <View style={s.switchRow}>
+                  <Text style={s.switchLabel}>Private: hide it while privacy is on</Text>
+                  <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ true: '#6366f1' }} />
+                </View>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   {!initialKind && (
                     <TouchableOpacity style={s.secondaryBtn} onPress={() => setKind(null)}>
@@ -266,7 +324,7 @@ function NewHabitModal({ colors, initialKind, onClose, onCreate }: {
 
 // ── Habit detail: all-time stats and every past week ──────────────────────────
 
-function HabitDetailModal({ colors, habit, today, weekStartsOn, onClose, onCycle, onRename, onArchive, onDelete }: {
+function HabitDetailModal({ colors, habit, today, weekStartsOn, onClose, onCycle, onRename, onArchive, onPrivate, onDelete }: {
   colors: ThemeColors;
   habit: HabitItem;
   today: string;
@@ -275,13 +333,18 @@ function HabitDetailModal({ colors, habit, today, weekStartsOn, onClose, onCycle
   onCycle: (date: string) => void;
   onRename: (name: string) => Promise<void>;
   onArchive: () => Promise<void>;
+  onPrivate: (isPrivate: boolean) => Promise<void>;
   onDelete: () => void;
 }) {
   const s = makeStyles(colors);
   const wl = winLossColors(colors);
   const [name, setName] = useState(habit.name);
-  const st = statsFor(habit, today, weekStartsOn);
-  const weeks = weekRecords(habitLogs(habit), habit.createdDate, today, weekStartsOn);
+  const [periodKey, setPeriodKey] = useState(today.slice(0, 4));
+  const [view, setView] = useState<'weeks' | 'months'>('weeks');
+  const logs = habitLogs(habit);
+  const st = habitStatsFor(logs, habit.createdDate, today, weekStartsOn, periodFromKey(periodKey));
+  const weeks = weekRecords(logs, habit.createdDate, today, weekStartsOn);
+  const months = monthRecords(logs, habit.createdDate, today);
   const saveName = () => { if (!habit.locked && name.trim() && name.trim() !== habit.name) onRename(name.trim()); };
 
   return (
@@ -299,6 +362,7 @@ function HabitDetailModal({ colors, habit, today, weekStartsOn, onClose, onCycle
               maxLength={200} placeholder="Name" placeholderTextColor={colors.placeholder} accessibilityLabel="Habit name" />
           )}
 
+          <Segmented colors={colors} options={periodOptions(yearsWithLogs(logs, today))} value={periodKey} onChange={setPeriodKey} />
           <View style={s.detailStats}>
             <DetailStat s={s} label="Day record" value={<><Text style={{ color: wl.winFg }}>{st.wins}</Text>–<Text style={{ color: wl.lossFg }}>{st.losses}</Text></>} />
             <DetailStat s={s} label="Win rate" value={st.days ? `${st.winRate}%` : '–'} />
@@ -310,11 +374,11 @@ function HabitDetailModal({ colors, habit, today, weekStartsOn, onClose, onCycle
           </View>
 
           <View style={{ gap: 4 }}>
-            <Text style={s.groupLabel}>WEEKS</Text>
-            <Text style={s.hint}>Tap a day to change it: blank, W, L, then blank again.</Text>
-            {weeks.map((w) => {
+            <Segmented colors={colors} options={[{ key: 'weeks', label: 'Weeks' }, { key: 'months', label: 'Months' }]} value={view} onChange={setView} />
+            <Text style={[s.hint, { marginTop: 6 }]}>Tap a day to change it: blank, W, L, then blank again.</Text>
+            {view === 'weeks' ? weeks.map((w) => {
               const result = w.current ? 'This week' : w.wins > w.losses ? 'Won' : w.losses > w.wins ? 'Lost' : w.wins + w.losses ? 'Tied' : 'Not played';
-              const color = result === 'Won' ? wl.winFg : result === 'Lost' ? wl.lossFg : colors.tx4;
+              const color = result === 'Won' ? wl.winFg : result === 'Lost' ? wl.lossFg : colors.tx3;
               return (
                 <View key={w.start} style={s.weekRow}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -325,7 +389,26 @@ function HabitDetailModal({ colors, habit, today, weekStartsOn, onClose, onCycle
                     weekOf={w.start} size={30} showLabels={w.current} onCycle={onCycle} />
                 </View>
               );
+            }) : months.map((m) => {
+              const days = m.wins + m.losses;
+              return (
+                <View key={m.month} style={s.weekRow}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={s.weekDates}>{monthName(m.month)}</Text>
+                    <Text style={[s.weekResult, { color: colors.tx2 }]}>
+                      <Text style={{ color: wl.winFg }}>{m.wins}</Text>–<Text style={{ color: wl.lossFg }}>{m.losses}</Text>
+                      {days > 0 ? ` · ${Math.round((m.wins / days) * 100)}%` : ''}
+                    </Text>
+                  </View>
+                  <MonthCalendar colors={colors} month={m.month} outcomes={habit.outcomes} today={today} weekStartsOn={weekStartsOn} onCycle={onCycle} />
+                </View>
+              );
             })}
+          </View>
+
+          <View style={s.switchRow}>
+            <Text style={s.switchLabel}>Private: hide it while privacy is on</Text>
+            <Switch value={habit.private} onValueChange={(v) => { onPrivate(v); }} trackColor={{ true: '#6366f1' }} />
           </View>
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
@@ -395,20 +478,26 @@ function makeStyles(c: ThemeColors) {
     title: { fontSize: 24, fontWeight: '800', color: c.tx },
     newBtn: { backgroundColor: '#6366f1', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
     newBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    privacyBtn: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: c.border2 },
+    privacyBtnOn: { borderColor: 'rgba(99,102,241,0.45)', backgroundColor: 'rgba(99,102,241,0.12)' },
+    privacyBtnText: { fontSize: 13, fontWeight: '600', color: c.tx2 },
+    privacyBtnTextOn: { color: '#6366f1' },
+    switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+    switchLabel: { flex: 1, fontSize: 14, color: c.tx2 },
     offlineBanner: { backgroundColor: '#7c2d12', paddingHorizontal: 16, paddingVertical: 8 },
     offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
     content: { padding: 16, gap: 20, paddingBottom: 40 },
     statsRow: { flexDirection: 'row', gap: 8 },
     stat: { flex: 1, backgroundColor: c.surface, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 8, borderWidth: 1, borderColor: c.cardBorder },
     statValue: { fontSize: 20, fontWeight: '800', color: c.tx, fontVariant: ['tabular-nums'] },
-    statLabel: { fontSize: 9, fontWeight: '700', color: c.tx4, letterSpacing: 0.8, marginTop: 2 },
+    statLabel: { fontSize: 9, fontWeight: '700', color: c.tx3, letterSpacing: 0.8, marginTop: 2 },
     groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    groupLabel: { fontSize: 11, fontWeight: '800', color: c.tx4, letterSpacing: 1.1 },
+    groupLabel: { fontSize: 11, fontWeight: '800', color: c.tx3, letterSpacing: 1.1 },
     groupAction: { fontSize: 13, fontWeight: '600', color: '#6366f1' },
     card: { backgroundColor: c.surface, borderRadius: 14, padding: 14, gap: 12, borderWidth: 1, borderColor: c.cardBorder },
     cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     habitName: { flex: 1, fontSize: 16, fontWeight: '600', color: c.tx },
-    emptyText: { fontSize: 14, color: c.tx4 },
+    emptyText: { fontSize: 14, color: c.tx3 },
     archivedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     archivedName: { fontSize: 14, color: c.tx3 },
     archivedRecord: { fontSize: 12, color: c.tx4, fontVariant: ['tabular-nums'] },
@@ -419,7 +508,6 @@ function makeStyles(c: ThemeColors) {
     closeText: { fontSize: 15, fontWeight: '600', color: '#6366f1' },
     kindCard: { borderWidth: 1.5, borderColor: c.border, borderRadius: 12, padding: 14, gap: 4 },
     kindTitle: { fontSize: 16, fontWeight: '700', color: c.tx },
-    kindTag: { fontSize: 10, fontWeight: '700', color: c.tx4, letterSpacing: 1 },
     kindExplainer: { fontSize: 13, color: c.tx3, lineHeight: 18 },
     input: { borderWidth: 1.5, borderColor: c.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: c.tx, backgroundColor: c.surface2 },
     presets: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -433,7 +521,7 @@ function makeStyles(c: ThemeColors) {
     detailStats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     detailStat: { width: '31%', flexGrow: 1, backgroundColor: c.surface2, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: c.cardBorder },
     detailStatValue: { fontSize: 18, fontWeight: '800', color: c.tx, fontVariant: ['tabular-nums'] },
-    hint: { fontSize: 12, color: c.tx4, marginBottom: 4 },
+    hint: { fontSize: 12, color: c.tx3, marginBottom: 4 },
     weekRow: { gap: 8, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
     weekDates: { fontSize: 13, color: c.tx2, fontWeight: '600' },
     weekResult: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },

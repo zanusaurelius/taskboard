@@ -161,3 +161,78 @@ export function overallStats(perHabit: HabitStats[]): OverallStats {
   const wins = perHabit.reduce((n, s) => n + s.wins, 0);
   return { days, wins, losses: days - wins, winRate: rate(wins, days) };
 }
+
+/** All-time, or one calendar year. */
+export type StatsPeriod = { kind: "all" } | { kind: "year"; year: number };
+
+/** Calendar years that have logs, plus the current one, newest first. */
+export function yearsWithLogs(logs: HabitLogEntry[], today: string): number[] {
+  const years = new Set<number>([Number(today.slice(0, 4))]);
+  for (const l of logs) if (l.date <= today) years.add(Number(l.date.slice(0, 4)));
+  return Array.from(years).sort((a, b) => b - a);
+}
+
+/**
+ * Stats for a period. For a year, only that year's days count, and weeks are counted from
+ * Jan 1. The current streak is always the live one, whichever period is shown.
+ */
+export function habitStatsFor(
+  logs: HabitLogEntry[],
+  createdDate: string,
+  today: string,
+  weekStartsOn: WeekStart,
+  period: StatsPeriod,
+): HabitStats {
+  if (period.kind === "all") return habitStats(logs, createdDate, today, weekStartsOn);
+  const from = `${period.year}-01-01`;
+  const to = `${period.year}-12-31`;
+  const end = today < to ? today : to;
+  const inYear = logs.filter((l) => l.date >= from && l.date <= end);
+  const stats = habitStats(inYear, createdDate > from ? createdDate : from, end, weekStartsOn);
+  return { ...stats, currentStreak: winStreaks(logs, today).current };
+}
+
+export interface MonthRecord {
+  month: string; // YYYY-MM
+  wins: number;
+  losses: number;
+}
+
+/** Every month from the habit's first day to today, newest first. */
+export function monthRecords(logs: HabitLogEntry[], createdDate: string, today: string): MonthRecord[] {
+  const past = logs.filter((l) => l.date <= today);
+  let first = createdDate.slice(0, 7);
+  for (const l of past) if (l.date.slice(0, 7) < first) first = l.date.slice(0, 7);
+  const last = today.slice(0, 7);
+  if (first > last) first = last;
+
+  const months = new Map<string, MonthRecord>();
+  let [y, m] = first.split("-").map(Number);
+  for (;;) {
+    const key = `${y}-${String(m).padStart(2, "0")}`;
+    months.set(key, { month: key, wins: 0, losses: 0 });
+    if (key === last) break;
+    m++;
+    if (m > 12) { m = 1; y++; }
+  }
+  for (const l of past) {
+    const rec = months.get(l.date.slice(0, 7));
+    if (!rec) continue;
+    if (l.isLoss) rec.losses++;
+    else rec.wins++;
+  }
+  return Array.from(months.values()).reverse();
+}
+
+/** The dates of a month laid out in weeks for a calendar; null pads the first and last week. */
+export function monthGrid(month: string, weekStartsOn: WeekStart): (string | null)[][] {
+  const first = `${month}-01`;
+  const days: string[] = [];
+  for (let d = first; d.slice(0, 7) === month; d = addDays(d, 1)) days.push(d);
+  const lead = (dayOfWeek(first) - weekStartsOn + 7) % 7;
+  const cells: (string | null)[] = [...Array(lead).fill(null), ...days];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (string | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}

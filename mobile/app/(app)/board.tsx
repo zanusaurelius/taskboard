@@ -20,6 +20,7 @@ import { getAutoArchiveDays } from '@/lib/storage';
 import type { Task, Project } from '@/lib/types';
 import DailyFocusSection from '@/components/DailyFocusSection';
 import VaultUnlockModal from '@/components/VaultUnlockModal';
+import { usePrivacyMode } from '@/lib/privacy';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 const STAGES: Task['stage'][] = ['todo', 'in_progress', 'blocked', 'done'];
@@ -40,7 +41,6 @@ const PROJECT_PALETTE = [
   '#8b5cf6', '#0ea5e9', '#14b8a6', '#f43f5e', '#84cc16', '#6366f1',
 ];
 
-const PRIVACY_MODE_KEY = 'taskboard_privacy_mode';
 
 function hashProjectColor(projectId: string): string {
   let h = 0;
@@ -62,7 +62,7 @@ export default function BoardScreen() {
   const [fetchError, setFetchError] = useState(false);
 
   // Privacy mode
-  const [privacyMode, setPrivacyMode] = useState(true);
+  const [privacyMode, setPrivacyMode] = usePrivacyMode();
   const [vaultUnlockVisible, setVaultUnlockVisible] = useState(false);
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
 
@@ -91,14 +91,6 @@ export default function BoardScreen() {
   const [stageColors, setStageColors] = useState<Record<Task['stage'], string>>({ ...STAGE_COLORS });
   const [colorPickerStage, setColorPickerStage] = useState<Task['stage'] | null>(null);
 
-  // Load privacy mode from SecureStore on mount
-  useEffect(() => {
-    SecureStore.getItemAsync(PRIVACY_MODE_KEY).then((val) => {
-      // Default true if not set; stored as 'true'/'false'
-      setPrivacyMode(val === null ? true : val === 'true');
-    });
-  }, []);
-
   // Load stage colors from server (falls back to SecureStore cache)
   useEffect(() => {
     apiFetch<Record<string, string>>('/api/settings/stage-colors').then((result) => {
@@ -125,13 +117,11 @@ export default function BoardScreen() {
         setVaultUnlockVisible(true);
       } else {
         setPrivacyMode(false);
-        SecureStore.setItemAsync(PRIVACY_MODE_KEY, 'false');
       }
     } else {
       // Hiding again — lock vault and restore privacy
       lock();
       setPrivacyMode(true);
-      SecureStore.setItemAsync(PRIVACY_MODE_KEY, 'true');
     }
   };
 

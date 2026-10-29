@@ -14,14 +14,14 @@ interface KindCopy {
 export const KIND_COPY: Record<HabitKind, KindCopy> = {
   GOOD: {
     title: "Good habit",
-    group: "Building",
+    group: "Good habits",
     explainer: "Something to do every day. A day you do it is a W.",
     win: "Did it",
     loss: "Missed it",
   },
   BAD: {
     title: "Bad habit",
-    group: "Breaking",
+    group: "Bad habits",
     explainer: "Something to stop. A day without it is a W.",
     win: "Avoided it",
     loss: "Did it",
@@ -33,11 +33,10 @@ export const PRESETS: Record<HabitKind, string[]> = {
     "Exercise",
     "Read",
     "Meditate",
-    "Drink water",
-    "Walk",
+    "Walk 10k steps",
     "Journal",
     "Stretch",
-    "In bed by 11",
+    "In bed by 10",
   ],
   BAD: [
     "Porn",

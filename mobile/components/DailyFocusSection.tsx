@@ -815,7 +815,7 @@ function makeStyles(c: ThemeColors) {
     reflSectionLabel: { color: '#6366f1', fontSize: 9, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
 
     habitsLink: { color: '#6366f1', fontSize: 12, fontWeight: '600', marginBottom: 8 },
-    habitGroupLabel: { color: c.tx4, fontSize: 9, fontWeight: '700', letterSpacing: 1, marginTop: 4, marginBottom: 2 },
+    habitGroupLabel: { color: c.tx3, fontSize: 9, fontWeight: '700', letterSpacing: 1, marginTop: 4, marginBottom: 2 },
     habitRow: {
       flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8,
       borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border,

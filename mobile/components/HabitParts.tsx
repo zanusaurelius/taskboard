@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { KIND_COPY } from '@/lib/habit-kind';
-import { dayOfWeek, weekDates, type HabitKind, type WeekStart } from '@/lib/habit-stats';
+import { dayOfWeek, monthGrid, weekDates, type HabitKind, type StatsPeriod, type WeekStart } from '@/lib/habit-stats';
 import type { HabitOutcome } from '@/lib/habits';
 import type { ThemeColors } from '@/lib/theme-context';
 
@@ -128,6 +128,87 @@ export function StreakText({ streak, colors }: { streak: number; colors: ThemeCo
       {hot ? '🔥 ' : ''}{streak}
     </Text>
   );
+}
+
+interface MonthCalendarProps {
+  colors: ThemeColors;
+  month: string; // YYYY-MM
+  outcomes: Record<string, HabitOutcome>;
+  today: string;
+  weekStartsOn: WeekStart;
+  onCycle?: (date: string) => void;
+}
+
+/** One month as a calendar of W/L days. Past days and today can be tapped to cycle them. */
+export function MonthCalendar({ colors, month, outcomes, today, weekStartsOn, onCycle }: MonthCalendarProps) {
+  const wl = winLossColors(colors);
+  const letters = Array.from({ length: 7 }, (_, i) => DAY_LETTERS[(i + weekStartsOn) % 7]);
+  return (
+    <View style={{ gap: 4 }}>
+      <View style={{ flexDirection: 'row', gap: 4 }}>
+        {letters.map((l, i) => (
+          <Text key={i} style={{ width: 36, textAlign: 'center', fontSize: 9, fontWeight: '700', color: colors.tx3 }}>{l}</Text>
+        ))}
+      </View>
+      {monthGrid(month, weekStartsOn).map((week, wi) => (
+        <View key={wi} style={{ flexDirection: 'row', gap: 4 }}>
+          {week.map((date, di) => {
+            if (!date) return <View key={di} style={{ width: 36, height: 36 }} />;
+            const o = outcomes[date];
+            const future = date > today;
+            const cell = (
+              <View style={{
+                width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: o === 'W' ? wl.winBg : o === 'L' ? wl.lossBg : future ? 'transparent' : colors.surface2,
+                borderWidth: date === today ? 2 : 0, borderColor: '#6366f1', opacity: future ? 0.45 : 1,
+              }}>
+                <Text style={{ fontSize: o ? 13 : 11, fontWeight: o ? '800' : '500', color: o === 'W' ? wl.winFg : o === 'L' ? wl.lossFg : colors.tx3 }}>
+                  {o ?? Number(date.slice(8))}
+                </Text>
+              </View>
+            );
+            return onCycle && !future ? (
+              <TouchableOpacity key={date} onPress={() => onCycle(date)} accessibilityRole="button"
+                accessibilityLabel={`${date}: ${o === 'W' ? 'win' : o === 'L' ? 'loss' : 'not logged'}`}>
+                {cell}
+              </TouchableOpacity>
+            ) : <View key={date}>{cell}</View>;
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Segmented control, e.g. "2026" / "All time" or "Weeks" / "Months". */
+export function Segmented<T extends string>({ colors, options, value, onChange }: {
+  colors: ThemeColors;
+  options: { key: T; label: string }[];
+  value: T;
+  onChange: (key: T) => void;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', alignSelf: 'flex-start', padding: 3, gap: 2, borderRadius: 10, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border }}>
+      {options.map((o) => {
+        const on = o.key === value;
+        return (
+          <TouchableOpacity key={o.key} onPress={() => onChange(o.key)} accessibilityRole="button" accessibilityState={{ selected: on }}
+            style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, backgroundColor: on ? colors.surface : 'transparent' }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: on ? colors.tx : colors.tx3 }}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Period options for the Segmented control: each year with logs, then all time. */
+export function periodOptions(years: number[]): { key: string; label: string }[] {
+  return [...years.map((y) => ({ key: String(y), label: String(y) })), { key: 'all', label: 'All time' }];
+}
+
+export function periodFromKey(key: string): StatsPeriod {
+  return key === 'all' ? { kind: 'all' } : { kind: 'year', year: Number(key) };
 }
 
 const styles = StyleSheet.create({

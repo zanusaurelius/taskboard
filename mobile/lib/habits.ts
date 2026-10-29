@@ -4,6 +4,7 @@ import { apiFetch, isOk } from './api';
 import { dequeuePath, enqueueReplacing, getCached, pendingWithPrefix, setCached } from './offline-db';
 import { flushQueue, onQueueFlushed } from './sync';
 import { useVault } from './vault-context';
+import { usePrivacyMode } from './privacy';
 import { habitStats, localDateStr, type HabitKind, type HabitLogEntry, type HabitStats, type WeekStart } from './habit-stats';
 
 // Habits work offline: the last summary from the server is cached in offline.db, and W/L taps
@@ -19,6 +20,7 @@ export interface HabitItem {
   locked: boolean; // name is vault-encrypted and the vault is locked
   kind: HabitKind;
   archivedAt: string | null;
+  private: boolean;
   position: number;
   createdDate: string; // local YYYY-MM-DD
   outcomes: Record<string, HabitOutcome>; // date → W/L; a missing date is unlogged
@@ -30,6 +32,7 @@ interface SummaryHabit {
   encText: string | null;
   kind: HabitKind;
   archivedAt: string | null;
+  private?: boolean;
   position: number;
   createdAt: string;
   logs: { date: string; isLoss: boolean }[];
@@ -136,6 +139,7 @@ export function useHabits() {
         locked,
         kind: h.kind === 'BAD' ? 'BAD' : 'GOOD',
         archivedAt: h.archivedAt,
+        private: !!h.private,
         position: h.position,
         createdDate: localDateStr(new Date(h.createdAt)),
         outcomes,
@@ -239,8 +243,9 @@ export function useHabits() {
     writeChains.current.set(key, next.catch(() => {}));
   }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const encryptName = useCallback(async (name: string): Promise<{ text: string; encText?: string | null }> => {
-    if (!masterKey) return { text: name, encText: null };
+  // Only private habit names are encrypted, and only while the vault is unlocked.
+  const encryptName = useCallback(async (name: string, isPrivate: boolean): Promise<{ text: string; encText?: string | null }> => {
+    if (!isPrivate || !masterKey) return { text: name, encText: null };
     const blob = await encrypt(name);
     if (!blob) return { text: name, encText: null };
     return { text: '', encText: JSON.stringify(blob) };
@@ -259,15 +264,20 @@ export function useHabits() {
       : 'That change didn\'t save. Try again.';
   }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const createHabit = useCallback(async (kind: HabitKind, name: string) =>
-    mutate('/api/habits', { method: 'POST', body: JSON.stringify({ kind, ...(await encryptName(name)) }) }),
+  const createHabit = useCallback(async (kind: HabitKind, name: string, isPrivate = false) =>
+    mutate('/api/habits', { method: 'POST', body: JSON.stringify({ kind, private: isPrivate, ...(await encryptName(name, isPrivate)) }) }),
   [mutate, encryptName]);
 
-  const updateHabit = useCallback(async (id: string, fields: { name?: string; archived?: boolean }) => {
+  const updateHabit = useCallback(async (id: string, fields: { name?: string; archived?: boolean; private?: boolean }) => {
     const { name, ...rest } = fields;
-    const body = { ...rest, ...(name !== undefined ? await encryptName(name) : {}) };
+    const current = habits.find((h) => h.id === id);
+    const isPrivate = fields.private ?? current?.private ?? false;
+    // Changing the name or the private flag rewrites the stored name to match the new rule.
+    // A locked name can't be rewritten, so it is left as it is.
+    const newName = name ?? (fields.private !== undefined && current && !current.locked ? current.name : undefined);
+    const body = { ...rest, ...(newName !== undefined ? await encryptName(newName, isPrivate) : {}) };
     return mutate(`/api/habits/${id}?date=${localDateStr(new Date())}`, { method: 'PATCH', body: JSON.stringify(body) });
-  }, [mutate, encryptName]);
+  }, [mutate, encryptName, habits]);
 
   const deleteHabit = useCallback((id: string) => mutate(`/api/habits/${id}`, { method: 'DELETE' }), [mutate]);
 
@@ -296,9 +306,15 @@ export function useHabits() {
   }, [habits, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sorted = useMemo(() => [...habits].sort((a, b) => a.position - b.position), [habits]);
+  const [privacyOn] = usePrivacyMode();
+  const privateCount = sorted.filter((h) => h.private).length;
+  const visible = useMemo(() => (privacyOn ? sorted.filter((h) => !h.private) : sorted), [sorted, privacyOn]);
 
   return {
-    habits: sorted,
+    habits: visible,
+    /** Private habits currently hidden by privacy mode. */
+    hiddenCount: privacyOn ? privateCount : 0,
+    privateCount,
     weekStartsOn,
     today,
     loading,
