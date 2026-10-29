@@ -10,6 +10,7 @@ import { apiFetch, apiFetchCached, isOfflineResult, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
 import { enqueue } from '@/lib/offline-db';
 import type { DailyReflection } from '@/lib/types';
+import ScreenHeader from '@/components/ScreenHeader';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 const localDateStr = (d: Date) =>
@@ -296,10 +297,10 @@ export default function JournalScreen() {
           <Text style={styles.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
         </View>
       )}
-      <View style={styles.titleRow}>
-        <Text style={styles.heading}>Journal</Text>
-        {saved && <Text style={styles.savedFlash}>Saved</Text>}
-      </View>
+      <ScreenHeader
+        title="Journal"
+        extra={saved ? <Text style={styles.savedFlash}>Saved</Text> : null}
+      />
 
       {/* Entry sidebar */}
       <View style={[styles.sidebar, editorCollapsed && styles.sidebarExpanded]}>
@@ -435,11 +436,6 @@ function makeStyles(c: ThemeColors) {
     offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
     flex: { flex: 1 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
-    titleRow: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
-    },
-    heading: { color: c.tx, fontSize: 26, fontWeight: '800' },
     savedFlash: { color: '#22c55e', fontSize: 13, fontWeight: '600' },
     sidebar: { maxHeight: 220, borderBottomWidth: 1, borderColor: c.border },
     sidebarExpanded: { flex: 1, maxHeight: 9999 },

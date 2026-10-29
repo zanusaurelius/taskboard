@@ -8,6 +8,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { getBaseUrl, clearAll, getGoalLimit, setGoalLimit as storeGoalLimit, getAutoArchiveDays, setAutoArchiveDays as storeAutoArchiveDays } from '@/lib/storage';
 import { clearOfflineData } from '@/lib/offline-db';
 import { apiFetch, isOk, logout } from '@/lib/api';
+import ScreenHeader from '@/components/ScreenHeader';
 import { useTheme, useThemeColors, type ThemeMode } from '@/lib/theme-context';
 import type { ThemeColors } from '@/lib/theme-context';
 
@@ -202,12 +203,10 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={[s.root]} edges={['top']}>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        <View style={s.headingRow}>
-          <Text style={s.heading}>Settings</Text>
-          {currentUsername ? (
-            <Text style={s.signedInAs}>Signed in as <Text style={s.signedInName}>{currentUsername}</Text></Text>
-          ) : null}
-        </View>
+        <ScreenHeader title="Settings" hideSearch />
+        {currentUsername ? (
+          <Text style={[s.signedInAs, { paddingHorizontal: 16, marginBottom: 12 }]}>Signed in as <Text style={s.signedInName}>{currentUsername}</Text></Text>
+        ) : null}
 
         {/* ── Appearance ── */}
         <Section title="Appearance" c={colors}>
@@ -399,8 +398,6 @@ function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: c.bg },
     scroll: { paddingBottom: 40 },
-    headingRow: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20 },
-    heading: { color: c.tx, fontSize: 26, fontWeight: '800' },
     signedInAs: { color: c.tx3, fontSize: 13, marginTop: 4 },
     signedInName: { color: c.tx2, fontWeight: '600' },
 

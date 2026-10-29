@@ -10,6 +10,7 @@ import { apiFetch, apiFetchCached, isOfflineResult, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
 import VaultUnlockModal from '@/components/VaultUnlockModal';
 import type { Note, Folder } from '@/lib/types';
+import ScreenHeader from '@/components/ScreenHeader';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 type ActiveFilter = 'all' | 'starred' | 'trash' | string; // string = folder id
@@ -411,6 +412,19 @@ export default function NotesScreen() {
     }
   };
 
+  const createNote = async () => {
+    const result = await apiFetch<Note>('/api/notes', {
+      method: 'POST',
+      body: JSON.stringify({ title: '', content: '' }),
+    });
+    if (isOk(result)) {
+      router.push({ pathname: `/note/${result.data.id}`, params: { fresh: '1' } });
+    } else {
+      // Offline or server error — fall back to local new-note screen
+      router.push('/note/new');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       {offline && (
@@ -418,27 +432,16 @@ export default function NotesScreen() {
           <Text style={styles.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
         </View>
       )}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleHeadingTap} activeOpacity={1}>
-          <Text style={styles.heading}>Notes</Text>
-        </TouchableOpacity>
-        <View style={styles.headerRight}>
-          {revealToken && (
-            <TouchableOpacity
-              style={styles.revealBadge}
-              onPress={() => { apiFetch('/api/notes/vault/reveal', { method: 'DELETE' }); setRevealToken(null); }}
-            >
-              <Text style={styles.revealBadgeText}>👁 Hide vault</Text>
-            </TouchableOpacity>
-          )}
-          {activeFilter === 'trash' && trashNotes.length > 0 && (
-            <TouchableOpacity style={styles.emptyTrashBtn} onPress={emptyTrash}>
-              <Text style={styles.emptyTrashText}>Empty</Text>
-            </TouchableOpacity>
-          )}
-          <Text style={styles.count}>{activeFilter === 'trash' ? trashNotes.length : notes.length}</Text>
-        </View>
-      </View>
+      <ScreenHeader
+        title="Notes"
+        onTitlePress={handleHeadingTap}
+        actions={[
+          ...(revealToken ? [{ label: 'Hide vault', onPress: () => { apiFetch('/api/notes/vault/reveal', { method: 'DELETE' }); setRevealToken(null); } }] : []),
+          ...(activeFilter === 'trash'
+            ? (trashNotes.length > 0 ? [{ label: 'Empty trash', onPress: emptyTrash }] : [])
+            : [{ label: '＋ Note', primary: true, onPress: createNote }]),
+        ]}
+      />
 
       {/* Multi-select action bar */}
       {isSelecting && (
@@ -661,28 +664,6 @@ export default function NotesScreen() {
         )}
       />
 
-      {/* FAB — hidden in trash view */}
-      {activeFilter !== 'trash' && (
-        <TouchableOpacity
-          style={styles.fab}
-          activeOpacity={0.85}
-          onPress={async () => {
-            const result = await apiFetch<Note>('/api/notes', {
-              method: 'POST',
-              body: JSON.stringify({ title: '', content: '' }),
-            });
-            if (isOk(result)) {
-              router.push({ pathname: `/note/${result.data.id}`, params: { fresh: '1' } });
-            } else {
-              // Offline or server error — fall back to local new-note screen
-              router.push('/note/new');
-            }
-          }}
-        >
-          <Text style={styles.fabIcon}>+</Text>
-        </TouchableOpacity>
-      )}
-
       {/* Move-to-folder modal */}
       <Modal
         visible={moveModalVisible}
@@ -774,18 +755,7 @@ function makeStyles(c: ThemeColors) {
     offlineBanner: { backgroundColor: '#7c2d12', paddingHorizontal: 16, paddingVertical: 8 },
     offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
-    header: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      paddingHorizontal: 20, paddingVertical: 12,
-    },
-    heading: { color: c.tx, fontSize: 26, fontWeight: '800' },
-    count: { color: c.tx2, fontSize: 15, fontWeight: '600' },
-    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    revealBadge: { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: '#6366f1' },
-    revealBadgeText: { color: '#a5b4fc', fontSize: 12, fontWeight: '700' },
     hiddenBadge: { fontSize: 13 },
-    emptyTrashBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: 'rgba(239,68,68,0.12)', borderWidth: 1, borderColor: '#ef4444' },
-    emptyTrashText: { color: '#ef4444', fontSize: 12, fontWeight: '700' },
     vaultOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 24 },
     vaultCard: { backgroundColor: c.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 340, borderWidth: 1, borderColor: c.border },
     vaultTitle: { color: c.tx, fontSize: 17, fontWeight: '700', textAlign: 'center', marginBottom: 4 },
@@ -896,14 +866,6 @@ function makeStyles(c: ThemeColors) {
     deleteForeverBtnText: { color: '#ef4444', fontSize: 13, fontWeight: '600' },
     empty: { alignItems: 'center', paddingTop: 60 },
     emptyText: { color: c.tx2, fontSize: 15 },
-    fab: {
-      position: 'absolute', bottom: 28, right: 24,
-      width: 56, height: 56, borderRadius: 28,
-      backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center',
-      shadowColor: '#6366f1', shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-      elevation: 8,
-    },
-    fabIcon: { color: '#fff', fontSize: 28, lineHeight: 32 },
 
     // Move-to-folder modal
     modalOverlay: {

@@ -20,6 +20,7 @@ import { getAutoArchiveDays } from '@/lib/storage';
 import type { Task, Project } from '@/lib/types';
 import DailyFocusSection from '@/components/DailyFocusSection';
 import VaultUnlockModal from '@/components/VaultUnlockModal';
+import ScreenHeader from '@/components/ScreenHeader';
 import { usePrivacyMode } from '@/lib/privacy';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
@@ -397,33 +398,14 @@ export default function BoardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchAndDecrypt(); }} tintColor="#6366f1" />}
       >
-        {/* Heading row */}
-        <View style={styles.headingRow}>
-          <Text style={styles.heading}>Board</Text>
-          <View style={styles.headingActions}>
-            <TouchableOpacity
-              style={styles.searchIconBtn}
-              activeOpacity={0.7}
-              onPress={() => router.push('/(app)/search')}
-            >
-              <Text style={styles.searchIconText}>🔍</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.newProjectBtn}
-              activeOpacity={0.8}
-              onPress={() => setNewProjectModalVisible(true)}
-            >
-              <Text style={styles.newProjectBtnText}>＋ Project</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.newTaskBtn}
-              activeOpacity={0.8}
-              onPress={() => router.push({ pathname: '/task/new', params: { projectId: selectedProject ?? '' } })}
-            >
-              <Text style={styles.newTaskBtnText}>＋ Task</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <ScreenHeader
+          title="Board"
+          privacy={{ on: privacyMode, onPress: handlePrivacyChip }}
+          actions={[
+            { label: '＋ Project', onPress: () => setNewProjectModalVisible(true) },
+            { label: '＋ Task', primary: true, onPress: () => router.push({ pathname: '/task/new', params: { projectId: selectedProject ?? '' } }) },
+          ]}
+        />
 
         {undoTask && (
           <View style={styles.undoBanner}>
@@ -493,14 +475,6 @@ export default function BoardScreen() {
               </TouchableOpacity>
             );
           })}
-          <TouchableOpacity
-            style={[styles.stageChip, privacyMode && styles.privacyChipActive]}
-            onPress={handlePrivacyChip}
-          >
-            <Text style={[styles.stageChipText, privacyMode && styles.privacyChipActiveText]}>
-              {privacyMode ? '🔒 Privacy' : '🔓 Privacy'}
-            </Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.stageChip, showArchived && styles.archivedChipActive]}
             onPress={() => setShowArchived((v) => !v)}
@@ -808,32 +782,6 @@ function makeStyles(c: ThemeColors) {
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: c.bg },
     mainScroll: { flex: 1 },
 
-    // Heading row
-    headingRow: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
-    },
-    heading: { color: c.tx, fontSize: 26, fontWeight: '800' },
-    headingActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    searchIconBtn: {
-      width: 36, height: 36, borderRadius: 8,
-      backgroundColor: c.surface2,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    searchIconText: { fontSize: 16 },
-    newProjectBtn: {
-      paddingHorizontal: 12, paddingVertical: 6,
-      borderRadius: 8, backgroundColor: 'rgba(99,102,241,0.15)',
-      borderWidth: 1, borderColor: '#6366f1',
-    },
-    newProjectBtnText: { color: '#a5b4fc', fontSize: 13, fontWeight: '700' },
-    newTaskBtn: {
-      paddingHorizontal: 12, paddingVertical: 6,
-      borderRadius: 8,
-      backgroundColor: '#6366f1',
-    },
-    newTaskBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-
     // Search
     searchWrap: { paddingHorizontal: 16, paddingBottom: 10 },
     search: {
@@ -864,8 +812,6 @@ function makeStyles(c: ThemeColors) {
     stageChipAllActive: { backgroundColor: 'rgba(99,102,241,0.2)', borderColor: '#6366f1' },
     stageChipText: { color: c.tx3, fontSize: 12, fontWeight: '600' },
     stageChipAllActiveText: { color: '#a5b4fc' },
-    privacyChipActive: { backgroundColor: 'rgba(239,68,68,0.15)', borderColor: '#ef4444' },
-    privacyChipActiveText: { color: '#f87171' },
     archivedChipActive: { backgroundColor: 'rgba(245,158,11,0.15)', borderColor: '#f59e0b' },
     archivedChipActiveText: { color: '#fbbf24' },
 

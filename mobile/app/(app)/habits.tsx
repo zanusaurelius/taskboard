@@ -14,6 +14,7 @@ import {
 import {
   WeekStrip, OutcomeButtons, StreakText, MonthCalendar, Segmented, periodOptions, periodFromKey, winLossColors,
 } from '@/components/HabitParts';
+import ScreenHeader from '@/components/ScreenHeader';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 import { usePrivacyMode } from '@/lib/privacy';
 import { useVault } from '@/lib/vault-context';
@@ -72,18 +73,11 @@ export default function HabitsScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
-      <View style={s.header}>
-        <Text style={s.title}>Habits</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity style={[s.privacyBtn, privacyOn && s.privacyBtnOn]} onPress={togglePrivacy} accessibilityRole="button"
-            accessibilityLabel={privacyOn ? 'Privacy on. Show private habits' : 'Privacy off. Hide private habits'}>
-            <Text style={[s.privacyBtnText, privacyOn && s.privacyBtnTextOn]}>{privacyOn ? '🔒 Private' : '🔓 Showing all'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.newBtn} onPress={() => setCreating('pick')} accessibilityRole="button">
-            <Text style={s.newBtnText}>+ New</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ScreenHeader
+        title="Habits"
+        privacy={{ on: privacyOn, onPress: togglePrivacy }}
+        actions={[{ label: '＋ Habit', primary: true, onPress: () => setCreating('pick') }]}
+      />
 
       {h.offline && (
         <View style={s.offlineBanner}>
@@ -474,14 +468,6 @@ function ReorderModal({ colors, items, title, onClose, onSave }: {
 function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.bg },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
-    title: { fontSize: 24, fontWeight: '800', color: c.tx },
-    newBtn: { backgroundColor: '#6366f1', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
-    newBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-    privacyBtn: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: c.border2 },
-    privacyBtnOn: { borderColor: 'rgba(99,102,241,0.45)', backgroundColor: 'rgba(99,102,241,0.12)' },
-    privacyBtnText: { fontSize: 13, fontWeight: '600', color: c.tx2 },
-    privacyBtnTextOn: { color: '#6366f1' },
     switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     switchLabel: { flex: 1, fontSize: 14, color: c.tx2 },
     offlineBanner: { backgroundColor: '#7c2d12', paddingHorizontal: 16, paddingVertical: 8 },

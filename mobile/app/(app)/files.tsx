@@ -18,6 +18,7 @@ import {
 } from '@/lib/api';
 import { getBaseUrl, getToken } from '@/lib/storage';
 import { getCachedFile } from '@/lib/file-cache';
+import ScreenHeader from '@/components/ScreenHeader';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 type ViewMode = 'grid' | 'list';
@@ -650,7 +651,14 @@ export default function FilesScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
+      <ScreenHeader
+        title="Files"
+        actions={selectionMode ? [] : [
+          { label: 'Folder', onPress: () => { setFolderName(''); setFolderModalVisible(true); } },
+          { label: uploading ? 'Uploading…' : '＋ Upload', primary: true, disabled: uploading, onPress: () => setUploadModalVisible(true) },
+        ]}
+      />
+      {/* Toolbar: where you are, and how files are shown */}
       <View style={styles.header}>
         {selectionMode ? (
           <>
@@ -673,7 +681,7 @@ export default function FilesScreen() {
                 </TouchableOpacity>
               )}
               <Text style={styles.headerTitle} numberOfLines={1}>
-                {currentFolder.name}
+                {stack.length > 1 ? currentFolder.name : 'All files'}
               </Text>
             </View>
             <View style={styles.headerActions}>
@@ -682,14 +690,6 @@ export default function FilesScreen() {
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setSortModalVisible(true)} style={styles.iconBtn}>
                 <Text style={[styles.iconBtnText, { fontSize: 15 }]}>⇅</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setFolderName(''); setFolderModalVisible(true); }} style={styles.iconBtn}>
-                <Text style={styles.iconBtnText}>📁+</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setUploadModalVisible(true)} style={styles.uploadBtn} disabled={uploading}>
-                {uploading
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.uploadBtnText}>+ Upload</Text>}
               </TouchableOpacity>
             </View>
           </>
@@ -1098,18 +1098,16 @@ function makeStyles(c: ThemeColors) {
     container: { flex: 1, backgroundColor: c.bg },
     offlineBanner: { backgroundColor: '#7c2d12', paddingHorizontal: 16, paddingVertical: 8 },
     offlineText: { color: '#fdba74', fontSize: 12, fontWeight: '600', lineHeight: 16 },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.border },
     breadcrumb: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
     backBtn: { marginRight: 8 },
     backArrow: { color: '#a5b4fc', fontSize: 22, fontWeight: '300' },
-    headerTitle: { color: c.tx, fontSize: 18, fontWeight: '700', flexShrink: 1 },
+    headerTitle: { color: c.tx2, fontSize: 15, fontWeight: '600', flexShrink: 1 },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     cancelSelectionBtn: { paddingHorizontal: 6, paddingVertical: 4 },
     cancelSelectionText: { color: '#a5b4fc', fontSize: 15, fontWeight: '600' },
     iconBtn: { padding: 6 },
     iconBtnText: { fontSize: 18 },
-    uploadBtn: { backgroundColor: '#6366f1', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, minWidth: 80, alignItems: 'center' },
-    uploadBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
     emptyIcon: { fontSize: 64 },
     emptyText: { color: c.tx2, fontSize: 16 },
