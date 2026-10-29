@@ -1,5 +1,5 @@
 import { getToken, getBaseUrl, clearToken, clearAll } from './storage';
-import { clearCache } from './offline-db';
+import { clearCache, getCached, setCached } from './offline-db';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -104,6 +104,37 @@ export async function login(
   } catch {
     return { ok: false, error: 'Cannot connect to server' };
   }
+}
+
+export type CachedResult<T> = ApiResult<T> & { fromCache?: boolean };
+
+/**
+ * apiFetch for reads, backed by the offline cache. Each good response is saved; when the server
+ * can't be reached (or is locked or failing), the last saved copy is returned with fromCache set,
+ * so screens still show data offline. Pass save: false for responses that must not be stored.
+ */
+export async function apiFetchCached<T = unknown>(
+  path: string,
+  options: RequestInit = {},
+  { save = true }: { save?: boolean } = {},
+): Promise<CachedResult<T>> {
+  const key = `get:${path}`;
+  const res = await apiFetch<T>(path, options);
+  if (isOk(res)) {
+    if (save) await setCached(key, res.data);
+    return res;
+  }
+  const status = (res as ApiError).status ?? 0;
+  if (status === 0 || status === 423 || status >= 500) {
+    const cached = await getCached<T>(key);
+    if (cached) return { ok: true, data: cached.data, fromCache: true };
+  }
+  return res;
+}
+
+/** True when a result came from the offline cache or failed for lack of a connection. */
+export function isOfflineResult(r: CachedResult<unknown>): boolean {
+  return !!r.fromCache || (!r.ok && (r as { status?: number }).status === 0);
 }
 
 export async function logout(): Promise<void> {

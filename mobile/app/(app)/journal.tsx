@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { apiFetch, isOk } from '@/lib/api';
+import { apiFetch, apiFetchCached, isOfflineResult, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
 import { enqueue } from '@/lib/offline-db';
 import type { DailyReflection } from '@/lib/types';
@@ -75,8 +75,8 @@ export default function JournalScreen() {
   // Tracks which date's data is currently loaded into the edit fields
 
   const fetchAndDecrypt = useCallback(async () => {
-    const result = await apiFetch<DailyReflection[]>('/api/daily-reflections');
-    setOffline(!result.ok && (result as { status?: number }).status === 0);
+    const result = await apiFetchCached<DailyReflection[]>('/api/daily-reflections');
+    setOffline(isOfflineResult(result));
     if (!isOk(result)) { setLoading(false); setRefreshing(false); return; }
 
     const decrypted = await Promise.all(result.data.map(async (e) => ({

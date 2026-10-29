@@ -9,7 +9,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import {
-  apiFetch, isOk,
+  apiFetch, apiFetchCached, isOfflineResult, isOk,
   listFiles, listFileFolders, uploadFile, uploadOk, deleteFile,
   createFileFolder, renameFileFolder, deleteFileFolder,
   moveFile, moveFolderTo, renameFile,
@@ -261,13 +261,13 @@ export default function FilesScreen() {
       const fqs = fid ? `?parentId=${fid}` : '';
       const uqs = fid ? `?folderId=${fid}` : '';
       const [fRes, uRes] = await Promise.all([
-        apiFetch<FileFolderMeta[]>(`/api/file-folders${fqs}`),
-        apiFetch<UploadFileMeta[]>(`/api/files${uqs}`),
+        apiFetchCached<FileFolderMeta[]>(`/api/file-folders${fqs}`),
+        apiFetchCached<UploadFileMeta[]>(`/api/files${uqs}`),
       ]);
       console.log('[files] folderId:', fid);
       console.log('[files] folders result:', JSON.stringify(fRes));
       console.log('[files] files result:', JSON.stringify(uRes));
-      setOffline([fRes, uRes].every((r) => !r.ok && (r as { status?: number }).status === 0));
+      setOffline([fRes, uRes].every(isOfflineResult));
       const filesOk = isOk(uRes);
       setFetchError(filesOk ? null : `Could not load files (${(uRes as {status?:number}).status})`);
       setFolders(isOk(fRes) ? fRes.data : []);

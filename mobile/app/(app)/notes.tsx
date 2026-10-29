@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { apiFetch, isOk } from '@/lib/api';
+import { apiFetch, apiFetchCached, isOfflineResult, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
 import VaultUnlockModal from '@/components/VaultUnlockModal';
 import type { Note, Folder } from '@/lib/types';
@@ -198,7 +198,7 @@ export default function NotesScreen() {
   const [creatingFolder, setCreatingFolder] = useState(false);
 
   const fetchFolders = useCallback(async () => {
-    const result = await apiFetch<Folder[]>('/api/folders');
+    const result = await apiFetchCached<Folder[]>('/api/folders');
     if (isOk(result)) setFolders(result.data);
   }, []);
 
@@ -212,13 +212,12 @@ export default function NotesScreen() {
     const token = overrideToken !== undefined ? overrideToken : revealToken;
     const revealHeaders: Record<string, string> = token ? { 'x-reveal-token': token } : {};
     const [notesResult, trashResult] = await Promise.all([
-      apiFetch<Note[]>('/api/notes', { headers: revealHeaders }),
-      apiFetch<Note[]>('/api/notes/trash', { headers: revealHeaders }),
+      // A revealed list includes hidden notes, so it is never written to the cache.
+      apiFetchCached<Note[]>('/api/notes', { headers: revealHeaders }, { save: !token }),
+      apiFetchCached<Note[]>('/api/notes/trash', { headers: revealHeaders }, { save: !token }),
     ] as const);
     fetchFolders();
-    const allFailed = [notesResult, trashResult].every(
-      (r) => !r.ok && (r as { status?: number }).status === 0
-    );
+    const allFailed = [notesResult, trashResult].every(isOfflineResult);
     setOffline(allFailed);
     if (isOk(notesResult)) {
       const decrypted = await Promise.all(notesResult.data.map(decryptNote));

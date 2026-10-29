@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { NestableDraggableFlatList, ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
 import * as SecureStore from 'expo-secure-store';
-import { apiFetch, isOk } from '@/lib/api';
+import { apiFetch, apiFetchCached, isOfflineResult, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
 import { useRouter } from 'expo-router';
 import { getGoalLimit } from '@/lib/storage';
@@ -118,9 +118,9 @@ export default function DailyFocusSection() {
     const gen = ++fetchGenRef.current;
     try {
     const [goalsRes, reflRes, prevReflRes] = await Promise.all([
-      apiFetch<DailyGoal[]>(`/api/daily-goals?date=${viewDate}`),
-      apiFetch<{ note?: string; encNote?: string; gratitude?: string; encGratitude?: string }>(`/api/daily-reflections?date=${today}`),
-      apiFetch<{ note?: string; encNote?: string }>(`/api/daily-reflections?date=${addDays(today, -1)}`),
+      apiFetchCached<DailyGoal[]>(`/api/daily-goals?date=${viewDate}`),
+      apiFetchCached<{ note?: string; encNote?: string; gratitude?: string; encGratitude?: string }>(`/api/daily-reflections?date=${today}`),
+      apiFetchCached<{ note?: string; encNote?: string }>(`/api/daily-reflections?date=${addDays(today, -1)}`),
     ]);
 
     // Discard results if a newer navigation has already started a fetch
@@ -156,7 +156,7 @@ export default function DailyFocusSection() {
     }
 
     if (isToday) {
-      const carryRes = await apiFetch<DailyGoal[]>(`/api/daily-goals?carryover=true&today=${today}`);
+      const carryRes = await apiFetchCached<DailyGoal[]>(`/api/daily-goals?carryover=true&today=${today}`);
       if (gen !== fetchGenRef.current) return;
       if (isOk(carryRes)) setCarryOver(await vaultDecryptGoals(carryRes.data));
       else setCarryOver([]);
@@ -165,9 +165,7 @@ export default function DailyFocusSection() {
     }
 
     // If all primary fetches returned network errors (status 0), flag as offline
-    const allFailed = [goalsRes, reflRes].every(
-      (r) => !r.ok && (r as { status?: number }).status === 0
-    );
+    const allFailed = [goalsRes, reflRes].every(isOfflineResult);
     setOffline(allFailed);
 
     } catch {

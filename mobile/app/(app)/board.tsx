@@ -14,7 +14,7 @@ import DraggableFlatList, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { apiFetch, isOk } from '@/lib/api';
+import { apiFetch, apiFetchCached, isOfflineResult, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
 import { getAutoArchiveDays } from '@/lib/storage';
 import type { Task, Project } from '@/lib/types';
@@ -137,13 +137,11 @@ export default function BoardScreen() {
 
   const fetchAndDecrypt = useCallback(async () => {
     const [tasksRes, projectsRes] = await Promise.all([
-      apiFetch<Task[]>('/api/tasks?includeArchived=true'),
-      apiFetch<Project[]>('/api/projects'),
+      apiFetchCached<Task[]>('/api/tasks?includeArchived=true'),
+      apiFetchCached<Project[]>('/api/projects'),
     ]);
 
-    const allOffline = [tasksRes, projectsRes].every(
-      (r) => !r.ok && (r as { status?: number }).status === 0
-    );
+    const allOffline = [tasksRes, projectsRes].every(isOfflineResult);
     const anyServerError = [tasksRes, projectsRes].some(
       (r) => !r.ok && (r as { status?: number }).status !== 0
     );
