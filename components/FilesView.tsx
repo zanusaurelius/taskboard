@@ -36,6 +36,7 @@ import AudioFileIcon from "@mui/icons-material/AudioFile";
 import FolderZipIcon from "@mui/icons-material/FolderZip";
 import CloseIcon from "@mui/icons-material/Close";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import DownloadIcon from "@mui/icons-material/Download";
 import type { FileFolder, UploadFile } from "@/lib/types";
 
 type SortField = "name" | "modified" | "created" | "size" | "kind";
@@ -531,6 +532,26 @@ export default function FilesView() {
     window.open(`/api/files/${file.id}`, "_blank");
   };
 
+  const downloadFile = async (file: UploadFile) => {
+    const res = await fetch(`/api/files/${file.id}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.originalName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadSelectedFiles = async () => {
+    const toDownload = sortedFiles.filter(f => selectedFileIds.has(f.id));
+    for (const file of toDownload) {
+      await downloadFile(file);
+    }
+  };
+
   const openMenu = (e: React.MouseEvent<HTMLElement>, type: "file" | "folder", item: UploadFile | FileFolder) => {
     e.preventDefault();
     e.stopPropagation();
@@ -667,9 +688,16 @@ export default function FilesView() {
 
         {/* Selection count hint */}
         {selectedFileIds.size > 0 && (
-          <Typography sx={{ fontSize: "0.78rem", color: "#6366f1", fontWeight: 600, flexShrink: 0 }}>
-            {selectedFileIds.size} selected · Space to preview · ⌘⌫ to delete
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
+            <Typography sx={{ fontSize: "0.78rem", color: "#6366f1", fontWeight: 600 }}>
+              {selectedFileIds.size} selected · Space to preview · ⌘⌫ to delete
+            </Typography>
+            <Tooltip title={selectedFileIds.size === 1 ? "Download file" : `Download ${selectedFileIds.size} files`}>
+              <IconButton size="small" onClick={downloadSelectedFiles} sx={{ color: "#6366f1" }}>
+                <DownloadIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
         )}
 
         {/* Actions */}
@@ -786,6 +814,12 @@ export default function FilesView() {
           <MenuItem onClick={() => { openFile(menuTarget.item as UploadFile); setMenuPos(null); setMenuTarget(null); }}>
             <OpenInNewIcon fontSize="small" sx={{ mr: 1, color: "var(--tx-3)" }} />
             Open
+          </MenuItem>
+        )}
+        {menuTarget?.type === "file" && (
+          <MenuItem onClick={() => { const f = menuTarget.item as UploadFile; setMenuPos(null); setMenuTarget(null); downloadFile(f); }}>
+            <DownloadIcon fontSize="small" sx={{ mr: 1, color: "var(--tx-3)" }} />
+            Download
           </MenuItem>
         )}
         {menuTarget?.type === "file" && (
