@@ -131,6 +131,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [dayOffset, setDayOffset] = useState(0);
+  useEffect(() => { setDayOffset(0); }, [today]);
 
   const viewDate = useMemo(() => dayOffset === 0 ? today : addDays(today, dayOffset), [today, dayOffset]);
   const isToday = dayOffset === 0;
