@@ -1,11 +1,10 @@
 id: taskboard
 title: "Taskboard Notes"
-version: "0.4.0"
+version: "0.4.1"
 release-notes: >
-  Adds Files: a full file browser and gallery with folder organization, grid/list
-  toggle, image thumbnails, and move-to-folder support. Web and mobile both get
-  the new Files view. Also includes file attachments on tasks, soft-delete for
-  uploads, and numerous bug fixes.
+  Fixes large file and attachment uploads failing with "Upload failed". The proxy
+  body buffer was capped at 10MB by default, truncating bigger uploads; it now
+  matches the 500MB file limit so videos and large documents upload correctly.
 license: MIT
 wrapper-repo: "https://github.com/start9labs/taskboard"
 upstream-repo: "https://github.com/start9labs/taskboard"
