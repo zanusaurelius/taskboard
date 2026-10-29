@@ -23,8 +23,8 @@ export const KIND_COPY: Record<HabitKind, KindCopy> = {
     title: "Bad habit",
     group: "Bad habits",
     explainer: "Something to stop. A day without it is a W.",
-    win: "Avoided it",
-    loss: "Did it",
+    win: "Clean",
+    loss: "Slipped",
   },
 };
 
