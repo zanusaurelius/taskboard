@@ -336,24 +336,26 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
       }
     }).catch(() => setArchiveError(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (activeId === null) setLocalTasks(tasks); }, [tasks, activeId]);
+  // Follow the store's tasks, except mid-drag, when localTasks holds the drag preview.
+  const [syncedFrom, setSyncedFrom] = useState({ tasks, activeId });
+  if (syncedFrom.tasks !== tasks || syncedFrom.activeId !== activeId) {
+    setSyncedFrom({ tasks, activeId });
+    if (activeId === null) setLocalTasks(tasks);
+  }
 
-  useEffect(() => {
-    const handler = () => openCreate("todo");
-    window.addEventListener("taskboard:newtask", handler);
-    return () => window.removeEventListener("taskboard:newtask", handler);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-
-  useEffect(() => {
-    if (!pendingNoteTask) return;
+  // A note turned into a task opens the task modal prefilled; the parent then clears it.
+  const [openedNoteTask, setOpenedNoteTask] = useState<typeof pendingNoteTask>(null);
+  if (pendingNoteTask && pendingNoteTask !== openedNoteTask) {
+    setOpenedNoteTask(pendingNoteTask);
     setEditingTask(null);
     setDefaultStage("todo");
     setModalDefaultTitle(pendingNoteTask.title);
     setModalDefaultDescription(pendingNoteTask.description);
     setModalOpen(true);
-    onClearPendingNoteTask?.();
-  }, [pendingNoteTask]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
+  useEffect(() => {
+    if (pendingNoteTask) onClearPendingNoteTask?.();
+  }, [pendingNoteTask, onClearPendingNoteTask]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const activeTask = activeId !== null ? localTasks.find((t) => t.id === activeId) ?? null : null;
@@ -364,7 +366,10 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   }, {} as Record<string, number>);
 
   const pendingProjectIds = new Set(deletionQueue.filter((e) => e.type === "project").map((e) => e.itemId));
-  const pendingTaskIds = new Set(deletionQueue.filter((e) => e.type === "task").map((e) => e.itemId));
+  const pendingTaskIds = useMemo(
+    () => new Set(deletionQueue.filter((e) => e.type === "task").map((e) => e.itemId)),
+    [deletionQueue],
+  );
 
   const visibleTasks = useMemo(() => localTasks.filter((t) => {
     if (pendingTaskIds.has(t.id)) return false;
@@ -380,7 +385,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
       if (!inTitle && !inDesc) return false;
     }
     return true;
-  }), [localTasks, pendingTaskIds, projectFilter, stageFilter, searchText]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [localTasks, pendingTaskIds, projectFilter, stageFilter, searchText]);
 
   const tasksForStage = (stage: Task["stage"]) =>
     visibleTasks.filter((t) => t.stage === stage).sort((a, b) => {
@@ -453,6 +458,14 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     setModalDefaultDescription("");
     setModalOpen(true);
   };
+
+  const openCreateRef = useRef(openCreate);
+  useEffect(() => { openCreateRef.current = openCreate; });
+  useEffect(() => {
+    const handler = () => openCreateRef.current("todo");
+    window.addEventListener("taskboard:newtask", handler);
+    return () => window.removeEventListener("taskboard:newtask", handler);
+  }, []);
   const openEdit = (task: Task) => {
     if (task.locked && !vaultIsUnlocked) return; // locked task — must unlock vault first
     setEditingTask(task);
@@ -478,7 +491,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     }
     setModalOpen(false);
   };
-  executeSaveRef.current = executeSave;
+  useEffect(() => { executeSaveRef.current = executeSave; });
 
   // After vault unlock, fire any save that was waiting for it.
   // This useEffect runs after AppShell's useEffect (parent before child in React's commit order),
@@ -488,7 +501,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     const fields = pendingSaveRef.current;
     pendingSaveRef.current = null;
     executeSaveRef.current(fields);
-  }, [vaultIsUnlocked]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [vaultIsUnlocked]);
 
   const handleSave = async (fields: Partial<Task>) => {
     if (fields.sensitive) {

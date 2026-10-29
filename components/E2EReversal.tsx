@@ -12,26 +12,6 @@ export default function E2EReversal({ onComplete }: Props) {
   const { masterKey, decrypt } = useVault();
   const ran = useRef(false);
 
-  useEffect(() => {
-    if (ran.current) return;
-    if (!masterKey) {
-      // No vault configured — nothing to reverse, mark done immediately
-      ran.current = true;
-      localStorage.setItem(DONE_KEY, "1");
-      onComplete(false);
-      return;
-    }
-    ran.current = true;
-    run()
-      .then(() => {
-        localStorage.setItem(DONE_KEY, "1");
-        onComplete(true);
-      })
-      .catch(() => {
-        ran.current = false;
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [masterKey]);
 
   async function dec(enc: string | null | undefined): Promise<string | null> {
     if (!enc) return null;
@@ -134,6 +114,27 @@ export default function E2EReversal({ onComplete }: Props) {
       }).catch(() => {});
     }
   }
+
+  useEffect(() => {
+    if (ran.current) return;
+    if (!masterKey) {
+      // No vault configured — nothing to reverse, mark done immediately
+      ran.current = true;
+      localStorage.setItem(DONE_KEY, "1");
+      onComplete(false);
+      return;
+    }
+    ran.current = true;
+    run()
+      .then(() => {
+        localStorage.setItem(DONE_KEY, "1");
+        onComplete(true);
+      })
+      .catch(() => {
+        ran.current = false;
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [masterKey]);
 
   return null;
 }

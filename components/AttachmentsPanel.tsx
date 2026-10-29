@@ -11,7 +11,6 @@ import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import FolderIcon from "@mui/icons-material/Folder";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
 
 interface Attachment {
@@ -82,28 +81,32 @@ function FilePickerDialog({ open, noteId, taskId, linkedUploadIds, onPicked, onC
   const [loading, setLoading] = useState(false);
   const [linking, setLinking] = useState(false);
 
-  const currentFolder = stack[stack.length - 1];
 
-  const loadFolder = useCallback(async (folderId: string | null) => {
+  // Fetches a folder's contents. Callers set loading first.
+  const fetchFolder = useCallback((folderId: string | null) =>
+    fetchFolderContents(folderId).then(({ folders, files }) => {
+      setFolders(folders);
+      setFiles(files);
+      setLoading(false);
+    }), []);
+
+  const loadFolder = (folderId: string | null) => {
     setLoading(true);
-    const qs = folderId ? `?parentId=${folderId}` : "";
-    const fileQs = folderId ? `?folderId=${folderId}` : "";
-    const [fRes, uRes] = await Promise.all([
-      fetch(`/api/file-folders${qs}`),
-      fetch(`/api/files${fileQs}`),
-    ]);
-    const [fData, uData] = await Promise.all([fRes.json(), uRes.json()]);
-    setFolders(Array.isArray(fData) ? fData : []);
-    setFiles(Array.isArray(uData) ? uData : []);
-    setLoading(false);
-  }, []);
+    fetchFolder(folderId);
+  };
 
-  useEffect(() => {
+  // Each time the panel opens it starts at the top folder.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setStack([{ id: null, name: "Files" }]);
-      loadFolder(null);
+      setLoading(true);
     }
-  }, [open, loadFolder]);
+  }
+  useEffect(() => {
+    if (open) fetchFolder(null);
+  }, [open, fetchFolder]);
 
   const handleFolderClick = (folder: FileFolderMeta) => {
     setStack((prev) => [...prev, { id: folder.id, name: folder.name }]);
@@ -239,6 +242,17 @@ function FilePickerDialog({ open, noteId, taskId, linkedUploadIds, onPicked, onC
 }
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
+
+async function fetchFolderContents(folderId: string | null): Promise<{ folders: FileFolderMeta[]; files: UploadFileMeta[] }> {
+  const qs = folderId ? `?parentId=${folderId}` : "";
+  const fileQs = folderId ? `?folderId=${folderId}` : "";
+  const [fRes, uRes] = await Promise.all([
+    fetch(`/api/file-folders${qs}`),
+    fetch(`/api/files${fileQs}`),
+  ]);
+  const [fData, uData] = await Promise.all([fRes.json(), uRes.json()]);
+  return { folders: Array.isArray(fData) ? fData : [], files: Array.isArray(uData) ? uData : [] };
+}
 
 export default function AttachmentsPanel({ noteId, taskId, disabled }: Props) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);

@@ -45,7 +45,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DailyGoal, Task } from "@/lib/types";
-import { useHabits } from "@/lib/useHabits";
+import { useHabits, useToday } from "@/lib/useHabits";
 import { KIND_COPY } from "@/lib/habit-kind";
 import type { HabitKind } from "@/lib/habit-stats";
 import { SortableHabitRows } from "./HabitParts";
@@ -54,7 +54,6 @@ import { useVault } from "@/lib/vault-context";
 
 const localDateStr = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const todayStr = () => localDateStr(new Date());
 const formatDate = (iso: string) =>
   new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 const addDays = (base: string, days: number): string => {
@@ -117,44 +116,49 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   const [goalTask, setGoalTask] = useState<Task | null>(null);
 
 
-  const [today, setToday] = useState<string>(todayStr);
-  useEffect(() => {
-    // Always override with the browser's local date — the server runs UTC and
-    // can initialize this to the wrong calendar day after ~5 PM Pacific.
-    setToday(todayStr());
-    const id = setInterval(() => setToday(todayStr()), 60_000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // The browser's local date, kept current (the server runs UTC).
+  const today = useToday();
   const [dayOffset, setDayOffset] = useState(0);
-  useEffect(() => { setDayOffset(0); }, [today]);
+  // Jump back to today when the date rolls over.
+  const [offsetDay, setOffsetDay] = useState(today);
+  if (offsetDay !== today) {
+    setOffsetDay(today);
+    setDayOffset(0);
+  }
 
   const viewDate = useMemo(() => dayOffset === 0 ? today : addDays(today, dayOffset), [today, dayOffset]);
   const isToday = dayOffset === 0;
   const MAX_FUTURE = 7;
   const goalInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchGoals = useCallback(async () => {
+  const readGoals = useCallback(async () => {
     const viewRes = await fetch(`/api/daily-goals?date=${viewDate}`);
     const raw: DailyGoal[] = viewRes.ok ? await viewRes.json() : [];
     const viewGoals = await vaultDecryptGoals(raw);
-    setGoals([...viewGoals.filter(g => !g.completed), ...viewGoals.filter(g => g.completed)]);
+    let carry: DailyGoal[] = [];
     if (isToday) {
       const carryRes = await fetch(`/api/daily-goals?carryover=true&today=${today}`);
       const carryRaw: DailyGoal[] = carryRes.ok ? await carryRes.json() : [];
-      setCarryOver(await vaultDecryptGoals(carryRaw));
-    } else {
-      setCarryOver([]);
+      carry = await vaultDecryptGoals(carryRaw);
     }
+    return { goals: [...viewGoals.filter(g => !g.completed), ...viewGoals.filter(g => g.completed)], carry };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewDate, isToday, vault.masterKey]);
 
-  const fetchReflections = useCallback(async () => {
+  const fetchGoals = useCallback(() => readGoals().then(({ goals, carry }) => {
+    setGoals(goals);
+    setCarryOver(carry);
+  }), [readGoals]);
+
+  // undefined means "the server didn't answer; keep what's shown".
+  const readReflections = useCallback(async () => {
     const prevDay = addDays(viewDate, -1);
     const [todayRes, prevRes] = await Promise.all([
       fetch(`/api/daily-reflections?date=${today}`),
       fetch(`/api/daily-reflections?date=${prevDay}`),
     ]);
+    let current: { note: string; gratitude: string } | undefined;
+    let previous: string | null | undefined;
     if (todayRes.ok) {
       const r = await todayRes.json();
       const note = r?.encNote && vault.masterKey
@@ -163,25 +167,35 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
       const gratitude = r?.encGratitude && vault.masterKey
         ? (await vault.decrypt(JSON.parse(r.encGratitude))) ?? r?.gratitude ?? ""
         : (r?.gratitude ?? "");
-      setTodayReflection(note);
-      setTodayGratitude(gratitude);
+      current = { note, gratitude };
     }
     if (prevRes.ok) {
       const r = await prevRes.json();
-      const note = r?.encNote && vault.masterKey
+      previous = r?.encNote && vault.masterKey
         ? (await vault.decrypt(JSON.parse(r.encNote))) ?? r?.note ?? null
         : (r?.note ?? null);
-      setPrevDayReflection(note);
     }
+    return { current, previous };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today, viewDate, vault.masterKey]);
 
-  useEffect(() => {
+  const fetchReflections = useCallback(() => readReflections().then(({ current, previous }) => {
+    if (current) {
+      setTodayReflection(current.note);
+      setTodayGratitude(current.gratitude);
+    }
+    if (previous !== undefined) setPrevDayReflection(previous);
+  }), [readReflections]);
+
+  // Moving to another day closes any half-typed goal.
+  const [slotsDay, setSlotsDay] = useState(dayOffset);
+  if (slotsDay !== dayOffset) {
+    setSlotsDay(dayOffset);
     setAddingGoalSlot(null);
     setGoalInput("");
     setGoalTask(null);
     setExtraSlots(0);
-  }, [dayOffset]);
+  }
 
   useEffect(() => {
     fetchGoals();
@@ -764,9 +778,12 @@ function GoalSlot({
     if (isEditing) editRef.current?.focus();
   }, [isEditing]);
 
-  useEffect(() => {
-    if (goal) setEditText(goal.text);
-  }, [goal?.text]);
+  // Follow edits made elsewhere (another device, a reload).
+  const [syncedText, setSyncedText] = useState(goal?.text);
+  if (goal && goal.text !== syncedText) {
+    setSyncedText(goal.text);
+    setEditText(goal.text);
+  }
 
   const handleSaveEdit = async () => {
     const trimmed = editText.trim();

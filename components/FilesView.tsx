@@ -174,32 +174,41 @@ export default function FilesView() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxFileId, setLightboxFileId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // Fetches the current folder; state changes only once the requests settle.
+  const refresh = useCallback(() => {
     const fid = currentFolder.id;
     const folderQs = fid ? `?parentId=${fid}` : "";
     const fileQs = fid ? `?folderId=${fid}` : "";
-    const [fRes, uRes] = await Promise.all([
+    return Promise.all([
       fetch(`/api/file-folders${folderQs}`),
       fetch(`/api/files${fileQs}`),
-    ]);
-    if (fRes.ok && uRes.ok) {
-      const [f, u] = await Promise.all([fRes.json(), uRes.json()]);
-      setFolders(f);
-      setFiles(u);
-    }
-    setLoading(false);
+    ])
+      .then(async ([fRes, uRes]) => (fRes.ok && uRes.ok ? Promise.all([fRes.json(), uRes.json()]) : null))
+      .then((data) => {
+        if (data) {
+          setFolders(data[0]);
+          setFiles(data[1]);
+        }
+        setLoading(false);
+      });
   }, [currentFolder.id]);
 
-  useEffect(() => { load(); }, [load]);
+  const load = useCallback(() => {
+    setLoading(true);
+    return refresh();
+  }, [refresh]);
 
-  // Clear selection when changing folder
-  useEffect(() => {
+  // Changing folder clears the selection and shows the spinner until the folder loads.
+  const [shownFolderId, setShownFolderId] = useState(currentFolder.id);
+  if (shownFolderId !== currentFolder.id) {
+    setShownFolderId(currentFolder.id);
+    setLoading(true);
     setSelectedFileIds(new Set());
     setLastSelectedFileId(null);
     setLightboxOpen(false);
     setLightboxFileId(null);
-  }, [currentFolder.id]);
+  }
+  useEffect(() => { refresh(); }, [refresh]);
 
   // Navigate to a specific folder when dispatched from global search
   useEffect(() => {
@@ -334,7 +343,7 @@ export default function FilesView() {
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [lightboxOpen, lightboxFileId, selectedFileIds, sortedFiles]);
+  }, [lightboxOpen, lightboxFileId, selectedFileIds, sortedFiles, load]);
 
   const toggleView = (mode: "grid" | "list") => {
     setViewMode(mode);
@@ -610,7 +619,6 @@ export default function FilesView() {
   const isEmpty = !loading && folders.length === 0 && files.length === 0;
 
   const lightboxFile = lightboxFileId ? sortedFiles.find(f => f.id === lightboxFileId) : undefined;
-  const lightboxIdx = lightboxFile ? sortedFiles.findIndex(f => f.id === lightboxFileId) : -1;
 
   const pendingDeleteMsg = pendingDelete
     ? pendingDelete.length === 1
@@ -1377,7 +1385,6 @@ function LightboxPreview({ file }: { file: UploadFile }) {
       <Box sx={{ textAlign: "center", p: 4 }}>
         <AudioFileIcon sx={{ fontSize: 72, color: "var(--success-fg)", mb: 2 }} />
         <Typography sx={{ color: "rgba(255,255,255,0.7)", mb: 2, fontSize: "0.875rem" }}>{file.originalName}</Typography>
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <audio src={`/api/files/${file.id}`} controls style={{ display: "block" }} />
       </Box>
     );
@@ -1516,17 +1523,25 @@ function MovePicker({ open, excludeId, moveError, onMove, onClose }: {
   const [pickerLoading, setPickerLoading] = useState(false);
   const current = pickerStack[pickerStack.length - 1];
 
-  useEffect(() => {
+  // Opening starts at the top folder; each folder shows the spinner until it loads.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setPickerStack([{ id: null, name: "Files" }]);
       setPickerFolders([]);
     }
-  }, [open]);
+  }
+  const pickerKey = open ? (current.id ?? "root") : null;
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  if (pickerKey !== loadingKey) {
+    setLoadingKey(pickerKey);
+    if (pickerKey) setPickerLoading(true);
+  }
 
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
-    setPickerLoading(true);
     const qs = current.id ? `?parentId=${current.id}` : "";
     fetch(`/api/file-folders${qs}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(r)))

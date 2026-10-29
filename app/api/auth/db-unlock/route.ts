@@ -54,7 +54,7 @@ let unlockInProgress = false;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function cookieOpts(_req?: Request) {
+function cookieOpts() {
   // secure: false — the cookie value is already cryptographically opaque (AUTH_SECRET
   // fingerprint + per-boot nonce). Tor .onion connections are HTTP and browsers never
   // send Secure cookies over HTTP, which breaks the DB-unlock gate on every request.
@@ -209,7 +209,7 @@ export async function POST(request: Request) {
     // integrity_check reads all DB pages — throws "file is not a database" on wrong key.
     const check = db.pragma("integrity_check", { simple: true });
     if (check !== "ok") throw new Error(`integrity_check: ${check}`);
-  } catch (err) {
+  } catch {
     try { db?.close(); } catch { /* ignore */ }
     unlockInProgress = false;
     recordFailedAttempt(ip);

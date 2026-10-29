@@ -84,33 +84,43 @@ export function useHabits() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vault.masterKey]);
 
-  const reload = useCallback(async () => {
-    const seq = ++loadSeq.current;
-    try {
-      const res = await fetch("/api/habits/summary");
-      if (!res.ok) throw new Error(String(res.status));
-      const data: { weekStartsOn: number; habits: SummaryHabit[] } = await res.json();
-      const items = await Promise.all(data.habits.map(async (h): Promise<HabitItem> => ({
-        id: h.id,
-        name: await decryptName(h.text, h.encText),
-        encText: h.encText,
-        kind: h.kind === "BAD" ? "BAD" : "GOOD",
-        archivedAt: h.archivedAt,
-        private: !!h.private,
-        position: h.position,
-        createdDate: localDateStr(new Date(h.createdAt)),
-        outcomes: Object.fromEntries(h.logs.map((l) => [l.date, l.isLoss ? "L" : "W"])),
-      })));
-      if (seq !== loadSeq.current) return;
-      setHabits(items);
-      setWeekStartsOn(data.weekStartsOn === 1 ? 1 : 0);
-      setError(null);
-    } catch {
-      if (seq === loadSeq.current) setError("Couldn't load habits. Check your connection and try again.");
-    } finally {
-      if (seq === loadSeq.current) setLoading(false);
-    }
+  const fetchItems = useCallback(async () => {
+    const res = await fetch("/api/habits/summary");
+    if (!res.ok) throw new Error(String(res.status));
+    const data: { weekStartsOn: number; habits: SummaryHabit[] } = await res.json();
+    const items = await Promise.all(data.habits.map(async (h): Promise<HabitItem> => ({
+      id: h.id,
+      name: await decryptName(h.text, h.encText),
+      encText: h.encText,
+      kind: h.kind === "BAD" ? "BAD" : "GOOD",
+      archivedAt: h.archivedAt,
+      private: !!h.private,
+      position: h.position,
+      createdDate: localDateStr(new Date(h.createdAt)),
+      outcomes: Object.fromEntries(h.logs.map((l) => [l.date, l.isLoss ? "L" : "W"])),
+    })));
+    return { items, weekStartsOn: (data.weekStartsOn === 1 ? 1 : 0) as WeekStart };
   }, [decryptName]);
+
+  // State changes only in the promise callbacks, after the fetch settles. A newer load
+  // supersedes an older one that finishes late.
+  const reload = useCallback(() => {
+    const seq = ++loadSeq.current;
+    return fetchItems().then(
+      (result) => {
+        if (seq !== loadSeq.current) return;
+        setHabits(result.items);
+        setWeekStartsOn(result.weekStartsOn);
+        setError(null);
+        setLoading(false);
+      },
+      () => {
+        if (seq !== loadSeq.current) return;
+        setError("Couldn't load habits. Check your connection and try again.");
+        setLoading(false);
+      },
+    );
+  }, [fetchItems]);
 
   useEffect(() => { reload(); }, [reload]);
 

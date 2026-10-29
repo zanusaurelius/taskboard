@@ -26,8 +26,6 @@ import JournalView from "./JournalView";
 import HabitsView from "./HabitsView";
 import FilesView from "./FilesView";
 import SettingsView from "./SettingsView";
-import VaultSetupModal from "./VaultSetupModal";
-import VaultUnlockModal from "./VaultUnlockModal";
 import E2EMigration from "./E2EMigration";
 import E2EReversal from "./E2EReversal";
 import GlobalSearch from "./GlobalSearch";
@@ -38,7 +36,6 @@ import { useTaskBoardStore } from "@/lib/store";
 import { useAppTheme, type ThemeMode } from "@/lib/theme-context";
 
 type View = "board" | "notes" | "journal" | "habits" | "files" | "settings";
-type VaultState = "loading" | "not-setup" | "locked" | "unlocked";
 
 interface NavItemProps {
   icon: React.ReactNode;
@@ -85,7 +82,7 @@ function NavItem({ icon, label, active, onClick }: NavItemProps) {
 function AppShellInner() {
   const { data: session } = useSession();
   const router = useRouter();
-  const { masterKey, isUnlocked: vaultIsUnlocked, lockVault, hideVault } = useVault();
+  const { masterKey, lockVault, hideVault } = useVault();
   const setMasterKey = useTaskBoardStore((s) => s.setMasterKey);
   const [view, setView] = useState<View>(() => {
     if (typeof window === "undefined") return "board";
@@ -95,9 +92,8 @@ function AppShellInner() {
   useReminders();
   const { isOnline, pendingCount, syncing, syncError } = useOnlineSync();
 
-  // Vault gate state
-  const [vaultState, setVaultState] = useState<VaultState>("loading");
-  const [hasWebAuthn, setHasWebAuthn] = useState(false);
+  // The app renders once the vault check below has answered (or failed).
+  const [vaultChecked, setVaultChecked] = useState(false);
   const [migrationDone, setMigrationDone] = useState(() =>
     typeof window !== "undefined" && !!localStorage.getItem("e2e_migration_v1")
   );
@@ -121,20 +117,11 @@ function AppShellInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Check vault setup state on mount — just gather hasWebAuthn for Notes section use.
   useEffect(() => {
     fetch("/api/notes/vault")
       .then((r) => r.json())
-      .then((d) => {
-        if (d.exists) {
-          try {
-            const creds = JSON.parse(d.webAuthnCredentials ?? "[]");
-            setHasWebAuthn(Array.isArray(creds) && creds.length > 0);
-          } catch { /* ignore */ }
-        }
-        setVaultState("unlocked");
-      })
-      .catch(() => setVaultState("unlocked"));
+      .catch(() => null)
+      .finally(() => setVaultChecked(true));
   }, []);
 
   // Sync vault master key into the store (both when set and when cleared)
@@ -144,12 +131,11 @@ function AppShellInner() {
     prevMasterKeyRef.current = masterKey;
     if (masterKey) {
       setMasterKey(masterKey);
-      if (vaultState === "locked") setVaultState("unlocked");
     } else if (prev !== null) {
       // Vault just locked — redact locked tasks in the store
       setMasterKey(null);
     }
-  }, [masterKey, setMasterKey, vaultState]);
+  }, [masterKey, setMasterKey]);
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -157,6 +143,16 @@ function AppShellInner() {
   // Keep a ref so the keyboard handler always sees the current view without re-registering
   const viewRef = useRef(view);
   useEffect(() => { viewRef.current = view; }, [view]);
+
+  // Reads the current view from the ref, so handlers registered once still compare correctly.
+  const navigate = (v: View) => {
+    if (v !== viewRef.current) {
+      lockVault();
+      hideVault();
+    }
+    setView(v);
+    localStorage.setItem("currentView", v);
+  };
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -215,14 +211,6 @@ function AppShellInner() {
   }, []);
 
   const [pendingNoteTask, setPendingNoteTask] = useState<{ title: string; description: string } | null>(null);
-  const navigate = (v: View) => {
-    if (v !== view) {
-      lockVault();
-      hideVault();
-    }
-    setView(v);
-    localStorage.setItem("currentView", v);
-  };
   const handleCreateTaskFromNote = (title: string, description: string) => {
     setPendingNoteTask({ title, description });
     navigate("board");
@@ -241,7 +229,7 @@ function AppShellInner() {
 
   // ── Vault gate ──────────────────────────────────────────────────────────────
 
-  if (vaultState === "loading") {
+  if (!vaultChecked) {
     return (
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", backgroundColor: "#0f172a" }}>
         <CircularProgress sx={{ color: "#6366f1" }} />

@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -52,7 +52,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useTaskBoardStore } from "@/lib/store";
 import { Note, Folder } from "@/lib/types";
-import { VaultProvider, useVault } from "@/lib/vault-context";
+import { useVault } from "@/lib/vault-context";
 import PageHeader from "./PageHeader";
 import { primaryButtonSx } from "@/lib/ui";
 import VaultSetupModal from "./VaultSetupModal";
@@ -139,8 +139,6 @@ function NotesViewInner({ onCreateTask }: Props) {
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState<{ notes: Note[] } | null>(null);
   const lastClickedIdRef  = useRef<string | null>(null);
   const sortedNotesRef    = useRef<Note[]>([]);
-  const stableOrderRef    = useRef<string[]>([]);
-  const prevStableKeyRef  = useRef("");
   const pendingActionRef  = useRef<(() => void) | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -150,13 +148,15 @@ function NotesViewInner({ onCreateTask }: Props) {
   const { isUnlocked, isRevealed, revealToken, encrypt, decrypt, lockVault, hideVault } = vault;
   // Always-current refs so pending autosave/flush don't capture stale values
   const encryptRef = useRef(encrypt);
-  encryptRef.current = encrypt;
   const notesRef = useRef(notes);
-  notesRef.current = notes;
   const isUnlockedRef = useRef(isUnlocked);
-  isUnlockedRef.current = isUnlocked;
   const revealTokenRef = useRef(revealToken);
-  revealTokenRef.current = revealToken;
+  useEffect(() => {
+    encryptRef.current = encrypt;
+    notesRef.current = notes;
+    isUnlockedRef.current = isUnlocked;
+    revealTokenRef.current = revealToken;
+  });
 
   const handleCloseVault = () => {
     hideVault();
@@ -195,13 +195,17 @@ function NotesViewInner({ onCreateTask }: Props) {
     }
   };
 
-  const stableFetchNotes = useCallback(fetchNotes, [fetchNotes]);
-  const stableFetchFolders = useCallback(fetchFolders, [fetchFolders]);
-  const stableFetchTrash = useCallback(fetchTrash, [fetchTrash]);
+  // Store actions are stable, so these never change identity.
+  const stableFetchNotes = fetchNotes;
+  const stableFetchFolders = fetchFolders;
+  const stableFetchTrash = fetchTrash;
 
-  useEffect(() => {
+  // Opening a note on a phone-width screen switches to the editor panel.
+  const [panelFor, setPanelFor] = useState({ isMobile, activeId });
+  if (panelFor.isMobile !== isMobile || panelFor.activeId !== activeId) {
+    setPanelFor({ isMobile, activeId });
     if (isMobile && activeId) setMobilePanel("editor");
-  }, [isMobile, activeId]);
+  }
 
   useEffect(() => {
     stableFetchNotes();
@@ -231,7 +235,6 @@ function NotesViewInner({ onCreateTask }: Props) {
   // 30-second countdown for locked/hidden note deletion
   useEffect(() => {
     if (!pendingDelete) return;
-    setUndoCountdown(30);
     undoIntervalRef.current = setInterval(() => setUndoCountdown((c) => Math.max(0, c - 1)), 1000);
     pendingDeleteTimerRef.current = setTimeout(async () => {
       await deleteNote(pendingDelete.id);
@@ -246,7 +249,6 @@ function NotesViewInner({ onCreateTask }: Props) {
   // 30-second countdown for hidden/vault folder deletion
   useEffect(() => {
     if (!pendingFolderDelete) return;
-    setFolderUndoCountdown(30);
     folderUndoIntervalRef.current = setInterval(() => setFolderUndoCountdown((c) => Math.max(0, c - 1)), 1000);
     const { id, noteIds } = pendingFolderDelete;
     pendingFolderTimerRef.current = setTimeout(async () => {
@@ -262,12 +264,14 @@ function NotesViewInner({ onCreateTask }: Props) {
     };
   }, [pendingFolderDelete?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-decrypt locked notes when master key becomes available
+  // Auto-decrypt locked notes when master key becomes available; forget them when it locks.
+  const [decryptedWhileUnlocked, setDecryptedWhileUnlocked] = useState(isUnlocked);
+  if (decryptedWhileUnlocked !== isUnlocked) {
+    setDecryptedWhileUnlocked(isUnlocked);
+    if (!isUnlocked) setDecryptedNotes(new Map());
+  }
   useEffect(() => {
-    if (!isUnlocked) {
-      setDecryptedNotes(new Map());
-      return;
-    }
+    if (!isUnlocked) return;
     const lockedNotes = notes.filter(n => n.locked && n.encContent);
     if (lockedNotes.length === 0) return;
 
@@ -289,46 +293,28 @@ function NotesViewInner({ onCreateTask }: Props) {
     });
   }, [isUnlocked, notes, decrypt]);
 
-  useEffect(() => {
-    if (activeId === null) return;
-    const note = notes.find((n) => n.id === activeId);
-    if (!note) return;
-    // For locked notes that are unlocked, use decrypted content
-    if (note.locked && isUnlocked) {
-      const dec = decryptedNotes.get(note.id);
-      if (dec) {
-        setLocalTitle(dec.title);
-        setLocalContent(dec.content);
-        setEditorKey((k) => k + 1);
-        return;
-      }
-    }
-    setLocalTitle(note.title);
-    setLocalContent(note.content);
+  // Load the opened note into the editor, and reload it when its locked content is decrypted.
+  const loadIntoEditor = (title: string, content: string) => {
+    setLocalTitle(title);
+    setLocalContent(content);
     setEditorKey((k) => k + 1);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
-
-  // When decrypted notes map updates and we have an active locked note, update local state
-  useEffect(() => {
-    if (activeId === null) return;
-    const note = notes.find((n) => n.id === activeId);
-    if (!note?.locked) return;
-    const dec = decryptedNotes.get(activeId);
-    if (dec) {
-      setLocalTitle(dec.title);
-      setLocalContent(dec.content);
-      setEditorKey((k) => k + 1);
+  };
+  const [editorFor, setEditorFor] = useState<{ activeId: string | null; decrypted: typeof decryptedNotes }>({ activeId, decrypted: decryptedNotes });
+  if (editorFor.activeId !== activeId) {
+    setEditorFor({ activeId, decrypted: decryptedNotes });
+    const note = activeId === null ? undefined : notes.find((n) => n.id === activeId);
+    if (note) {
+      const dec = note.locked && isUnlocked ? decryptedNotes.get(note.id) : undefined;
+      if (dec) loadIntoEditor(dec.title, dec.content);
+      else loadIntoEditor(note.title, note.content);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [decryptedNotes]);
+  } else if (editorFor.decrypted !== decryptedNotes) {
+    setEditorFor({ activeId, decrypted: decryptedNotes });
+    const note = activeId === null ? undefined : notes.find((n) => n.id === activeId);
+    const dec = note?.locked && activeId !== null ? decryptedNotes.get(activeId) : undefined;
+    if (dec) loadIntoEditor(dec.title, dec.content);
+  }
 
-  useEffect(() => {
-    const handler = () => handleNewNote();
-    window.addEventListener("notes:newnote", handler);
-    return () => window.removeEventListener("notes:newnote", handler);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── Auto-save ──
   const flush = (id: string, title: string, content: string) => {
@@ -385,6 +371,14 @@ function NotesViewInner({ onCreateTask }: Props) {
     lastClickedIdRef.current = note.id;
   };
 
+  const handleNewNoteRef = useRef(handleNewNote);
+  useEffect(() => { handleNewNoteRef.current = handleNewNote; });
+  useEffect(() => {
+    const handler = () => handleNewNoteRef.current();
+    window.addEventListener("notes:newnote", handler);
+    return () => window.removeEventListener("notes:newnote", handler);
+  }, []);
+
   const handleSelectNote = (note: Note) => {
     if (note.id === activeId) return;
     if (activeId !== null) flush(activeId, localTitle, localContent);
@@ -430,6 +424,7 @@ function NotesViewInner({ onCreateTask }: Props) {
     const label = note.locked
       ? (note.encTitle ? "Locked note" : note.title || "Untitled")
       : (note.title || "Untitled");
+    setUndoCountdown(30);
     setPendingDelete({ id: note.id, label });
   };
 
@@ -791,6 +786,7 @@ function NotesViewInner({ onCreateTask }: Props) {
       // Hidden/vault folder: 30-second undo window, then hard-delete folder + all notes inside
       const noteIds = notes.filter(n => n.folderId === f.id).map(n => n.id);
       if (selectedFolder === f.id) setSelectedFolder("all");
+      setFolderUndoCountdown(30);
       setPendingFolderDelete({ id: f.id, name: f.name, noteIds });
     } else {
       // Regular folder: soft-delete all notes inside → trash, then delete the folder
@@ -917,9 +913,10 @@ function NotesViewInner({ onCreateTask }: Props) {
   // Stable sort: only reorder when IDs, pinned state, or sort settings change.
   // Prevents notes from jumping position during auto-save (updatedAt bumps).
   const stableKey = filteredNotes.map(n => `${n.id}:${n.pinned ? 1 : 0}`).join(",") + `|${sortField}|${sortDir}`;
-  if (stableKey !== prevStableKeyRef.current) {
-    prevStableKeyRef.current = stableKey;
-    stableOrderRef.current = [...filteredNotes].sort((a, b) => {
+  const [stableOrder, setStableOrder] = useState<{ key: string; ids: string[] }>({ key: "", ids: [] });
+  let stableIds = stableOrder.ids;
+  if (stableKey !== stableOrder.key) {
+    stableIds = [...filteredNotes].sort((a, b) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       const getTitle = (n: Note) => {
         if (n.locked) return decryptedNotes.get(n.id)?.title ?? "Locked note";
@@ -930,11 +927,12 @@ function NotesViewInner({ onCreateTask }: Props) {
         : new Date(a[sortField]).getTime() - new Date(b[sortField]).getTime();
       return sortDir === "asc" ? cmp : -cmp;
     }).map(n => n.id);
+    setStableOrder({ key: stableKey, ids: stableIds });
   }
-  const sortedNotes = stableOrderRef.current
+  const sortedNotes = stableIds
     .map(id => filteredNotes.find(n => n.id === id))
     .filter((n): n is Note => !!n);
-  sortedNotesRef.current = sortedNotes;
+  useEffect(() => { sortedNotesRef.current = sortedNotes; });
 
   const notesPerFolder = (fid: string) => notes.filter((n) => n.folderId === fid).length;
   const starredCount   = notes.filter((n) => n.starred).length;

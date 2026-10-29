@@ -21,8 +21,6 @@ export default function UnlockPage() {
   const [retryKey, setRetryKey]     = useState(0);
 
   useEffect(() => {
-    setDbState("loading");
-    setError("");
     fetch("/api/auth/db-status")
       .then((r) => {
         if (!r.ok) throw new Error(`${r.status}`);
@@ -66,7 +64,7 @@ export default function UnlockPage() {
         {error ? (
           <>
             <Alert severity="error" sx={{ maxWidth: 400, width: "100%", mx: 2, borderRadius: 2 }}>{error}</Alert>
-            <Button onClick={() => setRetryKey((k) => k + 1)} sx={{ color: "#6366f1", textTransform: "none", fontWeight: 600 }}>
+            <Button onClick={() => { setDbState("loading"); setError(""); setRetryKey((k) => k + 1); }} sx={{ color: "#6366f1", textTransform: "none", fontWeight: 600 }}>
               Retry
             </Button>
           </>

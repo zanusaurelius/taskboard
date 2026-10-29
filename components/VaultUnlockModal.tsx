@@ -41,11 +41,14 @@ export default function VaultUnlockModal({ open, onClose, onSuccess, mode, hasWe
   const [biometricLoading, setBiometricLoading] = useState(false);
   const openedAtRef = useRef(0);
 
+  // Clear the form each time the dialog opens.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) { setPassword(""); setRecovery(""); setError(""); setTab("password"); }
+  }
   useEffect(() => {
-    if (open) {
-      openedAtRef.current = Date.now();
-      setPassword(""); setRecovery(""); setError(""); setTab("password");
-    }
+    if (open) openedAtRef.current = Date.now();
   }, [open]);
 
   const handleClose = (_: unknown, reason?: string) => {

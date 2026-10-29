@@ -2,7 +2,6 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaBetterSQLite3 } from "@prisma/adapter-better-sqlite3";
 
 declare global {
-  // eslint-disable-next-line no-var
   var _prisma: PrismaClient | undefined;
 }
 

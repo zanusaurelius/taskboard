@@ -63,14 +63,18 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
   const searchGenRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset state when dialog closes
-  useEffect(() => {
+  // Reset when the dialog closes; the generation bump drops any search still in flight.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (!open) {
-      searchGenRef.current++;
       setQuery("");
       setResults(null);
       setLoading(false);
     }
+  }
+  useEffect(() => {
+    if (!open) searchGenRef.current++;
   }, [open]);
 
   const runSearch = useCallback(async (q: string) => {

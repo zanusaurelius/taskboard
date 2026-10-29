@@ -101,22 +101,28 @@ export default function JournalView() {
   // Lets us skip the reset when `entries` changes due to an autosave (selectedDate didn't change).
   const lastLoadedDateRef = useRef<string>("");
 
-  const fetchEntries = useCallback(async () => {
+  // Fetches and decrypts every entry; null when the server answers with an error.
+  const readEntries = useCallback(async (): Promise<Reflection[] | null> => {
     const res = await fetch("/api/daily-reflections");
-    if (res.ok) {
-      const raw: Reflection[] = await res.json();
-      const data = await Promise.all(raw.map(async (e) => {
-        try {
-          return {
-            ...e,
-            note: e.encNote ? (await vault.decrypt(JSON.parse(e.encNote)) ?? e.note) : e.note,
-            gratitude: e.encGratitude ? (await vault.decrypt(JSON.parse(e.encGratitude)) ?? e.gratitude) : e.gratitude,
-            body: e.encBody ? (await vault.decrypt(JSON.parse(e.encBody)) ?? e.body) : e.body,
-          };
-        } catch {
-          return e; // corrupt entry — show plaintext fallback rather than blanking the whole journal
-        }
-      }));
+    if (!res.ok) return null;
+    const raw: Reflection[] = await res.json();
+    return Promise.all(raw.map(async (e) => {
+      try {
+        return {
+          ...e,
+          note: e.encNote ? (await vault.decrypt(JSON.parse(e.encNote)) ?? e.note) : e.note,
+          gratitude: e.encGratitude ? (await vault.decrypt(JSON.parse(e.encGratitude)) ?? e.gratitude) : e.gratitude,
+          body: e.encBody ? (await vault.decrypt(JSON.parse(e.encBody)) ?? e.body) : e.body,
+        };
+      } catch {
+        return e; // corrupt entry — show plaintext fallback rather than blanking the whole journal
+      }
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vault.decrypt, vault.masterKey]);
+
+  const fetchEntries = useCallback(() => readEntries().then((data) => {
+    if (data) {
       setEntries(data);
       // Seed editing state for today
       const todayEntry = data.find((e) => e.date === today);
@@ -125,8 +131,7 @@ export default function JournalView() {
       setEditBody(todayEntry?.body ?? "");
     }
     setLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [today, vault.decrypt, vault.masterKey]);
+  }), [readEntries, today]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
@@ -135,7 +140,6 @@ export default function JournalView() {
     const handler = () => { setSelectedDate(today); setMobilePanel("detail"); };
     window.addEventListener("journal:newentry", handler);
     return () => window.removeEventListener("journal:newentry", handler);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [today]);
 
   // Load editing fields when the selected date changes.

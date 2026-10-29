@@ -3,7 +3,6 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __dbKey: string | undefined;
 }
 

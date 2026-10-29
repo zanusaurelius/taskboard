@@ -30,7 +30,7 @@ function ResizableImageView({ node, updateAttributes, selected }: ReactNodeViewP
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [node.attrs.width, updateAttributes]);
+  }, [attrs.width, updateAttributes]);
 
   const showHandle = selected || hovered;
 
@@ -41,6 +41,7 @@ function ResizableImageView({ node, updateAttributes, selected }: ReactNodeViewP
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {/* eslint-disable-next-line @next/next/no-img-element -- editor node view: the width is set by dragging, which next/image can't follow */}
       <img
         ref={imgRef}
         src={attrs.src}
