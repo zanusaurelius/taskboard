@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useVault } from "./vault-context";
 import { habitStats, localDateStr, type HabitKind, type HabitLogEntry, type HabitStats, type WeekStart } from "./habit-stats";
 import type { HabitOutcome } from "./types";
+import { usePrivacy } from "./privacy";
 
 export interface HabitItem {
   id: string;
@@ -10,6 +11,7 @@ export interface HabitItem {
   encText: string | null;
   kind: HabitKind;
   archivedAt: string | null;
+  private: boolean;
   position: number;
   createdDate: string; // local YYYY-MM-DD
   outcomes: Record<string, HabitOutcome>; // date → W/L; a missing date is unlogged
@@ -21,6 +23,7 @@ interface SummaryHabit {
   encText: string | null;
   kind: HabitKind;
   archivedAt: string | null;
+  private?: boolean;
   position: number;
   createdAt: string;
   logs: { date: string; isLoss: boolean }[];
@@ -72,8 +75,9 @@ export function useHabits() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vault.masterKey]);
 
-  const encryptName = useCallback(async (name: string): Promise<{ text: string; encText?: string | null }> => {
-    if (!vault.masterKey) return { text: name, encText: null };
+  // Only private habit names are encrypted, and only while the vault is unlocked.
+  const encryptName = useCallback(async (name: string, isPrivate: boolean): Promise<{ text: string; encText?: string | null }> => {
+    if (!isPrivate || !vault.masterKey) return { text: name, encText: null };
     const blob = await vault.encrypt(name);
     if (!blob) return { text: name, encText: null };
     return { text: "", encText: JSON.stringify(blob) };
@@ -92,6 +96,7 @@ export function useHabits() {
         encText: h.encText,
         kind: h.kind === "BAD" ? "BAD" : "GOOD",
         archivedAt: h.archivedAt,
+        private: !!h.private,
         position: h.position,
         createdDate: localDateStr(new Date(h.createdAt)),
         outcomes: Object.fromEntries(h.logs.map((l) => [l.date, l.isLoss ? "L" : "W"])),
@@ -145,11 +150,11 @@ export function useHabits() {
     announce();
   }, [reload]);
 
-  const createHabit = useCallback(async (kind: HabitKind, name: string) => {
+  const createHabit = useCallback(async (kind: HabitKind, name: string, isPrivate = false) => {
     const res = await fetch("/api/habits", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, ...(await encryptName(name)) }),
+      body: JSON.stringify({ kind, private: isPrivate, ...(await encryptName(name, isPrivate)) }),
     }).catch(() => null);
     if (!res?.ok) {
       setError("Couldn't add that habit. Check your connection and try again.");
@@ -160,9 +165,13 @@ export function useHabits() {
     return true;
   }, [encryptName, reload]);
 
-  const updateHabit = useCallback(async (id: string, fields: { name?: string; archived?: boolean; position?: number }) => {
+  const updateHabit = useCallback(async (id: string, fields: { name?: string; archived?: boolean; position?: number; private?: boolean }) => {
     const { name, ...rest } = fields;
-    const body = { ...rest, ...(name !== undefined && (await encryptName(name))) };
+    const current = habits.find((h) => h.id === id);
+    const isPrivate = fields.private ?? current?.private ?? false;
+    // Changing the name or the private flag rewrites the stored name to match the new rule.
+    const newName = name ?? (fields.private !== undefined ? current?.name : undefined);
+    const body = { ...rest, ...(newName !== undefined && (await encryptName(newName, isPrivate))) };
     const res = await fetch(`/api/habits/${id}?date=${localDateStr(new Date())}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -175,7 +184,7 @@ export function useHabits() {
     await reload();
     announce();
     return true;
-  }, [encryptName, reload]);
+  }, [encryptName, reload, habits]);
 
   const deleteHabit = useCallback(async (id: string) => {
     const res = await fetch(`/api/habits/${id}`, { method: "DELETE" }).catch(() => null);
@@ -231,8 +240,18 @@ export function useHabits() {
 
   const sorted = useMemo(() => [...habits].sort((a, b) => a.position - b.position), [habits]);
 
+  // Tell the privacy toggle whether private habits exist, and hide them while privacy is on.
+  const privacyOn = usePrivacy((s) => s.on);
+  const setPrivateHabits = usePrivacy((s) => s.setPrivateHabits);
+  const privateCount = sorted.filter((h) => h.private).length;
+  useEffect(() => { if (!loading) setPrivateHabits(privateCount); }, [privateCount, loading, setPrivateHabits]);
+  const visible = useMemo(() => (privacyOn ? sorted.filter((h) => !h.private) : sorted), [sorted, privacyOn]);
+
   return {
-    habits: sorted,
+    habits: visible,
+    /** Private habits currently hidden by privacy mode. */
+    hiddenCount: privacyOn ? privateCount : 0,
+    privacyOn,
     weekStartsOn,
     today,
     loading,

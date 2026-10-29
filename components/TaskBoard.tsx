@@ -39,6 +39,8 @@ import TaskCard from "./TaskCard";
 import TaskModal from "./TaskModal";
 import VaultUnlockModal from "./VaultUnlockModal";
 import VaultSetupModal from "./VaultSetupModal";
+import PrivacyToggle from "./PrivacyToggle";
+import { usePrivacy } from "@/lib/privacy";
 import dynamic from "next/dynamic";
 const DailyFocus = dynamic(() => import("./DailyFocus"), { ssr: false });
 
@@ -129,9 +131,6 @@ const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 const STAGE_COLORS: Record<string, string> = {
   todo: "#6366f1", in_progress: "#3b82f6", blocked: "#ef4444", done: "#22c55e",
 };
-const STAGE_BG: Record<string, string> = {
-  todo: "#eef0ff", in_progress: "#eff6ff", blocked: "#fff1f2", done: "#f0fdf4",
-};
 
 const STAGE_COLOR_OPTIONS = [
   "#6366f1", "#3b82f6", "#ef4444", "#22c55e",
@@ -206,7 +205,7 @@ interface TaskBoardProps {
 
 export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: TaskBoardProps = {}) {
   const isMobile = useMediaQuery("(max-width: 860px)");
-  const { isUnlocked: vaultIsUnlocked, lockVault, hideVault } = useVault();
+  const { isUnlocked: vaultIsUnlocked } = useVault();
   const { tasks, projects, fetchAll, createTask, updateTask, deleteTask, createProject, updateProject, deleteProject, permanentDeleteProject, archiveAllDone } = useTaskBoardStore();
 
   const [localTasks, setLocalTasks] = useState<Task[]>([]);
@@ -229,7 +228,8 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   const [searchText, setSearchText] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [showArchivedProjects, setShowArchivedProjects] = useState(false);
-  const [privacyMode, setPrivacyMode] = useState(true);
+  const privacyMode = usePrivacy((s) => s.on);
+  const setPrivacyMode = usePrivacy((s) => s.setOn);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectColor, setNewProjectColor] = useState(PROJECT_COLORS[0]);
@@ -318,27 +318,6 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
       })
       .catch(() => {});
   }, []);
-
-  // When vault auto-locks (inactivity timer), restore privacy mode
-  useEffect(() => {
-    if (!vaultIsUnlocked) setPrivacyMode(true);
-  }, [vaultIsUnlocked]);
-
-  const handlePrivacyModeToggle = () => {
-    if (privacyMode) {
-      // Trying to reveal — open vault unlock if there are locked tasks, else plain toggle
-      if (vaultExists && tasks.some((t) => t.sensitive)) {
-        setVaultUnlockOpen(true);
-      } else {
-        setPrivacyMode(false);
-      }
-    } else {
-      // Hiding again — lock vault and restore privacy
-      lockVault();
-      hideVault();
-      setPrivacyMode(true);
-    }
-  };
 
   useEffect(() => {
     const days = parseInt(localStorage.getItem("autoArchiveDays") ?? "0", 10);
@@ -705,6 +684,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
               <SearchIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
+          <PrivacyToggle sensitiveTasks={tasks.some((t) => t.sensitive)} />
           <Button
             size="small"
             startIcon={<AddIcon />}
@@ -722,6 +702,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
               "&:hover": { borderColor: "var(--tx-4)", backgroundColor: "var(--surface-2)" },
             }}>
             <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Project</Box>
+            <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Project</Box>
           </Button>
           <Tooltip title="New Task" placement="bottom" arrow>
             <Button
@@ -741,6 +722,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                 "&:hover": { background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)" },
               }}>
               <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Task</Box>
+              <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Task</Box>
             </Button>
           </Tooltip>
         </Box>
@@ -878,16 +860,10 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                 sx={filterChipSx(stageFilter.includes(s.id), stageColors[s.id] ?? STAGE_COLORS[s.id])} />
             ))}
             <Chip
-              label={privacyMode ? "Privacy Mode On" : "Privacy Mode"}
-              size="small"
-              onClick={handlePrivacyModeToggle}
-              sx={{ ...filterChipSx(privacyMode, "#64748b"), ml: "auto" }}
-            />
-            <Chip
               label={showArchived ? "Hide Archived Tasks" : "Show Archived Tasks"}
               size="small"
               onClick={() => setShowArchived((v) => !v)}
-              sx={filterChipSx(showArchived, "#f59e0b")}
+              sx={{ ...filterChipSx(showArchived, "#f59e0b"), ml: "auto" }}
             />
           </Box>
         </Box>
@@ -904,7 +880,6 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
           }}>
             {STAGES.map((stage) => {
               const color = stageColors[stage.id] ?? STAGE_COLORS[stage.id];
-              const bg = hexToRgba(color, 0.08);
               const columnTasks = tasksForStage(stage.id);
               return (
                 <Box key={stage.id} sx={{
@@ -912,30 +887,31 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                     ? { width: "100%" }
                     : { minWidth: 240, flex: "1 1 240px", maxWidth: 400 }
                   ),
-                  borderRadius: 2.5,
+                  borderRadius: 3,
                   overflow: "hidden",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                  backgroundColor: "var(--column-bg)",
+                  border: "1px solid var(--border)",
                   display: "flex", flexDirection: "column",
                   ...(!isMobile && { maxHeight: "calc(100vh - 210px)" }),
                 }}>
                   {/* Column header */}
                   <Box sx={{
-                    backgroundColor: color,
-                    px: 2.5, py: 1.75,
+                    px: 2, pt: 1.5, pb: 1,
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     flexShrink: 0,
                     "&:hover .stage-palette": { opacity: 1 },
                   }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-                      <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "#fff", letterSpacing: 0.1 }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Box sx={{ width: 8, height: 8, borderRadius: 99, backgroundColor: color, flexShrink: 0 }} />
+                      <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--tx)", letterSpacing: 0.1 }}>
                         {stage.label}
                       </Typography>
                       <Box sx={{
-                        backgroundColor: "rgba(255,255,255,0.28)",
-                        borderRadius: 99, px: 1, py: 0.15,
-                        minWidth: 24, textAlign: "center",
+                        backgroundColor: hexToRgba(color, 0.14),
+                        borderRadius: 99, px: 0.9, py: 0.1,
+                        minWidth: 22, textAlign: "center",
                       }}>
-                        <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, color: "#fff" }}>
+                        <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>
                           {columnTasks.length}
                         </Typography>
                       </Box>
@@ -946,8 +922,8 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                           size="small"
                           className="stage-palette"
                           onClick={(e) => { setEditingStageId(stage.id); setStageColorAnchor(e.currentTarget); }}
-                          sx={{ color: "rgba(255,255,255,0.55)", opacity: 0, transition: "opacity 0.15s",
-                            "&:hover": { backgroundColor: "rgba(255,255,255,0.2)", color: "#fff" } }}
+                          sx={{ color: "var(--tx-4)", opacity: 0, transition: "opacity 0.15s",
+                            "&:hover": { backgroundColor: "var(--surface-hover)", color: "var(--tx-2)" } }}
                         >
                           <PaletteIcon sx={{ fontSize: 15 }} />
                         </IconButton>
@@ -955,13 +931,13 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                       {stage.id === "done" && (
                         <IconButton size="small" title="Archive all completed tasks"
                           onClick={handleArchiveAllDone}
-                          sx={{ color: "rgba(255,255,255,0.75)", "&:hover": { backgroundColor: "rgba(255,255,255,0.2)", color: "#fff" } }}>
+                          sx={{ color: "var(--tx-4)", "&:hover": { backgroundColor: "var(--surface-hover)", color: "var(--tx-2)" } }}>
                           <ArchiveIcon sx={{ fontSize: 18 }} />
                         </IconButton>
                       )}
                       <IconButton size="small" onClick={() => openCreate(stage.id)} sx={{
-                        color: "rgba(255,255,255,0.85)",
-                        "&:hover": { backgroundColor: "rgba(255,255,255,0.2)", color: "#fff" },
+                        color: "var(--tx-3)",
+                        "&:hover": { backgroundColor: hexToRgba(color, 0.14), color },
                       }}>
                         <AddIcon sx={{ fontSize: 20 }} />
                       </IconButton>
@@ -969,7 +945,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                   </Box>
 
                   {/* Column body */}
-                  <Box sx={{ backgroundColor: bg, p: 1.75, flex: 1, ...(!isMobile && { overflowY: "auto" }) }}>
+                  <Box sx={{ px: 1.25, pb: 1.25, pt: 0.5, flex: 1, ...(!isMobile && { overflowY: "auto" }) }}>
                     <DroppableColumn id={stage.id}>
                       <SortableContext items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                         {columnTasks.map((task) => (
@@ -981,11 +957,11 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                       </SortableContext>
                       {columnTasks.length === 0 && (
                         <Box sx={{
-                          border: `2px dashed ${color}45`,
-                          borderRadius: 2, p: 3, textAlign: "center",
+                          border: "1.5px dashed var(--border)",
+                          borderRadius: 2, py: 2.5, textAlign: "center",
                         }}>
-                          <Typography sx={{ fontSize: "0.875rem", color: `${color}80`, fontWeight: 500 }}>
-                            Drop here
+                          <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", fontWeight: 500 }}>
+                            No tasks
                           </Typography>
                         </Box>
                       )}
@@ -1222,11 +1198,12 @@ function filterChipSx(active: boolean, color: string) {
     fontWeight: 600,
     fontSize: "0.8rem",
     height: 30,
-    backgroundColor: active ? color : "var(--surface-2)",
-    color: active ? "#fff" : "var(--tx-2)",
-    border: `1.5px solid ${active ? color : "var(--border)"}`,
+    backgroundColor: active ? hexToRgba(color, 0.14) : "transparent",
+    color: active ? color : "var(--tx-2)",
+    border: `1px solid ${active ? hexToRgba(color, 0.45) : "var(--border)"}`,
     "& .MuiChip-label": { px: 1.5 },
-    "&:hover": { backgroundColor: active ? color : "var(--border)", borderColor: active ? color : "var(--border-2)" },
+    "& .MuiChip-deleteIcon": { color: active ? hexToRgba(color, 0.6) : "var(--tx-4)" },
+    "&:hover": { backgroundColor: active ? hexToRgba(color, 0.2) : "var(--surface-hover)", borderColor: active ? hexToRgba(color, 0.6) : "var(--border-2)" },
     transition: "all 0.15s ease",
   };
 }
@@ -1234,14 +1211,14 @@ function filterChipSx(active: boolean, color: string) {
 function allChipSx(active: boolean) {
   return {
     cursor: "pointer",
-    fontWeight: 700,
+    fontWeight: 600,
     fontSize: "0.8rem",
     height: 30,
-    backgroundColor: active ? "var(--tx)" : "var(--surface-2)",
-    color: active ? "var(--bg)" : "var(--tx-4)",
-    border: `1.5px solid ${active ? "var(--tx)" : "var(--border)"}`,
+    backgroundColor: active ? "var(--accent-tint)" : "transparent",
+    color: active ? "var(--accent-fg)" : "var(--tx-3)",
+    border: `1px solid ${active ? "var(--accent-line)" : "var(--border)"}`,
     "& .MuiChip-label": { px: 1.5 },
-    "&:hover": { backgroundColor: active ? "var(--tx)" : "var(--border)" },
+    "&:hover": { backgroundColor: active ? "var(--accent-tint)" : "var(--surface-hover)" },
     transition: "all 0.15s ease",
   };
 }

@@ -285,15 +285,7 @@ function AppShellInner() {
         borderRight: "1px solid rgba(255,255,255,0.06)",
         overflowY: "auto",
       }}>
-        <Box sx={{
-          width: 36, height: 36, borderRadius: 2,
-          background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 2px 12px rgba(99,102,241,0.5)",
-          mb: 2, flexShrink: 0,
-        }}>
-          <Typography sx={{ color: "#fff", fontSize: "1.1rem", fontWeight: 900, lineHeight: 1 }}>T</Typography>
-        </Box>
+        <Box component="img" src="/logo.png" alt="Taskboard" sx={{ width: 40, height: 40, mb: 2, flexShrink: 0 }} />
 
         <NavItem icon={<DashboardIcon sx={{ fontSize: 22 }} />} label="Board" active={view === "board"} onClick={() => navigate("board")} />
         <NavItem icon={<NoteAltOutlinedIcon sx={{ fontSize: 22 }} />} label="Notes" active={view === "notes"} onClick={() => navigate("notes")} />

@@ -26,6 +26,7 @@ export async function GET(request: Request) {
       encText: h.encText,
       kind: h.kind,
       archivedAt: h.archivedAt,
+      private: h.private,
       position: h.position,
       createdAt: h.createdAt,
       logs: h.completions,

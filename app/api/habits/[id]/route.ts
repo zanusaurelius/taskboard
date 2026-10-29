@@ -12,13 +12,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
-  const { text, encText, position, kind, archived } = body;
+  const { text, encText, position, kind, archived, private: isPrivate } = body;
 
   if (text !== undefined && typeof text === "string" && text.length > 200) {
     return NextResponse.json({ error: "text must be at most 200 characters" }, { status: 400 });
   }
   if (kind !== undefined && kind !== "GOOD" && kind !== "BAD") {
     return NextResponse.json({ error: "kind must be GOOD or BAD" }, { status: 400 });
+  }
+  if (isPrivate !== undefined && typeof isPrivate !== "boolean") {
+    return NextResponse.json({ error: "private must be a boolean" }, { status: 400 });
   }
   if (archived !== undefined && typeof archived !== "boolean") {
     return NextResponse.json({ error: "archived must be a boolean" }, { status: 400 });
@@ -38,6 +41,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...(encText !== undefined && { encText }),
         ...(position !== undefined && { position }),
         ...(kind !== undefined && { kind }),
+        ...(isPrivate !== undefined && { private: isPrivate }),
         ...(archived !== undefined && { archivedAt: archived ? (existing.archivedAt ?? new Date()) : null }),
       },
     }),

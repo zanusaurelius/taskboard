@@ -217,6 +217,7 @@ model Habit {
   encText     String?
   kind        String            @default("GOOD") // GOOD (building) or BAD (breaking)
   archivedAt  DateTime?
+  private     Boolean           @default(false) // hidden while privacy mode is on
   position    Int               @default(0)
   userId      String
   user        User              @relation(fields: [userId], references: [id])

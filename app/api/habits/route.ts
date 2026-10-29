@@ -29,6 +29,7 @@ export async function GET(request: Request) {
         encText: h.encText,
         kind: h.kind,
         archivedAt: h.archivedAt,
+        private: h.private,
         position: h.position,
         createdAt: h.createdAt,
         todayOutcome: log ? (log.isLoss ? "L" : "W") : null,
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
-  const { text, encText, kind = "GOOD" } = body;
+  const { text, encText, kind = "GOOD", private: isPrivate = false } = body;
 
   const hasPlaintext = typeof text === "string" && text.trim().length > 0;
   const hasEncrypted = typeof encText === "string" && encText.length > 0;
@@ -58,6 +59,9 @@ export async function POST(request: Request) {
   if (kind !== "GOOD" && kind !== "BAD") {
     return NextResponse.json({ error: "kind must be GOOD or BAD" }, { status: 400 });
   }
+  if (typeof isPrivate !== "boolean") {
+    return NextResponse.json({ error: "private must be a boolean" }, { status: 400 });
+  }
 
   const count = await prisma.habit.count({ where: { userId } });
   const habit = await prisma.habit.create({
@@ -65,6 +69,7 @@ export async function POST(request: Request) {
       text: hasPlaintext ? text.trim() : "",
       ...(encText !== undefined && { encText }),
       kind,
+      private: isPrivate,
       position: count,
       userId,
     },

@@ -73,6 +73,7 @@ export interface Habit {
   encText: string | null;
   kind: "GOOD" | "BAD";
   archivedAt: string | null;
+  private: boolean;
   position: number;
   createdAt: string;
   todayOutcome: HabitOutcome | null;

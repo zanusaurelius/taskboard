@@ -9,15 +9,15 @@ import {
 import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { KIND_COPY } from "@/lib/habit-kind";
-import { dayOfWeek, weekDates, type HabitKind, type WeekStart } from "@/lib/habit-stats";
+import { dayOfWeek, monthGrid, weekDates, type HabitKind, type StatsPeriod, type WeekStart } from "@/lib/habit-stats";
 import { statsFor, type HabitItem } from "@/lib/useHabits";
 import type { HabitOutcome } from "@/lib/types";
 
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-export const WIN = { fg: "#16a34a", bg: "#dcfce7", line: "#86efac" };
-export const LOSS = { fg: "#dc2626", bg: "#fee2e2", line: "#fca5a5" };
+export const WIN = { fg: "var(--win-fg)", bg: "var(--win-bg)", line: "var(--win-line)" };
+export const LOSS = { fg: "var(--loss-fg)", bg: "var(--loss-bg)", line: "var(--loss-line)" };
 
 /** blank → W → L → blank */
 export function nextOutcome(o: HabitOutcome | undefined | null): HabitOutcome | null {
@@ -101,9 +101,9 @@ export function OutcomeButtons({ kind, value, onChange, compact }: OutcomeButton
         aria-label={`${o}, ${text}`}
         onClick={() => onChange(on ? null : o)}
         sx={{
-          fontFamily: "inherit", fontSize: compact ? "0.8rem" : "0.78rem", fontWeight: compact ? 800 : 600,
+          fontFamily: "inherit", fontSize: compact ? "0.9rem" : "0.78rem", fontWeight: compact ? 800 : 600,
           px: compact ? 0 : 1.25, py: compact ? 0 : 0.6,
-          width: compact ? 34 : "auto", height: compact ? 30 : "auto",
+          width: compact ? 40 : "auto", height: compact ? 40 : "auto",
           borderRadius: 2, whiteSpace: "nowrap",
           border: `1.5px solid ${on ? c.line : "var(--border)"}`,
           backgroundColor: on ? c.bg : "var(--surface)",
@@ -130,7 +130,7 @@ export function StreakBadge({ streak }: { streak: number }) {
   return (
     <Typography component="span" title={`Current win streak: ${streak}`} sx={{
       fontSize: "0.78rem", fontWeight: 700, fontVariantNumeric: "tabular-nums",
-      color: hot ? "#ea580c" : "var(--tx-4)", whiteSpace: "nowrap",
+      color: hot ? "var(--streak)" : "var(--tx-3)", whiteSpace: "nowrap",
     }}>
       {hot ? "🔥 " : ""}{streak}
     </Typography>
@@ -138,7 +138,7 @@ export function StreakBadge({ streak }: { streak: number }) {
 }
 
 export const groupLabelSx = {
-  fontSize: "0.66rem", fontWeight: 700, color: "var(--tx-4)",
+  fontSize: "0.66rem", fontWeight: 700, color: "var(--tx-3)",
   textTransform: "uppercase" as const, letterSpacing: 1.1,
 };
 
@@ -198,11 +198,14 @@ function HabitRow({ habit, first, today, weekStartsOn, narrow, allowBackfill, on
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: habit.id });
   const streak = statsFor(habit, today, weekStartsOn).currentStreak;
   const strip = (
-    <WeekStrip outcomes={habit.outcomes} today={today} weekStartsOn={weekStartsOn} showLabels={first || narrow}
+    <WeekStrip outcomes={habit.outcomes} today={today} weekStartsOn={weekStartsOn} showLabels={first}
+      size={narrow ? 18 : 22}
       onCycle={allowBackfill ? (date) => onOutcome(habit.id, date, nextOutcome(habit.outcomes[date])) : undefined} />
   );
+  // On narrow screens the buttons are square W and L; the labels only fit on wide rows.
   const buttons = (
-    <OutcomeButtons kind={habit.kind} value={habit.outcomes[today]} onChange={(o) => onOutcome(habit.id, today, o)} />
+    <OutcomeButtons kind={habit.kind} value={habit.outcomes[today]} compact={narrow}
+      onChange={(o) => onOutcome(habit.id, today, o)} />
   );
   const handle = (
     <Box {...attributes} {...listeners} aria-label="Drag to reorder" className="habit-drag"
@@ -213,7 +216,7 @@ function HabitRow({ habit, first, today, weekStartsOn, narrow, allowBackfill, on
   const name = (
     <ButtonBase onClick={onOpen} sx={{ justifyContent: "flex-start", textAlign: "left", borderRadius: 1, minWidth: 0, "&:hover .habit-name": { color: "#6366f1" } }}>
       <Typography className="habit-name" sx={{ fontSize: "0.9rem", fontWeight: 500, color: "var(--tx-2)", overflowWrap: "anywhere", transition: "color 0.15s" }}>
-        {habit.name || "Encrypted habit"}
+        {habit.name || "Locked habit"}
       </Typography>
     </ButtonBase>
   );
@@ -221,17 +224,21 @@ function HabitRow({ habit, first, today, weekStartsOn, narrow, allowBackfill, on
   return (
     <Box ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
       sx={{
-        px: 1.5, py: 1, mx: 0.75, borderRadius: 2,
+        px: narrow ? 0.5 : 1.5, py: 1, mx: narrow ? 0 : 0.75, borderRadius: 2,
         "&:hover": { backgroundColor: "var(--surface-2)" },
         "&:hover .habit-drag": { opacity: 1 },
         ...(narrow
-          ? { display: "grid", gridTemplateColumns: "18px minmax(0, 1fr) auto", alignItems: "center", gap: 1, rowGap: 1 }
+          ? { display: "flex", alignItems: "center", gap: 1.5 }
           : { display: "grid", gridTemplateColumns: ROW_COLUMNS, alignItems: "end", gap: 2 }),
       }}>
       {narrow ? (
+        // Reordering is done on the wide layout; a drag handle here only adds clutter.
         <>
-          {handle}{name}<StreakBadge streak={streak} />
-          <Box sx={{ gridColumn: "2 / -1", display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "end" }}>{strip}{buttons}</Box>
+          <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 0.75 }}>
+            <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, minWidth: 0 }}>{name}<StreakBadge streak={streak} /></Box>
+            {strip}
+          </Box>
+          {buttons}
         </>
       ) : (
         <>
@@ -246,3 +253,75 @@ function HabitRow({ habit, first, today, weekStartsOn, narrow, allowBackfill, on
   );
 }
 
+
+interface MonthCalendarProps {
+  month: string; // YYYY-MM
+  outcomes: Record<string, HabitOutcome>;
+  today: string;
+  weekStartsOn: WeekStart;
+  onCycle?: (date: string) => void;
+}
+
+/** One month as a calendar of W/L days. Past days and today can be tapped to cycle them. */
+export function MonthCalendar({ month, outcomes, today, weekStartsOn, onCycle }: MonthCalendarProps) {
+  const weeks = monthGrid(month, weekStartsOn);
+  const letters = Array.from({ length: 7 }, (_, i) => DAY_LETTERS[(i + weekStartsOn) % 7]);
+  return (
+    <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 26px)", gap: "4px" }}>
+      {letters.map((l, i) => (
+        <Typography key={i} component="span" sx={{ fontSize: "0.58rem", fontWeight: 700, color: "var(--tx-3)", textAlign: "center" }}>{l}</Typography>
+      ))}
+      {weeks.flat().map((date, i) => {
+        if (!date) return <Box key={`pad-${i}`} />;
+        const o = outcomes[date];
+        const future = date > today;
+        const cell = (
+          <Box sx={{
+            width: 26, height: 26, borderRadius: "6px", display: "grid", placeItems: "center",
+            fontSize: "0.62rem", fontWeight: o ? 800 : 500,
+            backgroundColor: o === "W" ? WIN.bg : o === "L" ? LOSS.bg : future ? "transparent" : "var(--surface-2)",
+            color: o === "W" ? WIN.fg : o === "L" ? LOSS.fg : "var(--tx-3)",
+            outline: date === today ? "2px solid #6366f1" : "none", outlineOffset: "1px",
+            opacity: future ? 0.45 : 1,
+          }}>
+            {o ?? Number(date.slice(8))}
+          </Box>
+        );
+        const label = `${date}: ${o === "W" ? "win" : o === "L" ? "loss" : "not logged"}`;
+        return onCycle && !future ? (
+          <ButtonBase key={date} aria-label={label} title={label} onClick={() => onCycle(date)}
+            sx={{ borderRadius: "6px", "&.Mui-focusVisible": { outline: "2px solid #6366f1", outlineOffset: "2px" } }}>
+            {cell}
+          </ButtonBase>
+        ) : (
+          <Box key={date} role="img" aria-label={label}>{cell}</Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+/** "2026" / "All time" switch for stats. */
+export function PeriodSwitch({ years, value, onChange }: { years: number[]; value: StatsPeriod; onChange: (p: StatsPeriod) => void }) {
+  const options: { key: string; label: string; period: StatsPeriod }[] = [
+    ...years.map((y) => ({ key: String(y), label: String(y), period: { kind: "year", year: y } as StatsPeriod })),
+    { key: "all", label: "All time", period: { kind: "all" } },
+  ];
+  const current = value.kind === "all" ? "all" : String(value.year);
+  return (
+    <Box role="group" aria-label="Stats period" sx={{ display: "inline-flex", p: "3px", borderRadius: 2, backgroundColor: "var(--surface-2)", border: "1px solid var(--border)", gap: "2px" }}>
+      {options.map((o) => {
+        const on = o.key === current;
+        return (
+          <ButtonBase key={o.key} aria-pressed={on} onClick={() => onChange(o.period)} sx={{
+            fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 600, px: 1.25, py: 0.4, borderRadius: 1.5,
+            color: on ? "var(--tx)" : "var(--tx-3)",
+            backgroundColor: on ? "var(--surface)" : "transparent",
+            boxShadow: on ? "0 1px 2px rgba(0,0,0,0.12)" : "none",
+            "&.Mui-focusVisible": { outline: "2px solid #6366f1" },
+          }}>{o.label}</ButtonBase>
+        );
+      })}
+    </Box>
+  );
+}

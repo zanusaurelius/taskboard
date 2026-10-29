@@ -477,7 +477,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
             })()}
           </Box>
           {!collapsed && (goals.length > 0 || habits.length > 0) && (
-            <Box sx={{ display: "flex", gap: 1 }}>
+            <Box sx={{ display: { xs: "none", sm: "flex" }, gap: 1 }}>
               {goals.length > 0 && (
                 <Box sx={{
                   backgroundColor: completedGoals === goals.length ? "#dcfce7" : "var(--surface-2)",
@@ -555,7 +555,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               return (
                 <Box key={kind} sx={{ mb: 1 }}>
                   <Typography sx={{ ...groupLabelSx, mb: 0.25 }}>{KIND_COPY[kind].group}</Typography>
-                  <Box sx={{ mx: -1.5 }}>
+                  <Box sx={{ mx: isNarrow ? 0 : -1.5 }}>
                     <SortableHabitRows items={items} today={habitsApi.today} weekStartsOn={habitsApi.weekStartsOn}
                       narrow={isNarrow} labelFirst={kind === "GOOD" || !habits.some((h) => h.kind === "GOOD")}
                       onOutcome={habitsApi.setOutcome}
