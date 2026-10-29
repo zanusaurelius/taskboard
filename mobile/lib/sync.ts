@@ -7,6 +7,14 @@ const MAX_RETRY = 5;
 
 let isFlushing = false;
 
+const flushListeners = new Set<() => void>();
+
+/** Runs after any flush that applied at least one queued write, so screens can reload. */
+export function onQueueFlushed(cb: () => void): () => void {
+  flushListeners.add(cb);
+  return () => { flushListeners.delete(cb); };
+}
+
 export type ConflictHandler = (op: {
   method: string;
   path: string;
@@ -17,7 +25,9 @@ export async function flushQueue(onConflict?: ConflictHandler): Promise<{ flushe
   if (isFlushing) return { flushed: 0, failed: 0, dropped: 0 };
   isFlushing = true;
   try {
-    return await _flushQueue(onConflict);
+    const result = await _flushQueue(onConflict);
+    if (result.flushed > 0 || result.failed > 0) flushListeners.forEach((cb) => cb());
+    return result;
   } finally {
     isFlushing = false;
   }
@@ -58,8 +68,9 @@ async function _flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: num
       await dequeue(op.id);
       flushed++;
     } else if (!isOk(result) && result.status === 0) {
-      // Network error — stop flushing, will retry when back online
-      await incrementRetry(op.id);
+      // Network error — stop flushing, will retry when back online. Not counted as a retry:
+      // being offline says nothing about the op, and counting it would discard offline
+      // changes after a few failed reconnects.
       break;
     } else if (!isOk(result) && (result.status === 401 || result.status === 423)) {
       // Auth expired or DB locked — stop flushing, preserve ops for after re-auth/unlock
@@ -70,8 +81,10 @@ async function _flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: num
       break;
     } else {
       await dequeue(op.id);
-      if (!isOk(result)) failed++;
-      else flushed++;
+      if (!isOk(result)) {
+        console.warn('[sync] Server rejected queued op:', op.method, op.path, result.status);
+        failed++;
+      } else flushed++;
     }
   }
 

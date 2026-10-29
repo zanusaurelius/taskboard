@@ -1,4 +1,5 @@
 import { getToken, getBaseUrl, clearToken, clearAll } from './storage';
+import { clearCache } from './offline-db';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ export async function login(
 }
 
 export async function logout(): Promise<void> {
-  await clearAll();
+  await Promise.all([clearAll(), clearCache().catch(() => {})]);
 }
 
 export async function checkDbStatus(

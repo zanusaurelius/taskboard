@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getBaseUrl, clearAll, getGoalLimit, setGoalLimit as storeGoalLimit, getAutoArchiveDays, setAutoArchiveDays as storeAutoArchiveDays } from '@/lib/storage';
+import { clearOfflineData } from '@/lib/offline-db';
 import { apiFetch, isOk, logout } from '@/lib/api';
 import { useTheme, useThemeColors, type ThemeMode } from '@/lib/theme-context';
 import type { ThemeColors } from '@/lib/theme-context';
@@ -170,7 +171,7 @@ export default function SettingsScreen() {
     });
     setDeleteLoading(false);
     if (isOk(res)) {
-      await clearAll();
+      await Promise.all([clearAll(), clearOfflineData().catch(() => {})]);
       DeviceEventEmitter.emit('auth:logout');
     } else {
       const err = (res as { error?: string }).error ?? 'Failed to delete account.';
@@ -188,7 +189,7 @@ export default function SettingsScreen() {
   const handleChangeServer = () => {
     Alert.alert('Change server', 'This will sign you out and clear all saved data on this device.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Change server', style: 'destructive', onPress: async () => { await clearAll(); DeviceEventEmitter.emit('auth:logout'); } },
+      { text: 'Change server', style: 'destructive', onPress: async () => { await Promise.all([clearAll(), clearOfflineData().catch(() => {})]); DeviceEventEmitter.emit('auth:logout'); } },
     ]);
   };
 

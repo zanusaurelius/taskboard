@@ -9,6 +9,7 @@ function TabIcon({ label, active }: { label: string; active: boolean }) {
     Board: '📋',
     Notes: '📝',
     Journal: '📖',
+    Habits: '🏆',
     Files: '🗂️',
     Settings: '⚙️',
   };
@@ -56,6 +57,12 @@ export default function AppLayout() {
         name="journal"
         options={{
           tabBarIcon: ({ focused }) => <TabIcon label="Journal" active={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="habits"
+        options={{
+          tabBarIcon: ({ focused }) => <TabIcon label="Habits" active={focused} />,
         }}
       />
       <Tabs.Screen name="search" options={{ href: null }} />

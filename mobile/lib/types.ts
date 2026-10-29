@@ -68,15 +68,6 @@ export interface DailyGoal {
   updatedAt: string;
 }
 
-export interface Habit {
-  id: string;
-  text: string;
-  encText: string | null;
-  position: number;
-  completedToday: boolean;
-  updatedAt: string;
-}
-
 export interface DailyReflection {
   id: string;
   date: string;

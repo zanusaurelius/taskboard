@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { login, checkDbStatus, unlockDb } from '@/lib/api';
 import { DeviceEventEmitter } from 'react-native';
 import { getBaseUrl, setBaseUrl, clearAll } from '@/lib/storage';
+import { clearOfflineData } from '@/lib/offline-db';
 
 type Step = 'loading' | 'server' | 'db-unlock' | 'credentials';
 
@@ -84,7 +85,7 @@ export default function LoginScreen() {
         {
           text: 'Change server', style: 'destructive',
           onPress: async () => {
-            await clearAll();
+            await Promise.all([clearAll(), clearOfflineData().catch(() => {})]);
             setServerUrl('');
             setUsername('');
             setPassword('');

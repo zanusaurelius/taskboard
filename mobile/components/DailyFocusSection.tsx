@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, Modal, FlatList, Alert, Pressable,
+  StyleSheet, ActivityIndicator, Modal, FlatList, Alert, Pressable, AppState,
 } from 'react-native';
-import DraggableFlatList, { NestableDraggableFlatList, ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
+import { NestableDraggableFlatList, ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
 import * as SecureStore from 'expo-secure-store';
 import { apiFetch, isOk } from '@/lib/api';
 import { useVault } from '@/lib/vault-context';
 import { useRouter } from 'expo-router';
 import { getGoalLimit } from '@/lib/storage';
-import type { DailyGoal, Habit, Task, Project } from '@/lib/types';
+import type { DailyGoal, Task, Project } from '@/lib/types';
+import { useHabits, statsFor } from '@/lib/habits';
+import { KIND_COPY } from '@/lib/habit-kind';
+import type { HabitKind } from '@/lib/habit-stats';
+import { WeekStrip, OutcomeButtons, StreakText } from '@/components/HabitParts';
 import { useThemeColors, type ThemeColors } from '@/lib/theme-context';
 
 const localDateStr = (d: Date) =>
@@ -50,14 +54,6 @@ export default function DailyFocusSection() {
     }));
   }, [masterKey, decrypt]);
 
-  const vaultDecryptHabits = useCallback(async (habits: Habit[]): Promise<Habit[]> => {
-    if (!masterKey) return habits;
-    return Promise.all(habits.map(async (h) => {
-      if (!h.encText) return h;
-      const dec = await decrypt(JSON.parse(h.encText));
-      return { ...h, text: dec ?? h.text };
-    }));
-  }, [masterKey, decrypt]);
 
   const [collapsed, setCollapsed] = useState(false);
   const [today, setToday] = useState(todayStr);
@@ -66,15 +62,13 @@ export default function DailyFocusSection() {
   const [extraSlots, setExtraSlots] = useState(0);
 
   const [goals, setGoals] = useState<DailyGoal[]>([]);
-  const [habits, setHabits] = useState<Habit[]>([]);
+  const habitsApi = useHabits();
+  const habits = habitsApi.habits.filter((h) => !h.archivedAt);
   const [carryOver, setCarryOver] = useState<DailyGoal[]>([]);
   const [reflection, setReflection] = useState('');
   const [gratitude, setGratitude] = useState('');
   const [prevReflection, setPrevReflection] = useState<string | null>(null);
 
-  const [addingHabit, setAddingHabit] = useState(false);
-  const [habitInput, setHabitInput] = useState('');
-  const [reorderHabitsVisible, setReorderHabitsVisible] = useState(false);
   const [addingGoalIdx, setAddingGoalIdx] = useState<number | null>(null);
   const [goalInput, setGoalInput] = useState('');
   const [linkedTask, setLinkedTask] = useState<Task | null>(null);
@@ -113,7 +107,9 @@ export default function DailyFocusSection() {
   useEffect(() => {
     setToday(todayStr());
     const id = setInterval(() => setToday(todayStr()), 60_000);
-    return () => clearInterval(id);
+    // Timers stop in the background; catch up as soon as the app is opened again.
+    const sub = AppState.addEventListener('change', (state) => { if (state === 'active') setToday(todayStr()); });
+    return () => { clearInterval(id); sub.remove(); };
   }, []);
 
   useEffect(() => { getGoalLimit().then(setGoalLimitState); }, []);
@@ -121,9 +117,8 @@ export default function DailyFocusSection() {
   const fetchAll = useCallback(async () => {
     const gen = ++fetchGenRef.current;
     try {
-    const [goalsRes, habitsRes, reflRes, prevReflRes] = await Promise.all([
+    const [goalsRes, reflRes, prevReflRes] = await Promise.all([
       apiFetch<DailyGoal[]>(`/api/daily-goals?date=${viewDate}`),
-      apiFetch<Habit[]>(`/api/habits?date=${today}`),
       apiFetch<{ note?: string; encNote?: string; gratitude?: string; encGratitude?: string }>(`/api/daily-reflections?date=${today}`),
       apiFetch<{ note?: string; encNote?: string }>(`/api/daily-reflections?date=${addDays(today, -1)}`),
     ]);
@@ -136,8 +131,6 @@ export default function DailyFocusSection() {
       setGoals([...gs.filter(g => !g.completed), ...gs.filter(g => g.completed)]);
     } else setGoals([]);
 
-    if (isOk(habitsRes)) setHabits(await vaultDecryptHabits(habitsRes.data));
-    else setHabits([]);
 
     if (isOk(reflRes)) {
       if (reflRes.data) {
@@ -172,7 +165,7 @@ export default function DailyFocusSection() {
     }
 
     // If all primary fetches returned network errors (status 0), flag as offline
-    const allFailed = [goalsRes, habitsRes, reflRes].every(
+    const allFailed = [goalsRes, reflRes].every(
       (r) => !r.ok && (r as { status?: number }).status === 0
     );
     setOffline(allFailed);
@@ -182,7 +175,7 @@ export default function DailyFocusSection() {
     } finally {
       if (gen === fetchGenRef.current) setLoading(false);
     }
-  }, [viewDate, today, isToday, masterKey, vaultDecryptGoals, vaultDecryptHabits, decrypt]);
+  }, [viewDate, today, isToday, masterKey, vaultDecryptGoals, decrypt]);
 
   useEffect(() => {
     setLoading(true);
@@ -196,56 +189,6 @@ export default function DailyFocusSection() {
   }, [dayOffset]);
 
   // ── Habits ──────────────────────────────────────────────────────────────────
-
-  const handleToggleHabit = async (habit: Habit) => {
-    const flip = (v: boolean) =>
-      setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: v } : h));
-    flip(!habit.completedToday); // optimistic
-    if (habit.completedToday) {
-      const res = await apiFetch(`/api/habits/${habit.id}/complete?date=${today}`, { method: 'DELETE' });
-      if (!isOk(res)) {
-        flip(true); // rollback
-        if ((res as { status?: number }).status === 0) Alert.alert('Offline', 'Habit changes sync when you reconnect.');
-      }
-    } else {
-      const res = await apiFetch(`/api/habits/${habit.id}/complete`, {
-        method: 'POST',
-        body: JSON.stringify({ date: today }),
-      });
-      if (!isOk(res)) {
-        flip(false); // rollback
-        if ((res as { status?: number }).status === 0) Alert.alert('Offline', 'Habit changes sync when you reconnect.');
-      }
-    }
-  };
-
-  const handleDeleteHabit = async (id: string) => {
-    const res = await apiFetch(`/api/habits/${id}`, { method: 'DELETE' });
-    if (isOk(res)) setHabits((prev) => prev.filter((h) => h.id !== id));
-  };
-
-  const handleHabitReorder = async (reordered: Habit[]) => {
-    setHabits(reordered);
-    await Promise.all(
-      reordered.map((h, i) =>
-        apiFetch(`/api/habits/${h.id}`, { method: 'PATCH', body: JSON.stringify({ position: i }) })
-      )
-    );
-  };
-
-  const handleAddHabit = async () => {
-    if (!habitInput.trim()) return;
-    const encFields = await vaultEncrypt(habitInput.trim());
-    const res = await apiFetch<Habit>('/api/habits', {
-      method: 'POST',
-      body: JSON.stringify(encFields),
-    });
-    if (isOk(res)) {
-      setHabits((prev) => [...prev, { ...res.data, text: habitInput.trim() }]);
-      setHabitInput('');
-      setAddingHabit(false);
-    }
-  };
 
   const openTaskPicker = async () => {
     const [tasksRes, projectsRes] = await Promise.all([
@@ -414,11 +357,7 @@ export default function DailyFocusSection() {
 
   // Feature 3: extraSlots increases total available slots
   const totalSlots = Math.max(goalLimit, goals.length) + extraSlots;
-  const displayHabits = [...habits].sort((a, b) => {
-    if (a.completedToday === b.completedToday) return 0;
-    return a.completedToday ? 1 : -1;
-  });
-  const completedHabits = habits.filter((h) => h.completedToday).length;
+  const loggedHabits = habits.filter((h) => h.outcomes[habitsApi.today]).length;
   const completedGoals = goals.filter((g) => g.completed).length;
 
   const relativeLabel =
@@ -444,9 +383,9 @@ export default function DailyFocusSection() {
                   </View>
                 )}
                 {habits.length > 0 && (
-                  <View style={[s.statBadge, completedHabits === habits.length && s.statBadgeDone]}>
-                    <Text style={[s.statBadgeText, completedHabits === habits.length && s.statBadgeTextDone]}>
-                      {completedHabits}/{habits.length} habits
+                  <View style={[s.statBadge, loggedHabits === habits.length && s.statBadgeDone]}>
+                    <Text style={[s.statBadgeText, loggedHabits === habits.length && s.statBadgeTextDone]}>
+                      {loggedHabits}/{habits.length} habits
                     </Text>
                   </View>
                 )}
@@ -502,61 +441,37 @@ export default function DailyFocusSection() {
                 </View>
               )}
 
-              {/* ── Habits (today only) ── */}
+              {/* ── Habits (today only; past days are logged on the Habits tab) ── */}
               {isToday && (
                 <View style={s.section}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={s.sectionLabel}>DAILY HABITS</Text>
-                    {habits.length > 1 && (
-                      <TouchableOpacity onPress={() => setReorderHabitsVisible(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={{ color: s.sectionLabel.color, fontSize: 11 }}>Reorder ⋮⋮</Text>
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity onPress={() => router.push('/habits')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={s.habitsLink}>{habits.length === 0 ? 'Add a habit ›' : 'Habits ›'}</Text>
+                    </TouchableOpacity>
                   </View>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.habitsRow}>
-                    {displayHabits.map((h) => (
-                      <TouchableOpacity
-                        key={h.id}
-                        style={[s.habitChip, h.completedToday && s.habitChipDone]}
-                        onPress={() => handleToggleHabit(h)}
-                        onLongPress={() => handleDeleteHabit(h.id)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[s.habitDot, h.completedToday && s.habitDotDone]}>
-                          {h.completedToday ? '✓' : '○'}
-                        </Text>
-                        <Text style={[s.habitText, h.completedToday && s.habitTextDone]} numberOfLines={1}>
-                          {h.text}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                    {addingHabit ? (
-                      <View style={s.habitInputRow}>
-                        <TextInput
-                          style={s.habitInput}
-                          placeholder="e.g. Meditate 10 mins"
-                          placeholderTextColor="#475569"
-                          value={habitInput}
-                          onChangeText={setHabitInput}
-                          autoFocus
-                          returnKeyType="done"
-                          onSubmitEditing={handleAddHabit}
-                          onBlur={() => { if (!habitInput.trim()) setAddingHabit(false); }}
-                        />
-                        <TouchableOpacity style={s.habitAddBtn} onPress={handleAddHabit}>
-                          <Text style={s.habitAddBtnText}>Add</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => { setAddingHabit(false); setHabitInput(''); }}>
-                          <Text style={s.cancelText}>✕</Text>
-                        </TouchableOpacity>
+                  {(['GOOD', 'BAD'] as HabitKind[]).map((kind) => {
+                    const items = habits.filter((h) => h.kind === kind);
+                    if (items.length === 0) return null;
+                    return (
+                      <View key={kind}>
+                        <Text style={s.habitGroupLabel}>{KIND_COPY[kind].group.toUpperCase()}</Text>
+                        {items.map((h, i) => (
+                          <View key={h.id} style={[s.habitRow, i === items.length - 1 && { borderBottomWidth: 0 }]}>
+                            <View style={{ flex: 1, gap: 6 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={s.habitText} numberOfLines={1}>{h.locked ? '🔒 Locked habit' : h.name}</Text>
+                                <StreakText colors={colors} streak={statsFor(h, habitsApi.today, habitsApi.weekStartsOn).currentStreak} />
+                              </View>
+                              <WeekStrip colors={colors} outcomes={h.outcomes} today={habitsApi.today} weekStartsOn={habitsApi.weekStartsOn} size={18} />
+                            </View>
+                            <OutcomeButtons colors={colors} kind={h.kind} value={h.outcomes[habitsApi.today]} compact
+                              onChange={(o) => habitsApi.setOutcome(h.id, habitsApi.today, o)} />
+                          </View>
+                        ))}
                       </View>
-                    ) : (
-                      <TouchableOpacity style={s.habitAddChip} onPress={() => setAddingHabit(true)}>
-                        <Text style={s.habitAddChipText}>+</Text>
-                      </TouchableOpacity>
-                    )}
-                  </ScrollView>
-                  <Text style={s.habitHint}>Long-press a habit to delete it</Text>
+                    );
+                  })}
                 </View>
               )}
 
@@ -840,35 +755,6 @@ export default function DailyFocusSection() {
         </View>
       </Modal>
 
-      {/* ── Habit reorder modal ── */}
-      <Modal visible={reorderHabitsVisible} animationType="slide" transparent onRequestClose={() => setReorderHabitsVisible(false)}>
-        <Pressable style={s.pickerOverlay} onPress={() => setReorderHabitsVisible(false)}>
-          <Pressable style={s.pickerSheet} onPress={() => {}}>
-            <View style={s.pickerTitleRow}>
-              <Text style={s.pickerTitleText}>Reorder Habits</Text>
-              <TouchableOpacity onPress={() => setReorderHabitsVisible(false)}>
-                <Text style={[s.pickerTitleText, { color: '#6366f1' }]}>Done</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={{ color: s.sectionLabel.color, fontSize: 12, marginBottom: 8, marginHorizontal: 4 }}>
-              Drag ☰ to reorder
-            </Text>
-            <DraggableFlatList
-              data={habits}
-              keyExtractor={(h) => h.id}
-              onDragEnd={({ data }) => handleHabitReorder(data)}
-              renderItem={({ item, drag, isActive }: RenderItemParams<Habit>) => (
-                <View style={[s.reorderRow, { backgroundColor: isActive ? '#6366f120' : 'transparent' }]}>
-                  <Text style={[s.habitText, { flex: 1, color: s.habitText.color }]} numberOfLines={1}>{item.text}</Text>
-                  <TouchableOpacity onLongPress={drag} delayLongPress={0} style={s.reorderHandle}>
-                    <Text style={{ color: s.sectionLabel.color, fontSize: 18 }}>☰</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -930,28 +816,13 @@ function makeStyles(c: ThemeColors) {
     reflSectionHeader: { borderLeftWidth: 2, borderLeftColor: '#6366f1', paddingLeft: 8, paddingVertical: 2, marginBottom: 8 },
     reflSectionLabel: { color: '#6366f1', fontSize: 9, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
 
-    habitsRow: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingBottom: 4 },
-    habitChip: {
-      flexDirection: 'row', alignItems: 'center', gap: 4,
-      backgroundColor: c.bg, borderWidth: 1.5, borderColor: c.border,
-      borderRadius: 99, paddingHorizontal: 10, paddingVertical: 6,
+    habitsLink: { color: '#6366f1', fontSize: 12, fontWeight: '600', marginBottom: 8 },
+    habitGroupLabel: { color: c.tx4, fontSize: 9, fontWeight: '700', letterSpacing: 1, marginTop: 4, marginBottom: 2 },
+    habitRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border,
     },
-    habitChipDone: { backgroundColor: '#052e16', borderColor: '#86efac' },
-    habitDot: { color: c.tx4, fontSize: 12 },
-    habitDotDone: { color: '#22c55e' },
-    habitText: { color: c.tx2, fontSize: 13, fontWeight: '500', maxWidth: 140 },
-    habitTextDone: { color: '#4ade80', textDecorationLine: 'line-through' },
-    habitInputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.bg, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1.5, borderColor: '#6366f1' },
-    habitInput: { color: c.tx, fontSize: 13, flex: 1, paddingVertical: 4 },
-    habitAddBtn: { backgroundColor: '#6366f1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-    habitAddBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-    habitAddChip: {
-      width: 32, height: 32, borderRadius: 8, borderWidth: 1.5,
-      borderColor: c.border, borderStyle: 'dashed',
-      alignItems: 'center', justifyContent: 'center',
-    },
-    habitAddChipText: { color: c.tx4, fontSize: 18, lineHeight: 22 },
-    habitHint: { color: c.border, fontSize: 10, marginTop: 4 },
+    habitText: { color: c.tx2, fontSize: 14, fontWeight: '500', flexShrink: 1 },
 
     goalsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
     carryOverBtn: { backgroundColor: '#78350f', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
@@ -1064,7 +935,5 @@ function makeStyles(c: ThemeColors) {
 
     pickerTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 },
     pickerTitleText: { color: c.tx, fontSize: 16, fontWeight: '700' },
-    reorderRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
-    reorderHandle: { padding: 8, marginLeft: 8 },
   });
 }
