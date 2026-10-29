@@ -38,12 +38,14 @@ export default function NotesScreen() {
   const [revealToken, setRevealToken] = useState<string | null>(null);
 
   // Clear reveal token when the vault locks so hidden notes stop being visible
+  const [revokedRevealToken, setRevokedRevealToken] = useState<string | null>(null);
+  if (!isUnlocked && revealToken) {
+    setRevokedRevealToken(revealToken);
+    setRevealToken(null);
+  }
   useEffect(() => {
-    if (!isUnlocked && revealToken) {
-      apiFetch('/api/notes/vault/reveal', { method: 'DELETE' }).catch(() => {});
-      setRevealToken(null);
-    }
-  }, [isUnlocked, revealToken]);
+    if (revokedRevealToken) apiFetch('/api/notes/vault/reveal', { method: 'DELETE' }).catch(() => {});
+  }, [revokedRevealToken]);
   const [vaultRevealModalVisible, setVaultRevealModalVisible] = useState(false);
   const [vaultUnlockModalVisible, setVaultUnlockModalVisible] = useState(false);
   const [vaultRevealPassword, setVaultRevealPassword] = useState('');
@@ -146,7 +148,7 @@ export default function NotesScreen() {
         },
       ]
     );
-  }, [selectedIds, notes, isUnlocked, masterKey, encrypt, revealToken]);
+  }, [selectedIds, notes, isUnlocked, masterKey, encrypt, revealToken, verifier]);
 
   const deleteSelected = useCallback(() => {
     const ids = [...selectedIds];
@@ -234,7 +236,7 @@ export default function NotesScreen() {
 
   useFocusEffect(useCallback(() => {
     fetchAndDecrypt();
-  }, [fetchAndDecrypt, isUnlocked]));
+  }, [fetchAndDecrypt]));
 
   // Decrypt folder names
   const folderLabel = useCallback(
@@ -429,7 +431,7 @@ export default function NotesScreen() {
     <SafeAreaView style={styles.root} edges={['top']}>
       {offline && (
         <View style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
+          <Text style={styles.offlineText}>⚠ Can&apos;t reach server — any changes will sync when you reconnect.</Text>
         </View>
       )}
       <ScreenHeader

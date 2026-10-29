@@ -78,9 +78,8 @@ export default function ShareHandlerModal({ files, onDismiss }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
 
-  const loadNotes = useCallback(async () => {
-    setNotesLoading(true);
-    const result = await apiFetch<Note[]>('/api/notes');
+  // Loading flags are raised during render below, when the mode (or decrypt key) changes
+  const loadNotes = useCallback(() => apiFetch<Note[]>('/api/notes').then(async (result) => {
     if (isOk(result)) {
       const decrypted = await Promise.all(
         result.data
@@ -97,11 +96,9 @@ export default function ShareHandlerModal({ files, onDismiss }: Props) {
       setNotes(decrypted);
     }
     setNotesLoading(false);
-  }, [decrypt]);
+  }), [decrypt]);
 
-  const loadTasks = useCallback(async () => {
-    setTasksLoading(true);
-    const result = await apiFetch<Task[]>('/api/tasks');
+  const loadTasks = useCallback(() => apiFetch<Task[]>('/api/tasks').then(async (result) => {
     if (isOk(result)) {
       const decrypted = await Promise.all(
         result.data
@@ -118,14 +115,21 @@ export default function ShareHandlerModal({ files, onDismiss }: Props) {
       setTasks(decrypted);
     }
     setTasksLoading(false);
-  }, [decrypt]);
+  }), [decrypt]);
 
-  const loadProjects = useCallback(async () => {
-    setProjectsLoading(true);
-    const result = await apiFetch<Project[]>('/api/projects');
+  const loadProjects = useCallback(() => apiFetch<Project[]>('/api/projects').then((result) => {
     if (isOk(result)) setProjects(result.data);
     setProjectsLoading(false);
-  }, []);
+  }), []);
+
+  const [loadInputs, setLoadInputs] = useState({ mode, decrypt });
+  if (loadInputs.mode !== mode || loadInputs.decrypt !== decrypt) {
+    const modeChanged = loadInputs.mode !== mode;
+    setLoadInputs({ mode, decrypt });
+    if (mode === 'notes') setNotesLoading(true);
+    if (mode === 'tasks') setTasksLoading(true);
+    if (mode === 'new-task' && modeChanged) setProjectsLoading(true);
+  }
 
   useEffect(() => {
     if (mode === 'notes') loadNotes();

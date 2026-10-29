@@ -169,7 +169,8 @@ export interface RichEditorRef {
 }
 
 interface Props {
-  initialContent?: string;
+  /** Read when the editor finishes loading, so it always gets the latest HTML */
+  getInitialContent?: () => string;
   onChange: (html: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
@@ -178,7 +179,7 @@ interface Props {
 }
 
 const RichEditor = forwardRef<RichEditorRef, Props>(
-  ({ initialContent, onChange, onFocus, onBlur, style, onHeightChange }, ref) => {
+  ({ getInitialContent, onChange, onFocus, onBlur, style, onHeightChange }, ref) => {
     const colors = useThemeColors();
     const isDark = colors.statusBar === 'light'; // light statusBar = dark background
     const editorHtml = buildEditorHtml(isDark);
@@ -221,6 +222,7 @@ const RichEditor = forwardRef<RichEditorRef, Props>(
         source={{ html: editorHtml }}
         onMessage={onMessage}
         onLoadEnd={() => {
+          const initialContent = getInitialContent?.();
           if (initialContent) post({ type: 'setContent', html: initialContent });
         }}
         scrollEnabled={false}
@@ -236,5 +238,6 @@ const RichEditor = forwardRef<RichEditorRef, Props>(
     );
   }
 );
+RichEditor.displayName = 'RichEditor';
 
 export default RichEditor;

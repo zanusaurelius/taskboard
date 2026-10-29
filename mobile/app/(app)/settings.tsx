@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert,
   TextInput, ScrollView, ActivityIndicator, DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { getBaseUrl, clearAll, getGoalLimit, setGoalLimit as storeGoalLimit, getAutoArchiveDays, setAutoArchiveDays as storeAutoArchiveDays } from '@/lib/storage';
 import { clearOfflineData } from '@/lib/offline-db';
 import { apiFetch, isOk, logout } from '@/lib/api';

@@ -121,14 +121,21 @@ export default function SearchScreen() {
     setSearching(false);
   }, [decrypt]);
 
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+  // Reset or show the spinner as soon as the query (or decrypt key) changes
+  const [searchInput, setSearchInput] = useState({ query, decrypt });
+  if (searchInput.query !== query || searchInput.decrypt !== decrypt) {
+    setSearchInput({ query, decrypt });
     if (query.length < 2) {
       setResults(null);
       setSearching(false);
-      return;
+    } else {
+      setSearching(true);
     }
-    setSearching(true);
+  }
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.length < 2) return;
     debounceRef.current = setTimeout(() => runSearch(query), 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -143,7 +150,7 @@ export default function SearchScreen() {
     <SafeAreaView style={styles.root} edges={['top']}>
       {offline && (
         <View style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>⚠ Can't reach server — results may be incomplete.</Text>
+          <Text style={styles.offlineText}>⚠ Can&apos;t reach server — results may be incomplete.</Text>
         </View>
       )}
       {/* Header */}
@@ -184,7 +191,7 @@ export default function SearchScreen() {
         {/* No results */}
         {!searching && results && !hasResults && (
           <View style={styles.hintWrap}>
-            <Text style={styles.hintText}>No results for "{query}"</Text>
+            <Text style={styles.hintText}>No results for &quot;{query}&quot;</Text>
           </View>
         )}
 

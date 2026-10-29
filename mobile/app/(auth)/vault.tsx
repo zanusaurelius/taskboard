@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  KeyboardAvoidingView, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useVault } from '@/lib/vault-context';

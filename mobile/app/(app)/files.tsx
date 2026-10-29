@@ -10,10 +10,10 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import {
   apiFetch, apiFetchCached, isOfflineResult, isOk,
-  listFiles, listFileFolders, uploadFile, uploadOk, deleteFile,
+  listFileFolders, uploadFile, uploadOk, deleteFile,
   createFileFolder, renameFileFolder, deleteFileFolder,
   moveFile, moveFolderTo, renameFile,
-  fileUrl, fileThumbnailUrl,
+  fileUrl,
   type UploadFileMeta, type FileFolderMeta,
 } from '@/lib/api';
 import { getBaseUrl, getToken } from '@/lib/storage';
@@ -196,11 +196,14 @@ export default function FilesScreen() {
   const preSelectionRef = useRef<Set<string>>(new Set());
   const lastDragRangeRef = useRef<[number, number] | null>(null);
 
-  // Keep lightweight refs in sync during render (no useEffect overhead needed)
-  selectionModeRef.current = selectionMode;
-  selectedFileIdsRef.current = selectedFileIds;
+  // Keep lightweight refs in sync for the PanResponder callbacks
+  useEffect(() => {
+    selectionModeRef.current = selectionMode;
+    selectedFileIdsRef.current = selectedFileIds;
+  }, [selectionMode, selectedFileIds]);
 
-  const dragPanResponder = useRef(
+  // eslint-disable-next-line react-hooks/refs -- PanResponder.create only stores these callbacks; refs are read in gesture handlers, not during render
+  const [dragPanResponder] = useState(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       // Capture the gesture (stealing from FlatList scroll) once the finger
@@ -253,7 +256,7 @@ export default function FilesScreen() {
         lastDragRangeRef.current = null;
       },
     })
-  ).current;
+  );
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -316,10 +319,12 @@ export default function FilesScreen() {
   }, [files, baseUrl, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear selection when folder changes
-  useEffect(() => {
+  const [selectionFolderId, setSelectionFolderId] = useState(currentFolder.id);
+  if (selectionFolderId !== currentFolder.id) {
+    setSelectionFolderId(currentFolder.id);
     setSelectionMode(false);
     setSelectedFileIds(new Set());
-  }, [currentFolder.id]);
+  }
 
   useEffect(() => {
     if (!openFolderId || handledOpenFolderRef.current === openFolderId) return;
@@ -392,20 +397,6 @@ export default function FilesScreen() {
   };
 
   const UNDO_DELAY = 8000;
-
-  const handleDeleteFile = useCallback((file: UploadFileMeta) => {
-    commitPendingDelete();
-    setFiles((prev) => prev.filter((f) => f.id !== file.id));
-    const target: PendingDelete = { type: 'file', item: file };
-    pendingDeleteRef.current = target;
-    setPendingDelete(target);
-    deleteTimerRef.current = setTimeout(() => {
-      pendingDeleteRef.current = null;
-      setPendingDelete(null);
-      deleteTimerRef.current = null;
-      deleteFile(file.id);
-    }, UNDO_DELAY);
-  }, [commitPendingDelete]);
 
   const handleDeleteFolder = useCallback((folder: FileFolderMeta) => {
     commitPendingDelete();
@@ -481,16 +472,11 @@ export default function FilesScreen() {
     }
   }, [baseUrl, token, localUris]);
 
-  const handleRenameFile = (file: UploadFileMeta) => {
-    setRenamingFile(file);
-    setFolderName(file.originalName);
-    setFolderModalVisible(true);
-  };
-
   const openMovePicker = (type: 'file' | 'folder', item: UploadFileMeta | FileFolderMeta) => {
     setMoveTarget({ type, item });
     setMovePickerStack([{ id: null, name: 'Files' }]);
     setMovePickerFolders([]);
+    setMovePickerLoading(true);
     setMoveModalVisible(true);
   };
 
@@ -498,22 +484,19 @@ export default function FilesScreen() {
     setMoveTarget(null);
     setMovePickerStack([{ id: null, name: 'Files' }]);
     setMovePickerFolders([]);
+    setMovePickerLoading(true);
     setMoveModalVisible(true);
   };
 
-  const loadMovePickerFolders = useCallback(async (parentId: string | null) => {
-    setMovePickerLoading(true);
-    const f = await listFileFolders(parentId);
-    setMovePickerFolders(f);
-    setMovePickerLoading(false);
-  }, []);
-
+  // Callers set movePickerLoading(true) when they open the picker or change its folder
   useEffect(() => {
-    if (moveModalVisible) {
-      const current = movePickerStack[movePickerStack.length - 1];
-      loadMovePickerFolders(current.id);
-    }
-  }, [moveModalVisible, movePickerStack, loadMovePickerFolders]);
+    if (!moveModalVisible) return;
+    const current = movePickerStack[movePickerStack.length - 1];
+    listFileFolders(current.id).then((f) => {
+      setMovePickerFolders(f);
+      setMovePickerLoading(false);
+    });
+  }, [moveModalVisible, movePickerStack]);
 
   const handleMove = async (folderId: string | null) => {
     if (selectionMode && selectedFileIds.size > 0) {
@@ -613,9 +596,11 @@ export default function FilesScreen() {
   const allSelected = sortedFiles.length > 0 && selectedFileIds.size === sortedFiles.length;
 
   // Keep drag-select refs in sync with latest computed values
-  sortedFilesRef.current = sortedFiles;
-  cellSizeRef.current = (screenWidth - 4) / 3;
-  if (sortedFolders.length === 0) foldersSectionHeightRef.current = 0;
+  useEffect(() => {
+    sortedFilesRef.current = sortedFiles;
+    cellSizeRef.current = (screenWidth - 4) / 3;
+    if (sortedFolders.length === 0) foldersSectionHeightRef.current = 0;
+  });
 
   // Build combined list data for FlatList (list mode)
   type ListItem =
@@ -698,7 +683,7 @@ export default function FilesScreen() {
 
       {offline && (
         <View style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
+          <Text style={styles.offlineText}>⚠ Can&apos;t reach server — any changes will sync when you reconnect.</Text>
         </View>
       )}
       {fetchError && (
@@ -760,7 +745,6 @@ export default function FilesScreen() {
             }
             // file row
             const f = item.data;
-            const isImg = f.mimeType.startsWith('image/');
             const isSelected = selectedFileIds.has(f.id);
             const dateStr = sortField === 'created' ? formatDate(f.createdAt) : formatDate(f.updatedAt);
             return (
@@ -777,6 +761,7 @@ export default function FilesScreen() {
                     {isSelected && <Text style={styles.checkboxTick}>✓</Text>}
                   </View>
                 ) : localUris[f.id] ? (
+                  // eslint-disable-next-line jsx-a11y/alt-text -- React Native Image, where alt would make it a screen-reader element
                   <Image source={{ uri: localUris[f.id] }} style={styles.listThumb} />
                 ) : (
                   <Text style={styles.listIcon}>{fileEmoji(f.mimeType)}</Text>
@@ -865,6 +850,7 @@ export default function FilesScreen() {
                         enterSelectionMode(file);
                       }}
                     >
+                      {/* eslint-disable-next-line jsx-a11y/alt-text -- React Native Image, where alt would make it a screen-reader element */}
                       <Image
                         source={{ uri: localUris[file.id] }}
                         style={styles.gridThumb}
@@ -922,6 +908,7 @@ export default function FilesScreen() {
             ) : viewerError ? (
               <Text style={styles.viewerError}>{viewerError}</Text>
             ) : viewerUri ? (
+              // eslint-disable-next-line jsx-a11y/alt-text -- React Native Image, where alt would make it a screen-reader element
               <Image source={{ uri: viewerUri }} style={styles.viewerImage} resizeMode="contain" />
             ) : null}
           </View>
@@ -986,7 +973,7 @@ export default function FilesScreen() {
             <View style={styles.moveSheetHeader}>
               <Text style={styles.moveSheetTitle}>Move to…</Text>
               {movePickerStack.length > 1 && (
-                <TouchableOpacity onPress={() => setMovePickerStack((s) => s.slice(0, -1))}>
+                <TouchableOpacity onPress={() => { setMovePickerLoading(true); setMovePickerStack((s) => s.slice(0, -1)); }}>
                   <Text style={styles.moveSheetBack}>← Back</Text>
                 </TouchableOpacity>
               )}
@@ -1005,7 +992,7 @@ export default function FilesScreen() {
                 renderItem={({ item: f }) => (
                   <TouchableOpacity
                     style={styles.moveSheetRow}
-                    onPress={() => setMovePickerStack((s) => [...s, { id: f.id, name: f.name }])}
+                    onPress={() => { setMovePickerLoading(true); setMovePickerStack((s) => [...s, { id: f.id, name: f.name }]); }}
                   >
                     <Text style={styles.moveSheetRowIcon}>📁</Text>
                     <Text style={styles.moveSheetRowName} numberOfLines={1}>{f.name}</Text>

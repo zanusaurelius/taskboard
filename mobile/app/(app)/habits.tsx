@@ -81,7 +81,7 @@ export default function HabitsScreen() {
 
       {h.offline && (
         <View style={s.offlineBanner}>
-          <Text style={s.offlineText}>⚠ Can't reach server. Your W and L taps are saved on this phone and sync when you reconnect.</Text>
+          <Text style={s.offlineText}>⚠ Can&apos;t reach server. Your W and L taps are saved on this phone and sync when you reconnect.</Text>
         </View>
       )}
 

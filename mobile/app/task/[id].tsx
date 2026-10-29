@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform, Modal,
@@ -108,32 +108,46 @@ export default function TaskEditorScreen() {
     setDateModalVisible(false);
   };
 
-  const loadData = useCallback(async () => {
+  // Fetches projects and (for an existing task) the task itself, without touching state
+  const fetchData = useCallback(async () => {
     const [projectsRes, taskRes] = await Promise.all([
       apiFetch<Project[]>('/api/projects'),
       isNew ? Promise.resolve(null) : apiFetch<Task[]>('/api/tasks?includeArchived=true'),
     ]);
 
+    let active: Project[] | null = null;
     if (isOk(projectsRes)) {
-      const active = await Promise.all(
+      active = await Promise.all(
         projectsRes.data.filter((p) => !p.archived).map(async (p) => ({
           ...p,
           name: p.encName ? (await decrypt(p.encName) ?? p.name) : p.name,
         })),
       );
-      setProjects(active);
-      if (isNew && active[0]) setProjectId((prev) => prev || active[0].id);
     }
 
-    if (!isNew && taskRes && isOk(taskRes)) {
-      const found = taskRes.data.find((t) => t.id === id);
-      if (found) {
-        if (found.locked && !isUnlocked) {
-          setLoading(false);
-          setVaultUnlockVisible(true);
-          return;
-        }
-        const decTitle = found.encTitle ? (await decrypt(found.encTitle) ?? found.title) : found.title;
+    if (isNew || !taskRes || !isOk(taskRes)) return { active, outcome: 'none' as const };
+    const found = taskRes.data.find((t) => t.id === id);
+    if (!found) return { active, outcome: 'notFound' as const };
+    if (found.locked && !isUnlocked) return { active, outcome: 'locked' as const };
+    const decTitle = found.encTitle ? (await decrypt(found.encTitle) ?? found.title) : found.title;
+    return { active, outcome: 'loaded' as const, found, decTitle };
+  }, [id, isNew, decrypt, isUnlocked]);
+
+  useEffect(() => {
+    fetchData().then((data) => {
+      const { active } = data;
+      if (active) {
+        setProjects(active);
+        if (isNew && active[0]) setProjectId((prev) => prev || active[0].id);
+      }
+
+      if (data.outcome === 'locked') {
+        setLoading(false);
+        setVaultUnlockVisible(true);
+        return;
+      }
+      if (data.outcome === 'loaded') {
+        const { found, decTitle } = data;
         setTask(found);
         setTitle(decTitle);
         descHtmlRef.current = found.description ?? '';
@@ -143,7 +157,7 @@ export default function TaskEditorScreen() {
         setDueDate(found.dueDate ?? null);
         setProjectId(found.projectId);
         setSensitive(found.sensitive ?? false);
-      } else if (!isNew) {
+      } else if (data.outcome === 'notFound') {
         // Task not in list (may be archived or deleted) — go back rather than show blank editor
         setLoading(false);
         Alert.alert('Not found', 'This task could not be loaded.', [
@@ -151,12 +165,10 @@ export default function TaskEditorScreen() {
         ], { cancelable: false });
         return;
       }
-    }
 
-    setLoading(false);
-  }, [id, isNew, decrypt]);
-
-  useEffect(() => { loadData(); }, [loadData, isUnlocked]);
+      setLoading(false);
+    });
+  }, [fetchData, isNew, router]);
 
   // After vault unlock, re-run a save that was waiting for it
   const savePendingRef = useRef(false);
@@ -297,9 +309,10 @@ export default function TaskEditorScreen() {
       }
     }
     setSaving(false);
-  }, [saving, isNew, id, title, stage, priority, dueDate, projectId, task, sensitive, isUnlocked, encrypt, decrypt, router]);
-  // Keep ref up-to-date so the vault-unlock effect always calls the latest save
-  saveRef.current = save;
+  }, [saving, isNew, id, title, stage, priority, dueDate, projectId, task, sensitive, isUnlocked, encrypt, decrypt, router, fromGoalId]);
+  // Keep ref up-to-date so the vault-unlock effect always calls the latest save.
+  // A layout effect runs before that (earlier-declared) passive effect in the same commit.
+  useLayoutEffect(() => { saveRef.current = save; }, [save]);
 
   const handleDuplicate = async () => {
     if (!task) return;
@@ -493,7 +506,7 @@ export default function TaskEditorScreen() {
           )}
           <RichEditor
             ref={editorRef}
-            initialContent={descHtmlRef.current}
+            getInitialContent={() => descHtmlRef.current}
             onChange={(html) => { descHtmlRef.current = html; setDirty(true); }}
             onFocus={() => setEditorFocused(true)}
             onBlur={() => setEditorFocused(false)}

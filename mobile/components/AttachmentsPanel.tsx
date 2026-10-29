@@ -77,6 +77,16 @@ interface StackEntry {
   name: string;
 }
 
+async function fetchPickerEntries(folderId: string | null): Promise<PickerEntry[]> {
+  const [folders, files] = await Promise.all([
+    listFileFolders(folderId),
+    listFiles(folderId),
+  ]);
+  const folderEntries: PickerEntry[] = folders.map((f) => ({ type: 'folder', item: f }));
+  const fileEntries: PickerEntry[] = files.map((f) => ({ type: 'file', item: f }));
+  return [...folderEntries, ...fileEntries];
+}
+
 interface FilePickerProps {
   visible: boolean;
   noteId?: string;
@@ -95,33 +105,38 @@ function FilePicker({ visible, noteId, taskId, linkedUploadIds, onPicked, onClos
 
   const currentFolder = stack[stack.length - 1];
 
-  const load = useCallback(async (folderId: string | null) => {
-    setLoading(true);
-    const [folders, files] = await Promise.all([
-      listFileFolders(folderId),
-      listFiles(folderId),
-    ]);
-    const folderEntries: PickerEntry[] = folders.map((f) => ({ type: 'folder', item: f }));
-    const fileEntries: PickerEntry[] = files.map((f) => ({ type: 'file', item: f }));
-    setEntries([...folderEntries, ...fileEntries]);
-    setLoading(false);
+  // Callers set loading to true before calling this
+  const load = useCallback((folderId: string | null) => {
+    return fetchPickerEntries(folderId).then((next) => {
+      setEntries(next);
+      setLoading(false);
+    });
   }, []);
 
-  useEffect(() => {
+  // Reset to the root folder each time the picker opens
+  const [wasVisible, setWasVisible] = useState(false);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
     if (visible) {
       setStack([{ id: null, name: 'Files' }]);
-      load(null);
+      setLoading(true);
     }
+  }
+
+  useEffect(() => {
+    if (visible) load(null);
   }, [visible, load]);
 
   const handleFolderPress = (folder: FileFolderMeta) => {
     setStack((prev) => [...prev, { id: folder.id, name: folder.name }]);
+    setLoading(true);
     load(folder.id);
   };
 
   const handleBack = () => {
     const newStack = stack.slice(0, -1);
     setStack(newStack);
+    setLoading(true);
     load(newStack[newStack.length - 1].id);
   };
 
@@ -296,9 +311,10 @@ export default function AttachmentsPanel({ noteId, taskId }: Props) {
   const [viewerError, setViewerError] = useState<string | null>(null);
   const closeViewer = () => { setViewerAtt(null); setViewerUri(null); setViewerError(null); };
 
-  const reload = useCallback(async () => {
-    const data = await listAttachments(noteId, taskId);
-    setAttachments(data);
+  const reload = useCallback(() => {
+    return listAttachments(noteId, taskId).then((data) => {
+      setAttachments(data);
+    });
   }, [noteId, taskId]);
 
   useEffect(() => { reload(); }, [reload]);
@@ -399,6 +415,7 @@ export default function AttachmentsPanel({ noteId, taskId }: Props) {
       {attachments.map((att) => (
         <View key={att.id} style={styles.row}>
           {localUris[att.id]
+            // eslint-disable-next-line jsx-a11y/alt-text -- React Native Image, where alt would make it a screen-reader element
             ? <Image source={{ uri: localUris[att.id] }} style={styles.thumb} />
             : <Text style={styles.icon}>{fileIcon(att.mimeType)}</Text>}
           <TouchableOpacity style={styles.nameWrap} onPress={() => handleOpen(att)} activeOpacity={0.7}>
@@ -443,6 +460,7 @@ export default function AttachmentsPanel({ noteId, taskId }: Props) {
             ) : viewerError ? (
               <Text style={attViewerStyles.error}>{viewerError}</Text>
             ) : viewerUri ? (
+              // eslint-disable-next-line jsx-a11y/alt-text -- React Native Image, where alt would make it a screen-reader element
               <Image source={{ uri: viewerUri }} style={attViewerStyles.image} resizeMode="contain" />
             ) : null}
           </View>

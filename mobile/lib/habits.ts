@@ -147,36 +147,41 @@ export function useHabits() {
     }));
   }, [masterKey, decrypt]);
 
-  const show = useCallback(async (summary: Summary, seq: number) => {
-    const items = await build(summary);
-    if (seq !== loadSeq.current) return;
-    summaryRef.current = summary;
-    setHabits(items);
-    setWeekStartsOn(summary.weekStartsOn === 1 ? 1 : 0);
+  // Promise chains rather than async/await so the mount effect below never sets state
+  // synchronously (react-hooks/set-state-in-effect).
+  const show = useCallback((summary: Summary, seq: number) => {
+    return build(summary).then((items) => {
+      if (seq !== loadSeq.current) return;
+      summaryRef.current = summary;
+      setHabits(items);
+      setWeekStartsOn(summary.weekStartsOn === 1 ? 1 : 0);
+    });
   }, [build]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(() => {
     const seq = ++loadSeq.current;
     // Paint from the cache first so the screen is never empty offline.
-    if (!summaryRef.current) {
-      const cached = await getCached<Summary>(CACHE_KEY);
-      if (cached && seq === loadSeq.current) {
-        await show(cached.data, seq);
-        setLoading(false);
-      }
-    } else {
-      await show(summaryRef.current, seq);
-    }
-    const res = await apiFetch<Summary>('/api/habits/summary');
-    if (seq !== loadSeq.current) return;
-    if (isOk(res)) {
-      await setCached(CACHE_KEY, res.data);
-      await show(res.data, seq);
-      setOffline(false);
-    } else {
-      setOffline((res as { status?: number }).status === 0);
-    }
-    if (seq === loadSeq.current) setLoading(false);
+    const painted = summaryRef.current
+      ? show(summaryRef.current, seq)
+      : getCached<Summary>(CACHE_KEY).then(async (cached) => {
+        if (cached && seq === loadSeq.current) {
+          await show(cached.data, seq);
+          setLoading(false);
+        }
+      });
+    return painted
+      .then(() => apiFetch<Summary>('/api/habits/summary'))
+      .then(async (res) => {
+        if (seq !== loadSeq.current) return;
+        if (isOk(res)) {
+          await setCached(CACHE_KEY, res.data);
+          await show(res.data, seq);
+          setOffline(false);
+        } else {
+          setOffline((res as { status?: number }).status === 0);
+        }
+        if (seq === loadSeq.current) setLoading(false);
+      });
   }, [show]);
 
   useEffect(() => { load(); }, [load]);

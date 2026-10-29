@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, Modal, FlatList, Alert, Pressable, AppState,
+  View, Text, TextInput, TouchableOpacity,
+  StyleSheet, ActivityIndicator, Modal, FlatList, Alert, AppState,
 } from 'react-native';
 import { NestableDraggableFlatList, ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
 import * as SecureStore from 'expo-secure-store';
@@ -105,7 +105,6 @@ export default function DailyFocusSection() {
   });
 
   useEffect(() => {
-    setToday(todayStr());
     const id = setInterval(() => setToday(todayStr()), 60_000);
     // Timers stop in the background; catch up as soon as the app is opened again.
     const sub = AppState.addEventListener('change', (state) => { if (state === 'active') setToday(todayStr()); });
@@ -114,9 +113,9 @@ export default function DailyFocusSection() {
 
   useEffect(() => { getGoalLimit().then(setGoalLimitState); }, []);
 
-  const fetchAll = useCallback(async () => {
-    const gen = ++fetchGenRef.current;
-    try {
+  // Fetches and decrypts everything for the current day without touching state.
+  // Returns null when a newer fetch has started in the meantime.
+  const loadFocusData = useCallback(async (gen: number) => {
     const [goalsRes, reflRes, prevReflRes] = await Promise.all([
       apiFetchCached<DailyGoal[]>(`/api/daily-goals?date=${viewDate}`),
       apiFetchCached<{ note?: string; encNote?: string; gratitude?: string; encGratitude?: string }>(`/api/daily-reflections?date=${today}`),
@@ -124,67 +123,93 @@ export default function DailyFocusSection() {
     ]);
 
     // Discard results if a newer navigation has already started a fetch
-    if (gen !== fetchGenRef.current) return;
+    if (gen !== fetchGenRef.current) return null;
 
+    let goals: DailyGoal[] = [];
     if (isOk(goalsRes)) {
       const gs = await vaultDecryptGoals(goalsRes.data);
-      setGoals([...gs.filter(g => !g.completed), ...gs.filter(g => g.completed)]);
-    } else setGoals([]);
+      goals = [...gs.filter(g => !g.completed), ...gs.filter(g => g.completed)];
+    }
 
-
+    // null = keep existing UI state on API error (may have unsaved user input)
+    let reflection: { note: string; grat: string } | null = null;
     if (isOk(reflRes)) {
       if (reflRes.data) {
         const r = reflRes.data;
         const note = r.encNote && masterKey ? ((await decrypt(JSON.parse(r.encNote))) ?? r.note ?? '') : (r.note ?? '');
         const grat = r.encGratitude && masterKey ? ((await decrypt(JSON.parse(r.encGratitude))) ?? r.gratitude ?? '') : (r.gratitude ?? '');
-        setReflection(note);
-        setGratitude(grat);
+        reflection = { note, grat };
       } else {
         // No reflection entry for today yet
-        setReflection('');
-        setGratitude('');
+        reflection = { note: '', grat: '' };
       }
     }
-    // On API error, keep existing UI state (may have unsaved user input)
 
+    let prevReflection: string | null = null;
     if (isOk(prevReflRes) && prevReflRes.data) {
       const r = prevReflRes.data;
       const note = r.encNote && masterKey ? ((await decrypt(JSON.parse(r.encNote))) ?? r.note ?? null) : (r.note ?? null);
-      setPrevReflection(note || null);
-    } else {
-      setPrevReflection(null);
+      prevReflection = note || null;
     }
 
+    let carryOver: DailyGoal[] = [];
     if (isToday) {
       const carryRes = await apiFetchCached<DailyGoal[]>(`/api/daily-goals?carryover=true&today=${today}`);
-      if (gen !== fetchGenRef.current) return;
-      if (isOk(carryRes)) setCarryOver(await vaultDecryptGoals(carryRes.data));
-      else setCarryOver([]);
-    } else {
-      setCarryOver([]);
+      if (gen !== fetchGenRef.current) return null;
+      if (isOk(carryRes)) carryOver = await vaultDecryptGoals(carryRes.data);
     }
 
     // If all primary fetches returned network errors (status 0), flag as offline
-    const allFailed = [goalsRes, reflRes].every(isOfflineResult);
-    setOffline(allFailed);
-
-    } catch {
-      if (gen === fetchGenRef.current) setOffline(true);
-    } finally {
-      if (gen === fetchGenRef.current) setLoading(false);
-    }
+    const offline = [goalsRes, reflRes].every(isOfflineResult);
+    return { goals, reflection, prevReflection, carryOver, offline };
   }, [viewDate, today, isToday, masterKey, vaultDecryptGoals, decrypt]);
 
-  useEffect(() => {
+  const fetchAll = useCallback(() => {
+    const gen = ++fetchGenRef.current;
+    return loadFocusData(gen).then(
+      (data) => {
+        if (gen !== fetchGenRef.current) return;
+        if (data) {
+          setGoals(data.goals);
+          if (data.reflection) {
+            setReflection(data.reflection.note);
+            setGratitude(data.reflection.grat);
+          }
+          setPrevReflection(data.prevReflection);
+          setCarryOver(data.carryOver);
+          setOffline(data.offline);
+        }
+        setLoading(false);
+      },
+      () => {
+        if (gen !== fetchGenRef.current) return;
+        setOffline(true);
+        setLoading(false);
+      },
+    );
+  }, [loadFocusData]);
+
+  // Show the spinner whenever an input to fetchAll changes
+  const [fetchInputs, setFetchInputs] = useState({ viewDate, today, isToday, masterKey, decrypt });
+  if (
+    fetchInputs.viewDate !== viewDate || fetchInputs.today !== today || fetchInputs.isToday !== isToday ||
+    fetchInputs.masterKey !== masterKey || fetchInputs.decrypt !== decrypt
+  ) {
+    setFetchInputs({ viewDate, today, isToday, masterKey, decrypt });
     setLoading(true);
+  }
+
+  useEffect(() => {
     fetchAll().catch(() => setLoading(false));
   }, [fetchAll]);
 
-  useEffect(() => {
+  const [prevDayOffset, setPrevDayOffset] = useState(dayOffset);
+  if (prevDayOffset !== dayOffset) {
+    setPrevDayOffset(dayOffset);
     setAddingGoalIdx(null);
     setGoalInput('');
     setExtraSlots(0);
-  }, [dayOffset]);
+  }
 
   // ── Habits ──────────────────────────────────────────────────────────────────
 
@@ -428,7 +453,7 @@ export default function DailyFocusSection() {
             <>
               {offline && (
                 <View style={s.offlineBanner}>
-                  <Text style={s.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
+                  <Text style={s.offlineText}>⚠ Can&apos;t reach server — any changes will sync when you reconnect.</Text>
                 </View>
               )}
               {/* Previous day's reflection banner */}
@@ -678,7 +703,7 @@ export default function DailyFocusSection() {
 
                   <View style={s.section}>
                     <View style={s.reflSectionHeader}>
-                      <Text style={s.reflSectionLabel}>ONE THING I'M{'\n'}GRATEFUL FOR</Text>
+                      <Text style={s.reflSectionLabel}>ONE THING I&apos;M{'\n'}GRATEFUL FOR</Text>
                     </View>
                     <TextInput
                       style={s.reflectionInput}

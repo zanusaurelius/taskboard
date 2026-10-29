@@ -21,12 +21,18 @@ export default function VaultUnlockModal({ visible, onSuccess, onCancel }: Props
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
 
-  useEffect(() => {
+  // Clear the form each time the modal opens
+  const [wasVisible, setWasVisible] = useState(false);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
     if (visible) {
       setPassword('');
       setError(null);
-      setTimeout(() => inputRef.current?.focus(), 100);
     }
+  }
+
+  useEffect(() => {
+    if (visible) setTimeout(() => inputRef.current?.focus(), 100);
   }, [visible]);
 
   const handleUnlock = async () => {

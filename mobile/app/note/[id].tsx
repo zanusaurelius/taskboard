@@ -46,7 +46,9 @@ export default function NoteEditorScreen() {
   const [revealPromptLoading, setRevealPromptLoading] = useState(false);
   const pendingRevealActionRef = useRef<(() => void | Promise<void>) | null>(null);
   const effectiveRevealTokenRef = useRef<string | null>(null);
-  effectiveRevealTokenRef.current = (revealToken as string | undefined) ?? localRevealToken;
+  useEffect(() => {
+    effectiveRevealTokenRef.current = (revealToken as string | undefined) ?? localRevealToken;
+  }, [revealToken, localRevealToken]);
 
   const titleRef = useRef<TextInput>(null);
   const editorRef = useRef<RichEditorRef>(null);
@@ -67,27 +69,34 @@ export default function NoteEditorScreen() {
     flashTimer.current = setTimeout(() => setSavedFlash(false), 2000);
   }, []);
 
-  const load = useCallback(async () => {
-    if (isNew) return;
+  // Fetches and decrypts the note; returns null if it couldn't be loaded
+  const fetchNote = useCallback(async () => {
     const headers: Record<string, string> = revealToken ? { 'x-reveal-token': revealToken } : {};
     const result = await apiFetch<Note>(`/api/notes/${id}`, { headers });
-    if (!isOk(result)) { setLoading(false); return; }
+    if (!isOk(result)) return null;
 
     const n = result.data;
     const _title = n.encTitle ? (await decrypt(n.encTitle) ?? n.title) : n.title;
     const rawHtml = n.encContent ? (await decrypt(n.encContent) ?? n.content) : n.content;
+    return { n, _title, rawHtml };
+  }, [id, decrypt, revealToken]);
 
-    setNote({ ...n, _title });
-    setTitle(_title);
-    htmlRef.current = rawHtml;
-    editorRef.current?.setContent(rawHtml);
-    setStarred(n.starred);
-    setPinned(n.pinned);
-    setFolderId(n.folderId ?? null);
-    setLoading(false);
-  }, [id, isNew, decrypt, revealToken]);
-
-  useEffect(() => { load(); }, [load, isUnlocked]);
+  useEffect(() => {
+    if (isNew) return;
+    fetchNote().then((loaded) => {
+      if (loaded) {
+        const { n, _title, rawHtml } = loaded;
+        setNote({ ...n, _title });
+        setTitle(_title);
+        htmlRef.current = rawHtml;
+        editorRef.current?.setContent(rawHtml);
+        setStarred(n.starred);
+        setPinned(n.pinned);
+        setFolderId(n.folderId ?? null);
+      }
+      setLoading(false);
+    });
+  }, [fetchNote, isNew, isUnlocked]);
 
   useEffect(() => {
     apiFetch<Folder[]>('/api/folders').then((r) => { if (isOk(r)) setFolders(r.data); });
@@ -516,7 +525,7 @@ export default function NoteEditorScreen() {
           {/* Rich text editor — renders bold/italic/bullets as actual formatted text */}
           <RichEditor
             ref={editorRef}
-            initialContent={htmlRef.current}
+            getInitialContent={() => htmlRef.current}
             onChange={handleEditorChange}
             onFocus={handleEditorFocus}
             onBlur={handleEditorBlur}

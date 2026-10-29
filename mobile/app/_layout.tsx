@@ -12,6 +12,26 @@ import { syncAllImageFiles } from '@/lib/background-sync';
 import { ThemeProvider, useThemeColors } from '@/lib/theme-context';
 import ShareHandlerModal, { type SharedFile } from '@/components/ShareHandlerModal';
 
+async function readInitialShare(): Promise<SharedFile[] | null> {
+  try {
+    const json: string | null = await NativeModules.TaskboardShare.getInitialShare();
+    if (json) {
+      const parsed = JSON.parse(json) as SharedFile[];
+      if (parsed.length > 0) return parsed;
+    }
+  } catch { /* not Android or module unavailable */ }
+  return null;
+}
+
+async function resolveAuth(): Promise<{ auth: 'authed' | 'unauthed'; dbLocked: boolean }> {
+  const [token, baseUrl] = await Promise.all([getToken(), getBaseUrl()]);
+  if (!token || !baseUrl) return { auth: 'unauthed', dbLocked: false };
+  // Check if DB is locked — if so, show unlock prompt before proceeding
+  const dbStatus = await checkDbStatus(baseUrl);
+  // auth is fine when the DB is locked, it just needs a DB unlock
+  return { auth: 'authed', dbLocked: dbStatus === 'locked' };
+}
+
 // Inner component has access to VaultProvider context
 function RootNavigator() {
   const router = useRouter();
@@ -25,28 +45,18 @@ function RootNavigator() {
   const [dbUnlocking, setDbUnlocking] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
 
-  const checkForShare = async () => {
+  const checkForShare = () => {
     if (!NativeModules.TaskboardShare) return;
-    try {
-      const json: string | null = await NativeModules.TaskboardShare.getInitialShare();
-      if (json) {
-        const parsed = JSON.parse(json) as SharedFile[];
-        if (parsed.length > 0) setPendingShare(parsed);
-      }
-    } catch { /* not Android or module unavailable */ }
+    readInitialShare().then((parsed) => {
+      if (parsed) setPendingShare(parsed);
+    });
   };
 
-  const checkAuth = async () => {
-    const [token, baseUrl] = await Promise.all([getToken(), getBaseUrl()]);
-    if (!token || !baseUrl) { setAuthState('unauthed'); return; }
-    // Check if DB is locked — if so, show unlock prompt before proceeding
-    const dbStatus = await checkDbStatus(baseUrl);
-    if (dbStatus === 'locked') {
-      setDbLocked(true);
-      setAuthState('authed'); // auth is fine, just need DB unlock
-      return;
-    }
-    setAuthState('authed');
+  const checkAuth = () => {
+    resolveAuth().then(({ auth, dbLocked: locked }) => {
+      if (locked) setDbLocked(true);
+      setAuthState(auth);
+    });
   };
 
   const handleDbUnlock = async () => {
@@ -84,7 +94,7 @@ function RootNavigator() {
   // Check for pending share when authenticated
   useEffect(() => {
     if (authState === 'authed') checkForShare();
-  }, [authState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authState]);
 
   // Flush offline queue on auth and whenever connectivity is restored
   useEffect(() => {
@@ -119,7 +129,7 @@ function RootNavigator() {
     if (inAuth) {
       router.replace('/(app)/board');
     }
-  }, [authState, segments]);
+  }, [authState, segments, router]);
 
   if (dbLocked) {
     return (

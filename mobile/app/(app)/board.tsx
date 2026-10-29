@@ -2,12 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput,
   StyleSheet, ActivityIndicator, ScrollView, RefreshControl,
-  Modal, Platform, Alert, DeviceEventEmitter,
+  Modal, Alert, DeviceEventEmitter,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import DraggableFlatList, {
   NestableScrollContainer,
-  NestableDraggableFlatList,
   ScaleDecorator,
   type RenderItemParams,
 } from 'react-native-draggable-flatlist';
@@ -109,7 +108,7 @@ export default function BoardScreen() {
   // When vault auto-locks, restore privacy mode
   useEffect(() => {
     if (!isUnlocked) setPrivacyMode(true);
-  }, [isUnlocked]);
+  }, [isUnlocked, setPrivacyMode]);
 
   const handlePrivacyChip = () => {
     if (privacyMode) {
@@ -163,7 +162,7 @@ export default function BoardScreen() {
 
   useFocusEffect(useCallback(() => {
     fetchAndDecrypt();
-  }, [fetchAndDecrypt, isUnlocked]));
+  }, [fetchAndDecrypt]));
 
   // Run auto-archive on mount if configured
   useEffect(() => {
@@ -385,7 +384,7 @@ export default function BoardScreen() {
     <SafeAreaView style={styles.root} edges={['top']}>
       {offline && (
         <View style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
+          <Text style={styles.offlineText}>⚠ Can&apos;t reach server — any changes will sync when you reconnect.</Text>
         </View>
       )}
       {fetchError && (
@@ -410,7 +409,7 @@ export default function BoardScreen() {
         {undoTask && (
           <View style={styles.undoBanner}>
             <Text style={styles.undoBannerText} numberOfLines={1}>
-              Archived "{undoTask.title}"
+              Archived &quot;{undoTask.title}&quot;
             </Text>
             <TouchableOpacity onPress={handleUndo} style={styles.undoBtn}>
               <Text style={styles.undoBtnText}>Undo</Text>

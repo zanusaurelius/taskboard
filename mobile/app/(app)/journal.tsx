@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput,
   StyleSheet, ActivityIndicator, ScrollView, RefreshControl,
-  KeyboardAvoidingView, Platform, Alert,
+  KeyboardAvoidingView, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -33,7 +33,7 @@ interface DecryptedReflection extends DailyReflection {
 }
 
 export default function JournalScreen() {
-  const { encrypt, decrypt, isUnlocked } = useVault();
+  const { encrypt, decrypt } = useVault();
   const colors = useThemeColors();
   const styles = makeStyles(colors);
   const { date: paramDate } = useLocalSearchParams<{ date?: string }>();
@@ -46,9 +46,11 @@ export default function JournalScreen() {
   const [selectedDate, setSelectedDate] = useState(paramDate ?? today);
 
   // Update selected date if navigated to with a different date param (e.g. from search results)
-  useEffect(() => {
+  const [prevParamDate, setPrevParamDate] = useState(paramDate);
+  if (paramDate !== prevParamDate) {
+    setPrevParamDate(paramDate);
     if (paramDate) setSelectedDate(paramDate);
-  }, [paramDate]);
+  }
   const [search, setSearch] = useState('');
   const [focusField, setFocusField] = useState<'note' | 'gratitude' | 'body' | null>(null);
 
@@ -94,18 +96,20 @@ export default function JournalScreen() {
 
   useFocusEffect(useCallback(() => {
     fetchAndDecrypt();
-  }, [fetchAndDecrypt, isUnlocked]));
+  }, [fetchAndDecrypt]));
 
   // Load editing fields when the selected date changes or entries first arrive from fetch.
   // No ref guard here — save() only updates entries with the user's own current input,
   // so re-running on entries change is always safe (it either confirms what was typed or
   // loads freshly fetched server data).
-  useEffect(() => {
+  const [fieldsSource, setFieldsSource] = useState({ date: selectedDate, entries });
+  if (fieldsSource.date !== selectedDate || fieldsSource.entries !== entries) {
+    setFieldsSource({ date: selectedDate, entries });
     const entry = entries.find((e) => e.date === selectedDate);
     setNote(entry?._note ?? '');
     setGratitude(entry?._gratitude ?? '');
     setBody(entry?._body ?? '');
-  }, [selectedDate, entries]);
+  }
 
   const flashSaved = useCallback(() => {
     setSaved(true);
@@ -169,7 +173,7 @@ export default function JournalScreen() {
       await enqueue('PUT', '/api/daily-reflections', payload);
       flashSaved();
     }
-  }, [selectedDate, encrypt, flashSaved, entries]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedDate, encrypt, flashSaved, entries]);
 
   const handleNote = (v: string) => {
     setNote(v);
@@ -294,7 +298,7 @@ export default function JournalScreen() {
     <SafeAreaView style={styles.root} edges={['top']}>
       {offline && (
         <View style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>⚠ Can't reach server — any changes will sync when you reconnect.</Text>
+          <Text style={styles.offlineText}>⚠ Can&apos;t reach server — any changes will sync when you reconnect.</Text>
         </View>
       )}
       <ScreenHeader
@@ -391,7 +395,7 @@ export default function JournalScreen() {
           />
 
           <View style={styles.fieldLabelRow}>
-            <Text style={styles.fieldLabel}>One thing I'm grateful for</Text>
+            <Text style={styles.fieldLabel}>One thing I&apos;m grateful for</Text>
             <TouchableOpacity onPress={() => setFocusField('gratitude')}>
               <Text style={styles.viewAllBtn}>View all →</Text>
             </TouchableOpacity>
