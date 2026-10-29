@@ -9,6 +9,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Button from "@mui/material/Button";
 import Autocomplete from "@mui/material/Autocomplete";
 import Collapse from "@mui/material/Collapse";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import AddIcon from "@mui/icons-material/Add";
@@ -41,10 +42,13 @@ import {
   useSortable,
   arrayMove,
   verticalListSortingStrategy,
-  rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { DailyGoal, Habit, Task } from "@/lib/types";
+import { DailyGoal, Task } from "@/lib/types";
+import { useHabits } from "@/lib/useHabits";
+import { KIND_COPY } from "@/lib/habit-kind";
+import type { HabitKind } from "@/lib/habit-stats";
+import { SortableHabitRows, groupLabelSx } from "./HabitParts";
 import { useVault } from "@/lib/vault-context";
 
 const localDateStr = (d: Date) =>
@@ -87,21 +91,14 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     }));
   };
 
-  const vaultDecryptHabits = async (habits: Habit[]): Promise<Habit[]> => {
-    if (!vault.masterKey) return habits;
-    return Promise.all(habits.map(async (h) => {
-      if (!h.encText) return h;
-      const dec = await vault.decrypt(JSON.parse(h.encText));
-      return { ...h, text: dec ?? h.text };
-    }));
-  };
-
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("dailyFocusCollapsed") === "true";
   });
   const [goals, setGoals] = useState<DailyGoal[]>([]);
-  const [habits, setHabits] = useState<Habit[]>([]);
+  const habitsApi = useHabits();
+  const isNarrow = useMediaQuery("(max-width: 899px)");
+  const habits = habitsApi.habits.filter((h) => !h.archivedAt);
   const [carryOver, setCarryOver] = useState<DailyGoal[]>([]);
   const [goalLimit, setGoalLimit] = useState(getGoalLimit);
   const [todayReflection, setTodayReflection] = useState("");
@@ -118,8 +115,6 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   const [goalInput, setGoalInput] = useState("");
   const [goalTask, setGoalTask] = useState<Task | null>(null);
 
-  const [addingHabit, setAddingHabit] = useState(false);
-  const [habitInput, setHabitInput] = useState("");
 
   const [today, setToday] = useState<string>(todayStr);
   useEffect(() => {
@@ -137,7 +132,6 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   const isToday = dayOffset === 0;
   const MAX_FUTURE = 7;
   const goalInputRef = useRef<HTMLInputElement>(null);
-  const habitInputRef = useRef<HTMLInputElement>(null);
 
   const fetchGoals = useCallback(async () => {
     const viewRes = await fetch(`/api/daily-goals?date=${viewDate}`);
@@ -153,15 +147,6 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewDate, isToday, vault.masterKey]);
-
-  const fetchHabits = useCallback(async () => {
-    const res = await fetch(`/api/habits?date=${today}`);
-    if (res.ok) {
-      const raw: Habit[] = await res.json();
-      setHabits(await vaultDecryptHabits(raw));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [today, vault.masterKey]);
 
   const fetchReflections = useCallback(async () => {
     const prevDay = addDays(viewDate, -1);
@@ -199,9 +184,8 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
 
   useEffect(() => {
     fetchGoals();
-    fetchHabits();
     fetchReflections();
-  }, [fetchGoals, fetchHabits, fetchReflections]);
+  }, [fetchGoals, fetchReflections]);
 
   // Listen for external refresh trigger (e.g. from TaskCard pin button)
   useEffect(() => {
@@ -213,10 +197,6 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   useEffect(() => {
     if (addingGoalSlot !== null) goalInputRef.current?.focus();
   }, [addingGoalSlot]);
-
-  useEffect(() => {
-    if (addingHabit) habitInputRef.current?.focus();
-  }, [addingHabit]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {
@@ -316,25 +296,6 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     );
   };
 
-  const handleHabitDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = displayHabits.findIndex((h) => h.id === active.id);
-    const newIndex = displayHabits.findIndex((h) => h.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-    const reordered = arrayMove(displayHabits, oldIndex, newIndex);
-    setHabits(reordered);
-    await Promise.all(
-      reordered.map((h, i) =>
-        fetch(`/api/habits/${h.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ position: i }),
-        })
-      )
-    );
-  };
-
   const handleAddAnother = () => {
     const newSlotIndex = totalSlots;
     setExtraSlots((e) => e + 1);
@@ -368,45 +329,6 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     }
     setCarryOver([]);
     await fetchGoals();
-  };
-
-  const handleAddHabit = async () => {
-    if (!habitInput.trim()) return;
-    const encFields = await vaultEncrypt(habitInput.trim());
-    const res = await fetch("/api/habits", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(encFields),
-    });
-    if (res.ok) {
-      const raw = await res.json();
-      const habit = { ...raw, text: habitInput.trim() };
-      setHabits((prev) => [...prev, habit]);
-      setHabitInput("");
-      setAddingHabit(false);
-    }
-  };
-
-  const handleToggleHabit = async (habit: Habit) => {
-    const flip = (v: boolean) =>
-      setHabits((prev) => prev.map((h) => h.id === habit.id ? { ...h, completedToday: v } : h));
-    flip(!habit.completedToday); // optimistic
-    if (habit.completedToday) {
-      const res = await fetch(`/api/habits/${habit.id}/complete?date=${today}`, { method: "DELETE" });
-      if (!res.ok) flip(true); // rollback
-    } else {
-      const res = await fetch(`/api/habits/${habit.id}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: today }),
-      });
-      if (!res.ok) flip(false); // rollback
-    }
-  };
-
-  const handleDeleteHabit = async (id: string) => {
-    const res = await fetch(`/api/habits/${id}`, { method: "DELETE" });
-    if (res.ok) setHabits((prev) => prev.filter((h) => h.id !== id));
   };
 
   const flashSaved = useCallback(() => {
@@ -480,11 +402,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   const slots = Array.from({ length: totalSlots }, (_, i) => i);
   const allSlotsFilled = goals.length >= totalSlots;
   const completedGoals = goals.filter((g) => g.completed).length;
-  const completedHabits = habits.filter((h) => h.completedToday).length;
-  const displayHabits = [...habits].sort((a, b) => {
-    if (a.completedToday === b.completedToday) return 0;
-    return a.completedToday ? 1 : -1;
-  });
+  const loggedHabits = habits.filter((h) => h.outcomes[habitsApi.today]).length;
 
   return (
     <Box sx={{
@@ -572,11 +490,11 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               )}
               {habits.length > 0 && (
                 <Box sx={{
-                  backgroundColor: completedHabits === habits.length ? "#dcfce7" : "var(--surface-2)",
+                  backgroundColor: loggedHabits === habits.length ? "#dcfce7" : "var(--surface-2)",
                   borderRadius: 99, px: 1.25, py: 0.2,
                 }}>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: completedHabits === habits.length ? "#16a34a" : "var(--tx-3)" }}>
-                    {completedHabits}/{habits.length} habits
+                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: loggedHabits === habits.length ? "#16a34a" : "var(--tx-3)" }}>
+                    {loggedHabits}/{habits.length} habits
                   </Typography>
                 </Box>
               )}
@@ -619,73 +537,34 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
             </Box>
           )}
 
-          {/* ── Habits ── (today only) */}
+          {/* ── Habits ── (today only; past days are logged on the Habits page) */}
           {isToday && <Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.25 }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.75 }}>
               <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 1.1 }}>
                 Daily Habits
               </Typography>
+              <Button size="small" endIcon={<ArrowForwardIcon sx={{ fontSize: "14px !important" }} />}
+                onClick={() => window.dispatchEvent(new CustomEvent("app:navigate", { detail: "habits" }))}
+                sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 600, color: "#6366f1", minWidth: 0, py: 0 }}>
+                {habits.length === 0 ? "Add a habit" : "Habits"}
+              </Button>
             </Box>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleHabitDragEnd}>
-              <SortableContext items={displayHabits.map((h) => h.id)} strategy={rectSortingStrategy}>
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }}>
-                  {displayHabits.map((habit) => (
-                    <HabitChip
-                      key={habit.id}
-                      habit={habit}
-                      onToggle={() => handleToggleHabit(habit)}
-                      onDelete={() => handleDeleteHabit(habit.id)}
-                    />
-                  ))}
-              {addingHabit ? (
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                  <TextField
-                    inputRef={habitInputRef}
-                    size="small"
-                    placeholder="e.g. Meditate 10 mins"
-                    value={habitInput}
-                    onChange={(e) => setHabitInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleAddHabit();
-                      if (e.key === "Escape") { setAddingHabit(false); setHabitInput(""); }
-                    }}
-                    sx={{
-                      width: 220,
-                      "& .MuiOutlinedInput-root": {
-                        borderRadius: 2, fontSize: "0.85rem",
-                        "& fieldset": { borderColor: "#6366f1" },
-                      },
-                      "& input": { py: "6px" },
-                    }}
-                  />
-                  <Button size="small" variant="contained" onClick={handleAddHabit}
-                    disabled={!habitInput.trim()}
-                    sx={{ textTransform: "none", fontSize: "0.8rem", fontWeight: 600, borderRadius: 1.5, py: 0.6, px: 1.5, minWidth: 0,
-                      background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-                      "&:hover": { background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)" } }}>
-                    Add
-                  </Button>
-                  <Button size="small" onClick={() => { setAddingHabit(false); setHabitInput(""); }}
-                    sx={{ textTransform: "none", fontSize: "0.8rem", color: "var(--tx-4)", minWidth: 0 }}>
-                    Cancel
-                  </Button>
+            {(["GOOD", "BAD"] as HabitKind[]).map((kind) => {
+              const items = habits.filter((h) => h.kind === kind);
+              if (items.length === 0) return null;
+              return (
+                <Box key={kind} sx={{ mb: 1 }}>
+                  <Typography sx={{ ...groupLabelSx, mb: 0.25 }}>{KIND_COPY[kind].group}</Typography>
+                  <Box sx={{ mx: -1.5 }}>
+                    <SortableHabitRows items={items} today={habitsApi.today} weekStartsOn={habitsApi.weekStartsOn}
+                      narrow={isNarrow} labelFirst={kind === "GOOD" || !habits.some((h) => h.kind === "GOOD")}
+                      onOutcome={habitsApi.setOutcome}
+                      onOpen={() => window.dispatchEvent(new CustomEvent("app:navigate", { detail: "habits" }))}
+                      onReorder={(ids) => habitsApi.reorder(kind, ids)} />
+                  </Box>
                 </Box>
-              ) : (
-                <Tooltip title="Add a daily habit" placement="top">
-                  <IconButton size="small" onClick={() => setAddingHabit(true)}
-                    sx={{
-                      border: "1.5px dashed var(--border)", borderRadius: 1.5, p: 0.6,
-                      color: "var(--tx-4)",
-                      "&:hover": { borderColor: "#6366f1", color: "#6366f1", backgroundColor: "#f5f3ff" },
-                      transition: "all 0.15s",
-                    }}>
-                    <AddIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Tooltip>
-              )}
-                </Box>
-              </SortableContext>
-            </DndContext>
+              );
+            })}
           </Box>}
 
           {isToday && <Box sx={{ borderTop: "1px solid var(--divider)" }} />}
@@ -850,49 +729,6 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   );
 }
 
-function HabitChip({ habit, onToggle, onDelete }: { habit: Habit; onToggle: () => void; onDelete: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: habit.id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
-  return (
-    <Box ref={setNodeRef} style={style} sx={{
-      display: "flex", alignItems: "center", gap: 0.5,
-      backgroundColor: habit.completedToday ? "#dcfce7" : "var(--surface-2)",
-      border: `1.5px solid ${habit.completedToday ? "#86efac" : "var(--border)"}`,
-      borderRadius: 99,
-      pl: 0.5, pr: 0.75, py: 0.4,
-      transition: "all 0.2s",
-      "&:hover .habit-delete": { opacity: 1 },
-      "&:hover .habit-drag": { opacity: 1 },
-    }}>
-      {/* Drag handle — appears on hover */}
-      <Box className="habit-drag" {...attributes} {...listeners}
-        sx={{ cursor: "grab", opacity: 0, transition: "opacity 0.15s", display: "flex", alignItems: "center", color: "var(--tx-4)", px: 0.25 }}>
-        <DragIndicatorIcon sx={{ fontSize: 13 }} />
-      </Box>
-      <Checkbox
-        checked={habit.completedToday}
-        onChange={onToggle}
-        size="small"
-        icon={<RadioButtonUncheckedIcon sx={{ fontSize: 16, color: "var(--tx-4)" }} />}
-        checkedIcon={<CheckCircleIcon sx={{ fontSize: 16, color: "#22c55e" }} />}
-        sx={{ p: 0.25 }}
-      />
-      <Typography sx={{
-        fontSize: "0.82rem", fontWeight: 500,
-        color: habit.completedToday ? "#15803d" : "var(--tx-2)",
-        textDecoration: habit.completedToday ? "line-through" : "none",
-        transition: "all 0.2s",
-      }}>
-        {habit.text}
-      </Typography>
-      <IconButton className="habit-delete" size="small" onClick={onDelete}
-        sx={{ p: 0.2, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
-          "&:hover": { color: "#ef4444" }, ml: 0.25 }}>
-        <DeleteOutlineIcon sx={{ fontSize: 13 }} />
-      </IconButton>
-    </Box>
-  );
-}
 
 interface GoalSlotProps {
   slot: number;

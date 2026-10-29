@@ -1,0 +1,248 @@
+"use client";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import ButtonBase from "@mui/material/ButtonBase";
+import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import {
+  DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { KIND_COPY } from "@/lib/habit-kind";
+import { dayOfWeek, weekDates, type HabitKind, type WeekStart } from "@/lib/habit-stats";
+import { statsFor, type HabitItem } from "@/lib/useHabits";
+import type { HabitOutcome } from "@/lib/types";
+
+const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+export const WIN = { fg: "#16a34a", bg: "#dcfce7", line: "#86efac" };
+export const LOSS = { fg: "#dc2626", bg: "#fee2e2", line: "#fca5a5" };
+
+/** blank → W → L → blank */
+export function nextOutcome(o: HabitOutcome | undefined | null): HabitOutcome | null {
+  return o === "W" ? "L" : o === "L" ? null : "W";
+}
+
+interface WeekStripProps {
+  outcomes: Record<string, HabitOutcome>;
+  today: string;
+  weekStartsOn: WeekStart;
+  /** The week to show, as any date inside it. Defaults to this week. */
+  weekOf?: string;
+  showLabels?: boolean;
+  size?: number;
+  /** When set, past days and today can be tapped to cycle their result. */
+  onCycle?: (date: string) => void;
+}
+
+export function WeekStrip({ outcomes, today, weekStartsOn, weekOf, showLabels, size = 22, onCycle }: WeekStripProps) {
+  const dates = weekDates(weekOf ?? today, weekStartsOn);
+  return (
+    <Box sx={{ display: "flex", gap: "3px" }}>
+      {dates.map((date) => {
+        const o = outcomes[date];
+        const future = date > today;
+        const isToday = date === today;
+        const dow = dayOfWeek(date);
+        const label = `${DAY_NAMES[dow]} ${date}: ${o === "W" ? "win" : o === "L" ? "loss" : future ? "upcoming" : "not logged"}`;
+        const cell = (
+          <Box sx={{
+            width: size, height: size + 2, borderRadius: "5px",
+            display: "grid", placeItems: "center",
+            fontSize: size * 0.03 + "rem", fontWeight: 800,
+            backgroundColor: o === "W" ? WIN.bg : o === "L" ? LOSS.bg : future ? "transparent" : "var(--border)",
+            color: o === "W" ? WIN.fg : o === "L" ? LOSS.fg : "var(--tx-4)",
+            border: future ? "1px dashed var(--border)" : "none",
+            outline: isToday ? "2px solid #6366f1" : "none",
+            outlineOffset: "1px",
+          }}>
+            {o ?? ""}
+          </Box>
+        );
+        return (
+          <Box key={date} sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
+            {showLabels && (
+              <Typography component="span" sx={{ fontSize: "0.58rem", fontWeight: 700, color: isToday ? "#6366f1" : "var(--tx-4)", lineHeight: 1 }}>
+                {DAY_LETTERS[dow]}
+              </Typography>
+            )}
+            {onCycle && !future ? (
+              <ButtonBase aria-label={label} title={label} onClick={() => onCycle(date)}
+                sx={{ borderRadius: "5px", "&:hover": { filter: "brightness(0.95)" }, "&.Mui-focusVisible": { outline: "2px solid #6366f1", outlineOffset: "2px" } }}>
+                {cell}
+              </ButtonBase>
+            ) : (
+              <Box aria-label={label} role="img">{cell}</Box>
+            )}
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+interface OutcomeButtonsProps {
+  kind: HabitKind;
+  value: HabitOutcome | undefined | null;
+  /** Called with the new value; tapping the selected answer again clears it. */
+  onChange: (o: HabitOutcome | null) => void;
+  compact?: boolean;
+}
+
+export function OutcomeButtons({ kind, value, onChange, compact }: OutcomeButtonsProps) {
+  const copy = KIND_COPY[kind];
+  const btn = (o: HabitOutcome, text: string) => {
+    const on = value === o;
+    const c = o === "W" ? WIN : LOSS;
+    return (
+      <ButtonBase
+        aria-pressed={on}
+        aria-label={`${o}, ${text}`}
+        onClick={() => onChange(on ? null : o)}
+        sx={{
+          fontFamily: "inherit", fontSize: compact ? "0.8rem" : "0.78rem", fontWeight: compact ? 800 : 600,
+          px: compact ? 0 : 1.25, py: compact ? 0 : 0.6,
+          width: compact ? 34 : "auto", height: compact ? 30 : "auto",
+          borderRadius: 2, whiteSpace: "nowrap",
+          border: `1.5px solid ${on ? c.line : "var(--border)"}`,
+          backgroundColor: on ? c.bg : "var(--surface)",
+          color: on ? c.fg : "var(--tx-3)",
+          transition: "all 0.15s",
+          "&:hover": { borderColor: on ? c.line : "var(--border-2)", color: on ? c.fg : "var(--tx-2)" },
+          "&.Mui-focusVisible": { outline: "2px solid #6366f1", outlineOffset: "2px" },
+        }}
+      >
+        {compact ? o : `${o} · ${text}`}
+      </ButtonBase>
+    );
+  };
+  return (
+    <Box sx={{ display: "flex", gap: 0.75 }}>
+      {btn("W", copy.win)}
+      {btn("L", copy.loss)}
+    </Box>
+  );
+}
+
+export function StreakBadge({ streak }: { streak: number }) {
+  const hot = streak >= 3;
+  return (
+    <Typography component="span" title={`Current win streak: ${streak}`} sx={{
+      fontSize: "0.78rem", fontWeight: 700, fontVariantNumeric: "tabular-nums",
+      color: hot ? "#ea580c" : "var(--tx-4)", whiteSpace: "nowrap",
+    }}>
+      {hot ? "🔥 " : ""}{streak}
+    </Typography>
+  );
+}
+
+export const groupLabelSx = {
+  fontSize: "0.66rem", fontWeight: 700, color: "var(--tx-4)",
+  textTransform: "uppercase" as const, letterSpacing: 1.1,
+};
+
+// Shared by every row in every group so the week strips and buttons line up.
+const ROW_COLUMNS = "18px minmax(0, 1fr) 182px 236px 52px";
+
+interface SortableHabitRowsProps {
+  items: HabitItem[];
+  today: string;
+  weekStartsOn: WeekStart;
+  narrow: boolean;
+  /** When true, past days in the week strip can be tapped to change them. */
+  allowBackfill?: boolean;
+  /** Puts day letters above the first row; the rows below line up with it. */
+  labelFirst?: boolean;
+  onOutcome: (id: string, date: string, o: HabitOutcome | null) => void;
+  onOpen: (id: string) => void;
+  onReorder: (ids: string[]) => void;
+}
+
+/** One group of habit rows (Building or Breaking), drag to reorder. */
+export function SortableHabitRows({ items, today, weekStartsOn, narrow, allowBackfill = false, labelFirst = true, onOutcome, onOpen, onReorder }: SortableHabitRowsProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const ids = items.map((x) => x.id);
+    onReorder(arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id))));
+  };
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={items.map((x) => x.id)} strategy={verticalListSortingStrategy}>
+        {items.map((x, i) => (
+          <HabitRow key={x.id} habit={x} first={labelFirst && i === 0} today={today} weekStartsOn={weekStartsOn}
+            narrow={narrow} allowBackfill={allowBackfill} onOutcome={onOutcome} onOpen={() => onOpen(x.id)} />
+        ))}
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+interface HabitRowProps {
+  habit: HabitItem;
+  first: boolean;
+  today: string;
+  weekStartsOn: WeekStart;
+  narrow: boolean;
+  allowBackfill: boolean;
+  onOutcome: (id: string, date: string, o: "W" | "L" | null) => void;
+  onOpen: () => void;
+}
+
+function HabitRow({ habit, first, today, weekStartsOn, narrow, allowBackfill, onOutcome, onOpen }: HabitRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: habit.id });
+  const streak = statsFor(habit, today, weekStartsOn).currentStreak;
+  const strip = (
+    <WeekStrip outcomes={habit.outcomes} today={today} weekStartsOn={weekStartsOn} showLabels={first || narrow}
+      onCycle={allowBackfill ? (date) => onOutcome(habit.id, date, nextOutcome(habit.outcomes[date])) : undefined} />
+  );
+  const buttons = (
+    <OutcomeButtons kind={habit.kind} value={habit.outcomes[today]} onChange={(o) => onOutcome(habit.id, today, o)} />
+  );
+  const handle = (
+    <Box {...attributes} {...listeners} aria-label="Drag to reorder" className="habit-drag"
+      sx={{ cursor: "grab", color: "var(--tx-4)", display: "flex", opacity: { xs: 1, md: 0 }, transition: "opacity 0.15s", "&:focus-visible": { opacity: 1, outline: "2px solid #6366f1", borderRadius: 1 } }}>
+      <DragIndicatorIcon sx={{ fontSize: 16 }} />
+    </Box>
+  );
+  const name = (
+    <ButtonBase onClick={onOpen} sx={{ justifyContent: "flex-start", textAlign: "left", borderRadius: 1, minWidth: 0, "&:hover .habit-name": { color: "#6366f1" } }}>
+      <Typography className="habit-name" sx={{ fontSize: "0.9rem", fontWeight: 500, color: "var(--tx-2)", overflowWrap: "anywhere", transition: "color 0.15s" }}>
+        {habit.name || "Encrypted habit"}
+      </Typography>
+    </ButtonBase>
+  );
+
+  return (
+    <Box ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      sx={{
+        px: 1.5, py: 1, mx: 0.75, borderRadius: 2,
+        "&:hover": { backgroundColor: "var(--surface-2)" },
+        "&:hover .habit-drag": { opacity: 1 },
+        ...(narrow
+          ? { display: "grid", gridTemplateColumns: "18px minmax(0, 1fr) auto", alignItems: "center", gap: 1, rowGap: 1 }
+          : { display: "grid", gridTemplateColumns: ROW_COLUMNS, alignItems: "end", gap: 2 }),
+      }}>
+      {narrow ? (
+        <>
+          {handle}{name}<StreakBadge streak={streak} />
+          <Box sx={{ gridColumn: "2 / -1", display: "flex", flexWrap: "wrap", gap: 1.5, alignItems: "end" }}>{strip}{buttons}</Box>
+        </>
+      ) : (
+        <>
+          <Box sx={{ alignSelf: "center" }}>{handle}</Box>
+          <Box sx={{ alignSelf: "center", minWidth: 0 }}>{name}</Box>
+          {strip}
+          <Box sx={{ alignSelf: "center" }}>{buttons}</Box>
+          <Box sx={{ alignSelf: "center", textAlign: "right" }}><StreakBadge streak={streak} /></Box>
+        </>
+      )}
+    </Box>
+  );
+}
+

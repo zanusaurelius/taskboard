@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -56,6 +56,33 @@ export default function SettingsView() {
   const handleAutoArchiveChange = (days: number) => {
     setAutoArchiveDays(days);
     localStorage.setItem("autoArchiveDays", String(days));
+  };
+
+  const [weekStartsOn, setWeekStartsOn] = useState<0 | 1 | null>(null);
+  const [weekStartMsg, setWeekStartMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  useEffect(() => {
+    fetch("/api/settings/week-start")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setWeekStartsOn(d.weekStartsOn === 1 ? 1 : 0); })
+      .catch(() => {});
+  }, []);
+
+  const handleWeekStartChange = async (value: 0 | 1) => {
+    const prev = weekStartsOn;
+    setWeekStartsOn(value);
+    const res = await fetch("/api/settings/week-start", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ weekStartsOn: value }),
+    }).catch(() => null);
+    if (res?.ok) {
+      window.dispatchEvent(new CustomEvent("habits:changed"));
+      setWeekStartMsg({ type: "success", text: "Week start saved." });
+    } else {
+      setWeekStartsOn(prev);
+      setWeekStartMsg({ type: "error", text: "Couldn't save the week start. Check your connection and try again." });
+    }
+    setTimeout(() => setWeekStartMsg(null), 2500);
   };
 
   const handleSaveGoalLimit = () => {
@@ -296,6 +323,28 @@ export default function SettingsView() {
             <Button onClick={handleSaveGoalLimit} sx={saveBtnSx}>
               Save
             </Button>
+          </Box>
+        </Section>
+
+        <Divider sx={{ mb: 4, borderColor: "var(--border)" }} />
+
+        {/* ── Habits ── */}
+        <Section title="Habits" subtitle="Weekly records count from this day.">
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {weekStartMsg && <Alert severity={weekStartMsg.type} sx={{ borderRadius: 1.5 }}>{weekStartMsg.text}</Alert>}
+            <FormControl size="small" sx={{ maxWidth: 220 }}>
+              <InputLabel>Week starts on</InputLabel>
+              <Select
+                label="Week starts on"
+                value={weekStartsOn ?? ""}
+                disabled={weekStartsOn === null}
+                onChange={(e) => handleWeekStartChange(Number(e.target.value) === 1 ? 1 : 0)}
+                sx={{ borderRadius: 1.5, "& .MuiOutlinedInput-notchedOutline": { borderColor: "var(--border)" }, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#6366f1" } }}
+              >
+                <MenuItem value={0}>Sunday</MenuItem>
+                <MenuItem value={1}>Monday</MenuItem>
+              </Select>
+            </FormControl>
           </Box>
         </Section>
 

@@ -11,6 +11,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import NoteAltOutlinedIcon from "@mui/icons-material/NoteAltOutlined";
 import AutoStoriesOutlinedIcon from "@mui/icons-material/AutoStoriesOutlined";
+import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
 import PermMediaOutlinedIcon from "@mui/icons-material/PermMediaOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -22,6 +23,7 @@ import SettingsBrightnessIcon from "@mui/icons-material/SettingsBrightness";
 import TaskBoard from "./TaskBoard";
 import NotesView from "./NotesView";
 import JournalView from "./JournalView";
+import HabitsView from "./HabitsView";
 import FilesView from "./FilesView";
 import SettingsView from "./SettingsView";
 import VaultSetupModal from "./VaultSetupModal";
@@ -35,7 +37,7 @@ import { VaultProvider, useVault } from "@/lib/vault-context";
 import { useTaskBoardStore } from "@/lib/store";
 import { useAppTheme, type ThemeMode } from "@/lib/theme-context";
 
-type View = "board" | "notes" | "journal" | "files" | "settings";
+type View = "board" | "notes" | "journal" | "habits" | "files" | "settings";
 type VaultState = "loading" | "not-setup" | "locked" | "unlocked";
 
 interface NavItemProps {
@@ -88,7 +90,7 @@ function AppShellInner() {
   const [view, setView] = useState<View>(() => {
     if (typeof window === "undefined") return "board";
     const saved = localStorage.getItem("currentView");
-    return (saved === "board" || saved === "notes" || saved === "journal" || saved === "files" || saved === "settings") ? saved : "board";
+    return (saved === "board" || saved === "notes" || saved === "journal" || saved === "habits" || saved === "files" || saved === "settings") ? saved : "board";
   });
   useReminders();
   const { isOnline, pendingCount, syncing, syncError } = useOnlineSync();
@@ -176,11 +178,13 @@ function AppShellInner() {
           if (v === "board")   window.dispatchEvent(new CustomEvent("taskboard:newtask"));
           else if (v === "notes")   window.dispatchEvent(new CustomEvent("notes:newnote"));
           else if (v === "journal") window.dispatchEvent(new CustomEvent("journal:newentry"));
+          else if (v === "habits")  window.dispatchEvent(new CustomEvent("habits:new"));
           break;
         }
         case "b": navigate("board"); break;
         case "n": navigate("notes"); break;
         case "j": navigate("journal"); break;
+        case "h": navigate("habits"); break;
         case "f": navigate("files"); break;
         case "s": navigate("settings"); break;
         case "/": e.preventDefault(); setSearchOpen(true); break;
@@ -191,6 +195,17 @@ function AppShellInner() {
     return () => window.removeEventListener("keydown", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Other views can switch the page, e.g. Daily Focus linking to Habits
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const v = (e as CustomEvent<string>).detail;
+      if (v === "board" || v === "notes" || v === "journal" || v === "habits" || v === "files" || v === "settings") navigate(v);
+    };
+    window.addEventListener("app:navigate", handler);
+    return () => window.removeEventListener("app:navigate", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   // Open global search via custom event
   useEffect(() => {
@@ -283,6 +298,7 @@ function AppShellInner() {
         <NavItem icon={<DashboardIcon sx={{ fontSize: 22 }} />} label="Board" active={view === "board"} onClick={() => navigate("board")} />
         <NavItem icon={<NoteAltOutlinedIcon sx={{ fontSize: 22 }} />} label="Notes" active={view === "notes"} onClick={() => navigate("notes")} />
         <NavItem icon={<AutoStoriesOutlinedIcon sx={{ fontSize: 22 }} />} label="Journal" active={view === "journal"} onClick={() => navigate("journal")} />
+        <NavItem icon={<EmojiEventsOutlinedIcon sx={{ fontSize: 22 }} />} label="Habits" active={view === "habits"} onClick={() => navigate("habits")} />
         <NavItem icon={<PermMediaOutlinedIcon sx={{ fontSize: 22 }} />} label="Files" active={view === "files"} onClick={() => navigate("files")} />
         <NavItem icon={<SettingsOutlinedIcon sx={{ fontSize: 22 }} />} label="Settings" active={view === "settings"} onClick={() => navigate("settings")} />
 
@@ -370,6 +386,7 @@ function AppShellInner() {
             <NotesView onCreateTask={handleCreateTaskFromNote} />
           )}
           {view === "journal" && <JournalView />}
+          {view === "habits" && <HabitsView />}
           {view === "files" && <FilesView />}
           {view === "settings" && <SettingsView />}
         </Box>
@@ -387,6 +404,7 @@ function AppShellInner() {
           <NavItem icon={<DashboardIcon sx={{ fontSize: 22 }} />} label="Board" active={view === "board"} onClick={() => navigate("board")} />
           <NavItem icon={<NoteAltOutlinedIcon sx={{ fontSize: 22 }} />} label="Notes" active={view === "notes"} onClick={() => navigate("notes")} />
           <NavItem icon={<AutoStoriesOutlinedIcon sx={{ fontSize: 22 }} />} label="Journal" active={view === "journal"} onClick={() => navigate("journal")} />
+          <NavItem icon={<EmojiEventsOutlinedIcon sx={{ fontSize: 22 }} />} label="Habits" active={view === "habits"} onClick={() => navigate("habits")} />
           <NavItem icon={<PermMediaOutlinedIcon sx={{ fontSize: 22 }} />} label="Files" active={view === "files"} onClick={() => navigate("files")} />
           <NavItem icon={<SettingsOutlinedIcon sx={{ fontSize: 22 }} />} label="Settings" active={view === "settings"} onClick={() => navigate("settings")} />
         </Box>
@@ -402,11 +420,13 @@ const SHORTCUTS = [
     { key: "C", description: "New task (on Board)" },
     { key: "C", description: "New note (on Notes)" },
     { key: "C", description: "New entry (on Journal)" },
+    { key: "C", description: "New habit (on Habits)" },
   ]},
   { group: "Navigate", items: [
     { key: "B", description: "Go to Board" },
     { key: "N", description: "Go to Notes" },
     { key: "J", description: "Go to Journal" },
+    { key: "H", description: "Go to Habits" },
     { key: "F", description: "Go to Files" },
     { key: "S", description: "Go to Settings" },
   ]},
