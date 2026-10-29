@@ -3,7 +3,7 @@
     "name": "Taskboard",
     "slug": "taskboard",
     "scheme": "taskboard",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -33,6 +33,7 @@
         "backgroundColor": "#0f172a"
       },
       "package": "com.taskboard.app",
+      "versionCode": 2,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "pan"
     },

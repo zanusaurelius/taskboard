@@ -1,10 +1,14 @@
 id: taskboard
 title: "Taskboard Notes"
-version: "0.4.1"
+version: "0.5.0"
 release-notes: >
-  Fixes large file and attachment uploads failing with "Upload failed". The proxy
-  body buffer was capped at 10MB by default, truncating bigger uploads; it now
-  matches the 500MB file limit so videos and large documents upload correctly.
+  Adds Habits. Each habit is one you're building or one you're breaking, and
+  every day is logged as a W or an L. The Habits page shows this week's results,
+  streaks, week records and all-time stats, and any past day can be changed.
+  Daily Focus shows today's habits with W and L buttons. The week can start on
+  Sunday or Monday (Settings). Existing habits become habits you're building,
+  and existing check-offs become Ws. The phone app needs version 1.1.0 for the
+  Habits tab; older versions keep working.
 license: MIT
 wrapper-repo: "https://github.com/start9labs/taskboard"
 upstream-repo: "https://github.com/start9labs/taskboard"
