@@ -918,7 +918,7 @@ export default function FilesView() {
                     key={item.id}
                     onClick={() => handleAttach(item.id)}
                     sx={{
-                      py: 1.25, px: 1.5, cursor: "pointer", borderRadius: 1,
+                      py: 1.5, px: 1.5, cursor: "pointer", borderRadius: 1,
                       "&:hover": { backgroundColor: "var(--surface-2)" },
                       borderBottom: "1px solid var(--border)",
                     }}
@@ -1186,7 +1186,7 @@ function FileCard({ file, selected, onClick, onOpen, onMenu }: {
           <FileIcon mimeType={file.mimeType} size={48} />
         </Box>
       )}
-      <Box sx={{ p: 1.25 }}>
+      <Box sx={{ p: 1.5 }}>
         <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {file.originalName}
         </Typography>
@@ -1242,7 +1242,7 @@ function FileListRowItem({ file, selected, rowSx, cellSx, onClick, onOpen, onMen
       <Typography sx={cellSx(80)}>{formatBytes(file.size)}</Typography>
       <Box sx={{ width: 100, flexShrink: 0, display: "flex", justifyContent: "flex-end", gap: 0.5 }}>
         {Array.from(new Set(file.attachments.map(a => a.taskId ? "Task" : a.noteId ? "Note" : null).filter(Boolean))).map(label => (
-          <Box key={label} sx={{ fontSize: "0.7rem", fontWeight: 600, px: 0.75, py: 0.2, borderRadius: 1, backgroundColor: label === "Task" ? "rgba(99,102,241,0.12)" : "rgba(34,197,94,0.12)", color: label === "Task" ? "#6366f1" : "var(--success-fg)" }}>{label}</Box>
+          <Box key={label} sx={{ fontSize: "0.7rem", fontWeight: 600, px: 0.75, py: 0.25, borderRadius: 1, backgroundColor: label === "Task" ? "rgba(99,102,241,0.12)" : "rgba(34,197,94,0.12)", color: label === "Task" ? "#6366f1" : "var(--success-fg)" }}>{label}</Box>
         ))}
       </Box>
       <Typography sx={cellSx(150)}>{formatDate(file.updatedAt)}</Typography>
@@ -1270,7 +1270,7 @@ function ListView({ folders, files, selectedFileIds, onEnterFolder, onFileClick,
 }) {
   const rowSx = {
     display: "flex", alignItems: "center", gap: 1.5,
-    px: 2, py: 1.25,
+    px: 2, py: 1.5,
     backgroundColor: "var(--surface)",
     borderBottom: "1px solid var(--divider)",
     cursor: "pointer",
@@ -1590,7 +1590,7 @@ function MovePicker({ open, excludeId, moveError, onMove, onClose }: {
               onClick={() => setPickerStack((s) => [...s, { id: f.id, name: f.name }])}
               sx={{
                 display: "flex", alignItems: "center", gap: 1.5,
-                px: 3, py: 1.25, cursor: "pointer",
+                px: 3, py: 1.5, cursor: "pointer",
                 borderBottom: "1px solid var(--divider)",
                 "&:hover": { backgroundColor: "var(--surface-hover)" },
               }}

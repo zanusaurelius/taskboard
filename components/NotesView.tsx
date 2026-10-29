@@ -992,7 +992,7 @@ function NotesViewInner({ onCreateTask }: Props) {
               </Tooltip>
             </Box>
           )}
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: 1.5, px: 1.25, py: 0.6 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: 1.5, px: 1.5, py: 0.5 }}>
             <SearchIcon sx={{ fontSize: 16, color: "var(--tx-4)", flexShrink: 0 }} />
             <InputBase value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search notes…" sx={{ fontSize: "0.8rem", color: "var(--tx-2)", flex: 1 }} />
           </Box>
@@ -1023,7 +1023,7 @@ function NotesViewInner({ onCreateTask }: Props) {
           </Typography>
           <Tooltip title={foldersCollapsed ? "Expand folders" : "Collapse folders"} placement="top">
             <IconButton size="small" onClick={() => setFoldersCollapsed(c => !c)}
-              sx={{ p: 0.2, color: "var(--tx-4)", "&:hover": { color: "var(--tx-3)", backgroundColor: "var(--bg)" } }}>
+              sx={{ p: 0.25, color: "var(--tx-4)", "&:hover": { color: "var(--tx-3)", backgroundColor: "var(--bg)" } }}>
               {foldersCollapsed ? <ExpandMoreIcon sx={{ fontSize: 14 }} /> : <ExpandLessIcon sx={{ fontSize: 14 }} />}
             </IconButton>
           </Tooltip>
@@ -1076,11 +1076,11 @@ function NotesViewInner({ onCreateTask }: Props) {
                 )}
                 <Box className="folder-actions" sx={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", display: "flex", opacity: 0, transition: "opacity 0.15s", gap: 0.25 }}>
                   <IconButton size="small" onClick={() => { setRenamingFolder(f); setRenameFolderValue(f.name); }}
-                    sx={{ p: 0.3, color: "var(--tx-3)", backgroundColor: "var(--surface)", "&:hover": { color: "var(--tx-2)", backgroundColor: "var(--border)" } }}>
+                    sx={{ p: 0.25, color: "var(--tx-3)", backgroundColor: "var(--surface)", "&:hover": { color: "var(--tx-2)", backgroundColor: "var(--border)" } }}>
                     <EditIcon sx={{ fontSize: 12 }} />
                   </IconButton>
                   <IconButton size="small" onClick={() => handleDeleteFolder(f)}
-                    sx={{ p: 0.3, color: "var(--tx-3)", backgroundColor: "var(--surface)", "&:hover": { color: "var(--danger-fg)", backgroundColor: "var(--danger-bg)" } }}>
+                    sx={{ p: 0.25, color: "var(--tx-3)", backgroundColor: "var(--surface)", "&:hover": { color: "var(--danger-fg)", backgroundColor: "var(--danger-bg)" } }}>
                     <DeleteOutlineIcon sx={{ fontSize: 12 }} />
                   </IconButton>
                 </Box>
@@ -1100,7 +1100,7 @@ function NotesViewInner({ onCreateTask }: Props) {
               />
             ) : (
               <Box onClick={() => setNewFolderMode(true)}
-                sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1, py: 0.6, mt: 0.25, cursor: "pointer", borderRadius: 1.5, color: "var(--tx-4)", "&:hover": { color: "var(--accent)", backgroundColor: "var(--bg)" }, transition: "all 0.15s" }}>
+                sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1, py: 0.5, mt: 0.25, cursor: "pointer", borderRadius: 1.5, color: "var(--tx-4)", "&:hover": { color: "var(--accent)", backgroundColor: "var(--bg)" }, transition: "all 0.15s" }}>
                 <CreateNewFolderOutlinedIcon sx={{ fontSize: 14 }} />
                 <Typography sx={{ fontSize: "0.8rem", fontWeight: 500 }}>New Folder</Typography>
               </Box>
@@ -1123,7 +1123,7 @@ function NotesViewInner({ onCreateTask }: Props) {
                   {selectedFolder === "trash" && (
                     <Tooltip title="Empty trash" placement="top">
                       <IconButton size="small" onClick={emptyTrash}
-                        sx={{ mr: 0.5, p: 0.4, color: "var(--danger-fg)", "&:hover": { backgroundColor: "var(--danger-bg)" } }}>
+                        sx={{ mr: 0.5, p: 0.5, color: "var(--danger-fg)", "&:hover": { backgroundColor: "var(--danger-bg)" } }}>
                         <DeleteForeverIcon sx={{ fontSize: 14 }} />
                       </IconButton>
                     </Tooltip>
@@ -1147,7 +1147,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         <Divider sx={{ borderColor: "var(--divider)" }} />
 
         {/* Sort controls */}
-        <Box sx={{ px: 2, py: 1.25, display: "flex", gap: 0.5 }}>
+        <Box sx={{ px: 2, py: 1.5, display: "flex", gap: 0.5 }}>
           {(["updatedAt", "createdAt", "title"] as SortField[]).map((field) => {
             const active = sortField === field;
             return (
@@ -1175,7 +1175,7 @@ function NotesViewInner({ onCreateTask }: Props) {
                   <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)" }}>Trash is empty</Typography>
                 </Box>
               ) : trashNotes.map((note) => (
-                <Box key={note.id} sx={{ px: 2, py: 1.25, borderBottom: "1px solid var(--divider)", display: "flex", alignItems: "center", gap: 1, opacity: 0.75, "&:hover": { opacity: 1, backgroundColor: "var(--danger-bg)" }, transition: "all 0.1s" }}>
+                <Box key={note.id} sx={{ px: 2, py: 1.5, borderBottom: "1px solid var(--divider)", display: "flex", alignItems: "center", gap: 1, opacity: 0.75, "&:hover": { opacity: 1, backgroundColor: "var(--danger-bg)" }, transition: "all 0.1s" }}>
                   {note.locked && <LockOutlinedIcon sx={{ fontSize: 13, color: "var(--tx-4)", flexShrink: 0 }} />}
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontSize: "0.8rem", color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: note.locked ? "italic" : "normal" }}>
@@ -1272,7 +1272,7 @@ function NotesViewInner({ onCreateTask }: Props) {
                     </Tooltip>
                   </Box>
                 </Box>
-                <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mt: 0.3 }}>
+                <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mt: 0.25 }}>
                   <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-3)", flexShrink: 0 }}>{noteTimestamp(note.updatedAt)}</Typography>
                   {isLockedAndSealed ? (
                     <Typography sx={{ fontSize: "0.8rem", color: "var(--border-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: 2 }}>
@@ -1745,7 +1745,7 @@ function FolderRow({ label, count, active, icon, onClick, onContextMenu, pinned,
       onDrop={onDrop}
       sx={{
         display: "flex", alignItems: "center", gap: 0.75,
-        px: 1, py: 0.65, borderRadius: 1.5, cursor: "pointer",
+        px: 1, py: 0.75, borderRadius: 1.5, cursor: "pointer",
         backgroundColor: isDragOver ? "rgba(99,102,241,0.15)" : active ? "rgba(99,102,241,0.12)" : "transparent",
         color: active ? "var(--accent)" : "var(--tx-3)",
         outline: isDragOver ? "2px dashed var(--accent)" : "none",
