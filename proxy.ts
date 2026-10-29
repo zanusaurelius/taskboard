@@ -114,6 +114,8 @@ export default auth(async (req) => {
   return res;
 });
 
+// Icons, the web manifest, the logo and the service worker are public: browsers fetch them
+// before sign-in (the login page needs its favicon too) and they contain nothing private.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|manifest.json|logo.png|sw.js).*)"],
 };
