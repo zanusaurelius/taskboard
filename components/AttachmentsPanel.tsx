@@ -371,7 +371,7 @@ export default function AttachmentsPanel({ noteId, taskId, disabled }: Props) {
               {att.uploadId && (
                 <Typography variant="caption" sx={{
                   color: "primary.main", bgcolor: "action.selected",
-                  px: 0.75, borderRadius: 1, fontSize: "0.65rem", fontWeight: 700,
+                  px: 0.75, borderRadius: 1, fontSize: "0.7rem", fontWeight: 700,
                   flexShrink: 0, lineHeight: 1.6,
                 }}>
                   From Files

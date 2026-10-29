@@ -134,18 +134,18 @@ export default function TaskModal({
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth={expanded ? "lg" : "sm"}>
       <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pr: 1 }}>
-        <Typography sx={{ fontWeight: 700, fontSize: "1rem", color: "#1e293b" }}>
+        <Typography sx={{ fontWeight: 700, fontSize: "1rem", color: "var(--tx)" }}>
           {task ? "Edit Task" : "New Task"}
         </Typography>
         <Box sx={{ display: "flex", gap: 0.5 }}>
           <IconButton size="small" onClick={() => setExpanded((v) => !v)} title={expanded ? "Collapse" : "Expand"}>
             {expanded
-              ? <CloseFullscreenIcon sx={{ fontSize: 17, color: "#94a3b8" }} />
-              : <OpenInFullIcon sx={{ fontSize: 17, color: "#94a3b8" }} />
+              ? <CloseFullscreenIcon sx={{ fontSize: 17, color: "var(--tx-4)" }} />
+              : <OpenInFullIcon sx={{ fontSize: 17, color: "var(--tx-4)" }} />
             }
           </IconButton>
           <IconButton size="small" onClick={onClose}>
-            <CloseIcon sx={{ fontSize: 18, color: "#94a3b8" }} />
+            <CloseIcon sx={{ fontSize: 18, color: "var(--tx-4)" }} />
           </IconButton>
         </Box>
       </DialogTitle>
@@ -181,7 +181,7 @@ export default function TaskModal({
 
         {/* Rich text description */}
         <Box>
-          <Typography variant="caption" sx={{ color: "#64748b", fontWeight: 600, fontSize: "0.78rem", mb: 0.75, display: "block" }}>
+          <Typography variant="caption" sx={{ color: "var(--tx-3)", fontWeight: 600, fontSize: "0.8rem", mb: 0.75, display: "block" }}>
             Description
           </Typography>
           <RichTextEditor
@@ -215,13 +215,13 @@ export default function TaskModal({
               onChange={(e) => setSensitive(e.target.checked)}
               size="small"
               sx={{
-                "& .MuiSwitch-switchBase.Mui-checked": { color: "#6366f1" },
-                "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#6366f1" },
+                "& .MuiSwitch-switchBase.Mui-checked": { color: "var(--accent)" },
+                "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "var(--accent)" },
               }}
             />
           }
           label={
-            <Typography sx={{ fontSize: "0.85rem", color: "#475569", fontWeight: 500 }}>
+            <Typography sx={{ fontSize: "0.875rem", color: "var(--tx-2)", fontWeight: 500 }}>
               Hide in Privacy Mode
             </Typography>
           }
@@ -233,17 +233,17 @@ export default function TaskModal({
         {task && (
           <Box sx={{ display: "flex", gap: 1, mr: "auto" }}>
             {onDuplicate && (
-              <Button onClick={onDuplicate} startIcon={<ContentCopyIcon />} color="inherit" variant="outlined" size="small" sx={{ color: "#64748b", borderColor: "#cbd5e1" }}>
+              <Button onClick={onDuplicate} startIcon={<ContentCopyIcon />} color="inherit" variant="outlined" size="small" sx={{ color: "var(--tx-3)", borderColor: "var(--border-2)" }}>
                 Duplicate
               </Button>
             )}
             {onArchive && (
-              <Button onClick={onArchive} startIcon={<ArchiveIcon />} color="inherit" variant="outlined" size="small" sx={{ color: "#64748b", borderColor: "#cbd5e1" }}>
+              <Button onClick={onArchive} startIcon={<ArchiveIcon />} color="inherit" variant="outlined" size="small" sx={{ color: "var(--tx-3)", borderColor: "var(--border-2)" }}>
                 Archive
               </Button>
             )}
             {onUnarchive && (
-              <Button onClick={onUnarchive} startIcon={<RestoreIcon />} color="inherit" variant="outlined" size="small" sx={{ color: "#64748b", borderColor: "#cbd5e1" }}>
+              <Button onClick={onUnarchive} startIcon={<RestoreIcon />} color="inherit" variant="outlined" size="small" sx={{ color: "var(--tx-3)", borderColor: "var(--border-2)" }}>
                 Unarchive
               </Button>
             )}
@@ -254,7 +254,7 @@ export default function TaskModal({
             )}
           </Box>
         )}
-        <Button onClick={onClose} sx={{ color: "#64748b", textTransform: "none" }}>Cancel</Button>
+        <Button onClick={onClose} sx={{ color: "var(--tx-3)", textTransform: "none" }}>Cancel</Button>
         <Button onClick={handleSave} variant="contained" disabled={!title.trim() || !projectId}
           sx={{ textTransform: "none", fontWeight: 600, px: 2.5 }}>
           {task ? "Save" : "Create"}

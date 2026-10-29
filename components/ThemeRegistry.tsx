@@ -42,7 +42,7 @@ function MuiThemeApplier({ children }: { children: React.ReactNode }) {
       MuiDialogTitle: { styleOverrides: { root: { fontSize: "1.05rem", fontWeight: 700, color: "var(--tx)" } } },
       MuiMenu: { styleOverrides: { paper: { backgroundColor: "var(--surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-pop)" } } },
       MuiPopover: { styleOverrides: { paper: { backgroundColor: "var(--surface)", border: "1px solid var(--border)" } } },
-      MuiTooltip: { styleOverrides: { tooltip: { fontSize: "0.75rem", backgroundColor: "#0f172a", border: "1px solid #334155" } } },
+      MuiTooltip: { styleOverrides: { tooltip: { fontSize: "0.8rem", backgroundColor: "#0f172a", border: "1px solid #334155" } } },
       MuiOutlinedInput: {
         styleOverrides: {
           root: {

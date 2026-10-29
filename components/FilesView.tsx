@@ -38,6 +38,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import DownloadIcon from "@mui/icons-material/Download";
 import type { FileFolder, UploadFile } from "@/lib/types";
+import PageHeader from "./PageHeader";
+import { primaryButtonSx, secondaryButtonSx } from "@/lib/ui";
 
 type SortField = "name" | "modified" | "created" | "size" | "kind";
 type SortDir = "asc" | "desc";
@@ -100,10 +102,10 @@ function formatDate(iso: string) {
 
 function FileIcon({ mimeType, size = 36 }: { mimeType: string; size?: number }) {
   const sx = { fontSize: size };
-  if (mimeType.startsWith("video/")) return <VideoFileIcon sx={{ ...sx, color: "#818cf8" }} />;
-  if (mimeType.startsWith("audio/")) return <AudioFileIcon sx={{ ...sx, color: "#34d399" }} />;
-  if (mimeType === "application/pdf") return <PictureAsPdfIcon sx={{ ...sx, color: "#f87171" }} />;
-  if (mimeType === "application/zip") return <FolderZipIcon sx={{ ...sx, color: "#fbbf24" }} />;
+  if (mimeType.startsWith("video/")) return <VideoFileIcon sx={{ ...sx, color: "var(--accent)" }} />;
+  if (mimeType.startsWith("audio/")) return <AudioFileIcon sx={{ ...sx, color: "var(--success-fg)" }} />;
+  if (mimeType === "application/pdf") return <PictureAsPdfIcon sx={{ ...sx, color: "var(--danger-fg)" }} />;
+  if (mimeType === "application/zip") return <FolderZipIcon sx={{ ...sx, color: "var(--warning-fg)" }} />;
   return <InsertDriveFileIcon sx={{ ...sx, color: "var(--tx-4)" }} />;
 }
 
@@ -618,7 +620,7 @@ export default function FilesView() {
 
   return (
     <Box
-      sx={{ display: "flex", flexDirection: "column", height: "100%", backgroundColor: "var(--surface-2)", position: "relative" }}
+      sx={{ display: "flex", flexDirection: "column", height: "100%", backgroundColor: "var(--bg)", position: "relative" }}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -635,27 +637,54 @@ export default function FilesView() {
         <Box sx={{
           position: "absolute", inset: 0, zIndex: 10,
           backgroundColor: "rgba(99,102,241,0.08)",
-          border: "2px dashed #6366f1",
+          border: "2px dashed var(--accent)",
           borderRadius: 2,
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
           gap: 1.5, pointerEvents: "none",
         }}>
-          <UploadFileIcon sx={{ fontSize: 48, color: "#6366f1", opacity: 0.7 }} />
-          <Typography sx={{ color: "#6366f1", fontWeight: 600, fontSize: "1rem" }}>
+          <UploadFileIcon sx={{ fontSize: 48, color: "var(--accent)", opacity: 0.7 }} />
+          <Typography sx={{ color: "var(--accent)", fontWeight: 600, fontSize: "1rem" }}>
             Drop files to upload
           </Typography>
           {currentFolder.id && (
-            <Typography sx={{ color: "var(--tx-3)", fontSize: "0.82rem" }}>
+            <Typography sx={{ color: "var(--tx-3)", fontSize: "0.8rem" }}>
               into &ldquo;{currentFolder.name}&rdquo;
             </Typography>
           )}
         </Box>
       )}
 
-      {/* Header */}
+      <PageHeader
+        title="Files"
+        privacy={false}
+        actions={<>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={handleUpload}
+          />
+          <Button size="small" startIcon={<CreateNewFolderIcon />} onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }} sx={secondaryButtonSx}>
+            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New folder</Box>
+            <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Folder</Box>
+          </Button>
+          <Button
+            size="small"
+            startIcon={uploading ? <CircularProgress size={14} sx={{ color: "var(--on-accent)" }} /> : <UploadFileIcon />}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            sx={primaryButtonSx}
+          >
+            {uploading ? "Uploading…" : "Upload"}
+          </Button>
+        </>}
+      />
+
+      {/* Toolbar: where you are, and how the files are shown */}
       <Box sx={{
         display: "flex", alignItems: "center", gap: 1,
-        px: 3, py: 1.5,
+        px: { xs: 1.5, sm: 3 }, py: 0.75, minHeight: 48,
         backgroundColor: "var(--surface)",
         borderBottom: "1px solid var(--border)",
         flexShrink: 0,
@@ -669,13 +698,13 @@ export default function FilesView() {
           )}
           {stack.map((entry, i) => (
             <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              {i > 0 && <Typography sx={{ color: "var(--tx-4)", fontSize: "0.85rem" }}>/</Typography>}
+              {i > 0 && <Typography sx={{ color: "var(--tx-4)", fontSize: "0.875rem" }}>/</Typography>}
               <Typography
                 onClick={() => i < stack.length - 1 && navigateTo(i)}
                 sx={{
-                  fontSize: "0.9rem",
+                  fontSize: "0.875rem",
                   fontWeight: i === stack.length - 1 ? 700 : 500,
-                  color: i === stack.length - 1 ? "var(--tx)" : "#6366f1",
+                  color: i === stack.length - 1 ? "var(--tx)" : "var(--accent)",
                   cursor: i < stack.length - 1 ? "pointer" : "default",
                   "&:hover": i < stack.length - 1 ? { textDecoration: "underline" } : {},
                 }}
@@ -689,11 +718,11 @@ export default function FilesView() {
         {/* Selection count hint */}
         {selectedFileIds.size > 0 && (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
-            <Typography sx={{ fontSize: "0.78rem", color: "#6366f1", fontWeight: 600 }}>
+            <Typography sx={{ fontSize: "0.8rem", color: "var(--accent)", fontWeight: 600 }}>
               {selectedFileIds.size} selected · Space to preview · ⌘⌫ to delete
             </Typography>
             <Tooltip title={selectedFileIds.size === 1 ? "Download file" : `Download ${selectedFileIds.size} files`}>
-              <IconButton size="small" onClick={downloadSelectedFiles} sx={{ color: "#6366f1" }}>
+              <IconButton size="small" onClick={downloadSelectedFiles} sx={{ color: "var(--accent)" }}>
                 <DownloadIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -703,12 +732,12 @@ export default function FilesView() {
         {/* Actions */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
           <Tooltip title="List view">
-            <IconButton size="small" onClick={() => toggleView("list")} sx={{ color: viewMode === "list" ? "#6366f1" : "var(--tx-2)" }}>
+            <IconButton size="small" onClick={() => toggleView("list")} sx={{ color: viewMode === "list" ? "var(--accent)" : "var(--tx-2)" }}>
               <ViewListIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Grid view">
-            <IconButton size="small" onClick={() => toggleView("grid")} sx={{ color: viewMode === "grid" ? "#6366f1" : "var(--tx-2)" }}>
+            <IconButton size="small" onClick={() => toggleView("grid")} sx={{ color: viewMode === "grid" ? "var(--accent)" : "var(--tx-2)" }}>
               <GridViewIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -717,34 +746,12 @@ export default function FilesView() {
               <SortIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="New folder">
-            <IconButton size="small" onClick={() => { setNewFolderName(""); setNewFolderOpen(true); }} sx={{ color: "var(--tx-4)", "&:hover": { color: "#6366f1" } }}>
-              <CreateNewFolderIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            style={{ display: "none" }}
-            onChange={handleUpload}
-          />
-          <Button
-            size="small"
-            variant="contained"
-            startIcon={uploading ? <CircularProgress size={14} sx={{ color: "#fff" }} /> : <UploadFileIcon />}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            sx={{ backgroundColor: "#6366f1", "&:hover": { backgroundColor: "#4f46e5" }, borderRadius: 2, textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}
-          >
-            {uploading ? "Uploading…" : "Upload"}
-          </Button>
         </Box>
       </Box>
 
       {uploadError && (
-        <Box sx={{ px: 3, py: 1, backgroundColor: "#fef2f2", borderBottom: "1px solid #fecaca" }}>
-          <Typography sx={{ fontSize: "0.8rem", color: "#dc2626" }}>{uploadError}</Typography>
+        <Box sx={{ px: 3, py: 1, backgroundColor: "var(--danger-bg)", borderBottom: "1px solid var(--danger-line)" }}>
+          <Typography sx={{ fontSize: "0.8rem", color: "var(--danger-fg)" }}>{uploadError}</Typography>
         </Box>
       )}
 
@@ -752,7 +759,7 @@ export default function FilesView() {
       <Box sx={{ flex: 1, overflowY: "auto", p: 3 }} onClick={(e) => e.stopPropagation()}>
         {loading ? (
           <Box sx={{ display: "flex", justifyContent: "center", pt: 8 }}>
-            <CircularProgress sx={{ color: "#6366f1" }} />
+            <CircularProgress sx={{ color: "var(--accent)" }} />
           </Box>
         ) : isEmpty ? (
           <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pt: 10, gap: 2 }}>
@@ -762,7 +769,7 @@ export default function FilesView() {
               variant="outlined"
               startIcon={<UploadFileIcon />}
               onClick={() => fileInputRef.current?.click()}
-              sx={{ borderColor: "#6366f1", color: "#6366f1", textTransform: "none", borderRadius: 2 }}
+              sx={{ borderColor: "var(--accent)", color: "var(--accent)", textTransform: "none", borderRadius: 2 }}
             >
               Upload a file
             </Button>
@@ -798,10 +805,10 @@ export default function FilesView() {
         slotProps={{ paper: { sx: { backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: 2, minWidth: 180 } } }}>
         {(["name", "modified", "created", "size", "kind"] as SortField[]).map((field) => (
           <MenuItem key={field} onClick={() => setSort(field)} sx={{ color: "var(--tx)", fontSize: "0.875rem", gap: 1 }}>
-            <ListItemIcon sx={{ minWidth: 0, color: field === sortField ? "#6366f1" : "transparent" }}>
+            <ListItemIcon sx={{ minWidth: 0, color: field === sortField ? "var(--accent)" : "transparent" }}>
               {field === sortField ? (sortDir === "asc" ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />) : <CheckIcon fontSize="small" sx={{ opacity: 0 }} />}
             </ListItemIcon>
-            <Typography sx={{ flex: 1, fontSize: "0.875rem", color: field === sortField ? "#6366f1" : "var(--tx)", fontWeight: field === sortField ? 600 : 400 }}>
+            <Typography sx={{ flex: 1, fontSize: "0.875rem", color: field === sortField ? "var(--accent)" : "var(--tx)", fontWeight: field === sortField ? 600 : 400 }}>
               {SORT_LABELS[field]}
             </Typography>
           </MenuItem>
@@ -863,7 +870,7 @@ export default function FilesView() {
           <DriveFileMoveIcon fontSize="small" sx={{ mr: 1, color: "var(--tx-3)" }} />
           Move to…
         </MenuItem>
-        <MenuItem onClick={deleteItem} sx={{ color: "#dc2626" }}>
+        <MenuItem onClick={deleteItem} sx={{ color: "var(--danger-fg)" }}>
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
           {menuTarget?.type === "folder" ? "Delete folder" : "Delete file"}
         </MenuItem>
@@ -893,7 +900,7 @@ export default function FilesView() {
             sx={{ mb: 1, "& .MuiInputBase-input": { color: "var(--tx)" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "var(--border)" } }}
           />
           {attachLoading ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}><CircularProgress size={24} sx={{ color: "#6366f1" }} /></Box>
+            <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}><CircularProgress size={24} sx={{ color: "var(--accent)" }} /></Box>
           ) : (
             <Box sx={{ maxHeight: 280, overflowY: "auto" }}>
               {attachItems
@@ -914,7 +921,7 @@ export default function FilesView() {
                   </Box>
                 ))}
               {!attachLoading && attachItems.filter(i => !attachSearch.trim() || i.title.toLowerCase().includes(attachSearch.toLowerCase())).length === 0 && (
-                <Typography sx={{ color: "var(--tx-4)", fontSize: "0.85rem", py: 2, textAlign: "center" }}>
+                <Typography sx={{ color: "var(--tx-4)", fontSize: "0.875rem", py: 2, textAlign: "center" }}>
                   No {attachMode === "note" ? "notes" : "tasks"} found
                 </Typography>
               )}
@@ -938,11 +945,11 @@ export default function FilesView() {
             onKeyDown={(e) => e.key === "Enter" && createFolder()}
             sx={{ mt: 1, "& .MuiInputBase-input": { color: "var(--tx)" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "var(--border)" } }}
           />
-          {newFolderError && <Typography sx={{ color: "#f87171", fontSize: "0.78rem", mt: 1 }}>{newFolderError}</Typography>}
+          {newFolderError && <Typography sx={{ color: "var(--danger-fg)", fontSize: "0.8rem", mt: 1 }}>{newFolderError}</Typography>}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => { setNewFolderOpen(false); setNewFolderError(null); }} sx={{ color: "var(--tx-4)", textTransform: "none" }}>Cancel</Button>
-          <Button onClick={createFolder} variant="contained" sx={{ backgroundColor: "#6366f1", textTransform: "none", borderRadius: 2 }}>Create</Button>
+          <Button onClick={createFolder} sx={primaryButtonSx}>Create</Button>
         </DialogActions>
       </Dialog>
 
@@ -958,11 +965,11 @@ export default function FilesView() {
             onKeyDown={(e) => e.key === "Enter" && renameFolder()}
             sx={{ mt: 1, "& .MuiInputBase-input": { color: "var(--tx)" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "var(--border)" } }}
           />
-          {renameError && <Typography sx={{ color: "#f87171", fontSize: "0.78rem", mt: 1 }}>{renameError}</Typography>}
+          {renameError && <Typography sx={{ color: "var(--danger-fg)", fontSize: "0.8rem", mt: 1 }}>{renameError}</Typography>}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => { setRenamingFolder(null); setRenameError(null); }} sx={{ color: "var(--tx-4)", textTransform: "none" }}>Cancel</Button>
-          <Button onClick={renameFolder} variant="contained" sx={{ backgroundColor: "#6366f1", textTransform: "none", borderRadius: 2 }}>Rename</Button>
+          <Button onClick={renameFolder} sx={primaryButtonSx}>Rename</Button>
         </DialogActions>
       </Dialog>
 
@@ -978,11 +985,11 @@ export default function FilesView() {
             onKeyDown={(e) => e.key === "Enter" && renameFile()}
             sx={{ mt: 1, "& .MuiInputBase-input": { color: "var(--tx)" }, "& .MuiOutlinedInput-notchedOutline": { borderColor: "var(--border)" } }}
           />
-          {renameFileError && <Typography sx={{ color: "#f87171", fontSize: "0.78rem", mt: 1 }}>{renameFileError}</Typography>}
+          {renameFileError && <Typography sx={{ color: "var(--danger-fg)", fontSize: "0.8rem", mt: 1 }}>{renameFileError}</Typography>}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => { setRenamingFile(null); setRenameFileError(null); }} sx={{ color: "var(--tx-4)", textTransform: "none" }}>Cancel</Button>
-          <Button onClick={renameFile} variant="contained" sx={{ backgroundColor: "#6366f1", textTransform: "none", borderRadius: 2 }}>Rename</Button>
+          <Button onClick={renameFile} sx={primaryButtonSx}>Rename</Button>
         </DialogActions>
       </Dialog>
 
@@ -1094,7 +1101,7 @@ function FolderCard({ folder, onEnter, onMenu }: { folder: FileFolder; onEnter: 
         p: 2,
         cursor: "pointer",
         transition: "border-color 0.15s, box-shadow 0.15s",
-        "&:hover": { borderColor: "#6366f1", boxShadow: "0 0 0 1px #6366f1" },
+        "&:hover": { borderColor: "var(--accent)", boxShadow: "0 0 0 1px #6366f1" },
       }}
     >
       <IconButton
@@ -1104,11 +1111,11 @@ function FolderCard({ folder, onEnter, onMenu }: { folder: FileFolder; onEnter: 
       >
         <MoreVertIcon fontSize="small" />
       </IconButton>
-      <FolderIcon sx={{ fontSize: 40, color: "#fbbf24", mb: 1 }} />
-      <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <FolderIcon sx={{ fontSize: 40, color: "var(--warning-fg)", mb: 1 }} />
+      <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {folder.name}
       </Typography>
-      <Typography sx={{ fontSize: "0.72rem", color: "var(--tx-4)" }}>
+      <Typography sx={{ fontSize: "0.7rem", color: "var(--tx-4)" }}>
         {count === 0 ? "Empty" : `${count} item${count !== 1 ? "s" : ""}`}
       </Typography>
     </Box>
@@ -1132,13 +1139,13 @@ function FileCard({ file, selected, onClick, onOpen, onMenu }: {
       sx={{
         position: "relative",
         backgroundColor: "var(--surface)",
-        border: selected ? "2px solid #6366f1" : "1px solid var(--border)",
+        border: selected ? "2px solid var(--accent)" : "1px solid var(--border)",
         borderRadius: 2,
         overflow: "hidden",
         cursor: "pointer",
         transition: "border-color 0.15s, box-shadow 0.15s",
         boxShadow: selected ? "0 0 0 1px #6366f1" : "none",
-        "&:hover": { borderColor: "#6366f1", boxShadow: "0 0 0 1px #6366f1" },
+        "&:hover": { borderColor: "var(--accent)", boxShadow: "0 0 0 1px #6366f1" },
       }}
     >
       {selected && (
@@ -1172,7 +1179,7 @@ function FileCard({ file, selected, onClick, onOpen, onMenu }: {
         </Box>
       )}
       <Box sx={{ p: 1.25 }}>
-        <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {file.originalName}
         </Typography>
         <Typography sx={{ fontSize: "0.7rem", color: "var(--tx-4)" }}>{formatBytes(file.size)}</Typography>
@@ -1202,7 +1209,7 @@ function FileListRowItem({ file, selected, rowSx, cellSx, onClick, onOpen, onMen
       sx={{
         ...rowSx,
         backgroundColor: selected ? "rgba(99,102,241,0.08)" : undefined,
-        borderLeft: selected ? "2px solid #6366f1" : "2px solid transparent",
+        borderLeft: selected ? "2px solid var(--accent)" : "2px solid transparent",
         "&:hover": { backgroundColor: selected ? "rgba(99,102,241,0.12)" : "var(--surface-2)" },
       }}
     >
@@ -1227,7 +1234,7 @@ function FileListRowItem({ file, selected, rowSx, cellSx, onClick, onOpen, onMen
       <Typography sx={cellSx(80)}>{formatBytes(file.size)}</Typography>
       <Box sx={{ width: 100, flexShrink: 0, display: "flex", justifyContent: "flex-end", gap: 0.5 }}>
         {Array.from(new Set(file.attachments.map(a => a.taskId ? "Task" : a.noteId ? "Note" : null).filter(Boolean))).map(label => (
-          <Box key={label} sx={{ fontSize: "0.68rem", fontWeight: 600, px: 0.75, py: 0.2, borderRadius: 1, backgroundColor: label === "Task" ? "rgba(99,102,241,0.12)" : "rgba(34,197,94,0.12)", color: label === "Task" ? "#6366f1" : "#15803d" }}>{label}</Box>
+          <Box key={label} sx={{ fontSize: "0.7rem", fontWeight: 600, px: 0.75, py: 0.2, borderRadius: 1, backgroundColor: label === "Task" ? "rgba(99,102,241,0.12)" : "rgba(34,197,94,0.12)", color: label === "Task" ? "#6366f1" : "var(--success-fg)" }}>{label}</Box>
         ))}
       </Box>
       <Typography sx={cellSx(150)}>{formatDate(file.updatedAt)}</Typography>
@@ -1273,13 +1280,13 @@ function ListView({ folders, files, selectedFileIds, onEnterFolder, onFileClick,
       onClick={() => onSort(field)}
       sx={{
         ...(width === 0 ? { flex: 1, minWidth: 0 } : { width, flexShrink: 0 }),
-        fontSize: "0.72rem", fontWeight: 700,
-        color: sortField === field ? "#6366f1" : "var(--tx-3)",
+        fontSize: "0.7rem", fontWeight: 700,
+        color: sortField === field ? "var(--accent)" : "var(--tx-3)",
         textTransform: "uppercase", letterSpacing: 0.5,
         cursor: "pointer", userSelect: "none",
         display: "flex", alignItems: "center",
         justifyContent: align === "right" ? "flex-end" : "flex-start",
-        "&:hover": { color: "#6366f1" },
+        "&:hover": { color: "var(--accent)" },
       }}
     >
       {align === "right" && <SortArrow field={field} />}
@@ -1303,7 +1310,7 @@ function ListView({ folders, files, selectedFileIds, onEnterFolder, onFileClick,
         {colHd("name", "Name", 0, "left")}
         {colHd("kind", "Kind", 120)}
         {colHd("size", "Size", 80)}
-        <Box sx={{ width: 100, flexShrink: 0, fontSize: "0.72rem", fontWeight: 700, color: "var(--tx-3)", textTransform: "uppercase", letterSpacing: 0.5, display: "flex", justifyContent: "flex-end" }}>Used In</Box>
+        <Box sx={{ width: 100, flexShrink: 0, fontSize: "0.7rem", fontWeight: 700, color: "var(--tx-3)", textTransform: "uppercase", letterSpacing: 0.5, display: "flex", justifyContent: "flex-end" }}>Used In</Box>
         {colHd("modified", "Modified", 150)}
         {colHd("created", "Created", 150)}
         <Box sx={{ width: 32, flexShrink: 0 }} />
@@ -1311,7 +1318,7 @@ function ListView({ folders, files, selectedFileIds, onEnterFolder, onFileClick,
 
       {folders.map((f) => (
         <Box key={f.id} onClick={() => onEnterFolder(f)} sx={rowSx}>
-          <FolderIcon sx={{ fontSize: 22, color: "#fbbf24", flexShrink: 0, width: 32 }} />
+          <FolderIcon sx={{ fontSize: 22, color: "var(--warning-fg)", flexShrink: 0, width: 32 }} />
           <Typography sx={{ flex: 1, fontSize: "0.875rem", color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {f.name}
           </Typography>
@@ -1368,8 +1375,8 @@ function LightboxPreview({ file }: { file: UploadFile }) {
   if (file.mimeType.startsWith("audio/")) {
     return (
       <Box sx={{ textAlign: "center", p: 4 }}>
-        <AudioFileIcon sx={{ fontSize: 72, color: "#34d399", mb: 2 }} />
-        <Typography sx={{ color: "rgba(255,255,255,0.7)", mb: 2, fontSize: "0.9rem" }}>{file.originalName}</Typography>
+        <AudioFileIcon sx={{ fontSize: 72, color: "var(--success-fg)", mb: 2 }} />
+        <Typography sx={{ color: "rgba(255,255,255,0.7)", mb: 2, fontSize: "0.875rem" }}>{file.originalName}</Typography>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <audio src={`/api/files/${file.id}`} controls style={{ display: "block" }} />
       </Box>
@@ -1430,10 +1437,10 @@ function Lightbox({ file, files, open, onClose, onNavigate }: {
         flexShrink: 0,
       }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ color: "#fff", fontWeight: 600, fontSize: "0.9rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <Typography sx={{ color: "#fff", fontWeight: 600, fontSize: "0.875rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {file?.originalName}
           </Typography>
-          <Typography sx={{ color: "rgba(255,255,255,0.35)", fontSize: "0.72rem" }}>
+          <Typography sx={{ color: "rgba(255,255,255,0.35)", fontSize: "0.7rem" }}>
             {file && formatBytes(file.size)}
             {files.length > 1 && ` · ${idx + 1} of ${files.length} · ↑↓ to navigate · ⌘⌫ to delete`}
           </Typography>
@@ -1543,9 +1550,9 @@ function MovePicker({ open, excludeId, moveError, onMove, onClose }: {
               <Typography
                 onClick={() => i < pickerStack.length - 1 && setPickerStack((s) => s.slice(0, i + 1))}
                 sx={{
-                  fontSize: "0.82rem",
+                  fontSize: "0.8rem",
                   fontWeight: i === pickerStack.length - 1 ? 700 : 500,
-                  color: i === pickerStack.length - 1 ? "var(--tx)" : "#6366f1",
+                  color: i === pickerStack.length - 1 ? "var(--tx)" : "var(--accent)",
                   cursor: i < pickerStack.length - 1 ? "pointer" : "default",
                   "&:hover": i < pickerStack.length - 1 ? { textDecoration: "underline" } : {},
                 }}
@@ -1558,10 +1565,10 @@ function MovePicker({ open, excludeId, moveError, onMove, onClose }: {
         <Box sx={{ borderTop: "1px solid var(--border)", minHeight: 160, maxHeight: 280, overflowY: "auto" }}>
           {pickerLoading ? (
             <Box sx={{ display: "flex", justifyContent: "center", pt: 3 }}>
-              <CircularProgress size={24} sx={{ color: "#6366f1" }} />
+              <CircularProgress size={24} sx={{ color: "var(--accent)" }} />
             </Box>
           ) : displayFolders.length === 0 ? (
-            <Typography sx={{ color: "var(--tx-2)", fontSize: "0.85rem", px: 3, py: 3 }}>No subfolders here</Typography>
+            <Typography sx={{ color: "var(--tx-2)", fontSize: "0.875rem", px: 3, py: 3 }}>No subfolders here</Typography>
           ) : displayFolders.map((f) => (
             <Box
               key={f.id}
@@ -1569,25 +1576,25 @@ function MovePicker({ open, excludeId, moveError, onMove, onClose }: {
               sx={{
                 display: "flex", alignItems: "center", gap: 1.5,
                 px: 3, py: 1.25, cursor: "pointer",
-                borderBottom: "1px solid rgba(255,255,255,0.04)",
-                "&:hover": { backgroundColor: "rgba(255,255,255,0.05)" },
+                borderBottom: "1px solid var(--divider)",
+                "&:hover": { backgroundColor: "var(--surface-hover)" },
               }}
             >
-              <FolderIcon sx={{ fontSize: 20, color: "#fbbf24", flexShrink: 0 }} />
+              <FolderIcon sx={{ fontSize: 20, color: "var(--warning-fg)", flexShrink: 0 }} />
               <Typography sx={{ flex: 1, color: "var(--tx)", fontSize: "0.875rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {f.name}
               </Typography>
-              <Typography sx={{ color: "var(--tx-4)", fontSize: "0.75rem" }}>›</Typography>
+              <Typography sx={{ color: "var(--tx-4)", fontSize: "0.8rem" }}>›</Typography>
             </Box>
           ))}
         </Box>
-        {moveError && <Typography sx={{ color: "#f87171", fontSize: "0.78rem", px: 3, pt: 1.5 }}>{moveError}</Typography>}
+        {moveError && <Typography sx={{ color: "var(--danger-fg)", fontSize: "0.8rem", px: 3, pt: 1.5 }}>{moveError}</Typography>}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2, pt: 1.5, borderTop: "1px solid var(--border)", flexDirection: "column", alignItems: "stretch", gap: 0.5 }}>
         <Button
           onClick={() => onMove(current.id)}
           variant="contained"
-          sx={{ backgroundColor: "#6366f1", textTransform: "none", borderRadius: 2, fontWeight: 600 }}
+          sx={primaryButtonSx}
         >
           Move here{current.id ? ` → ${current.name}` : " (root)"}
         </Button>

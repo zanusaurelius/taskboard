@@ -82,7 +82,7 @@ function DeletionToast({ entry, onUndo }: { entry: DeletionEntry; onUndo: () => 
           <Typography sx={{ color: "var(--tx)", fontSize: "0.875rem", fontWeight: 600, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             Deleting &ldquo;{entry.label}&rdquo;
           </Typography>
-          <Typography sx={{ color: "var(--tx-2)", fontSize: "0.78rem" }}>
+          <Typography sx={{ color: "var(--tx-2)", fontSize: "0.8rem" }}>
             Permanently removed in {remaining}s
           </Typography>
         </Box>
@@ -839,7 +839,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                   }}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                       <Box sx={{ width: 8, height: 8, borderRadius: 99, backgroundColor: color, flexShrink: 0 }} />
-                      <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--tx)", letterSpacing: 0.1 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: "0.875rem", color: "var(--tx)", letterSpacing: 0.1 }}>
                         {stage.label}
                       </Typography>
                       <Box sx={{
@@ -847,7 +847,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                         borderRadius: 99, px: 0.9, py: 0.1,
                         minWidth: 22, textAlign: "center",
                       }}>
-                        <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>
+                        <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, color, fontVariantNumeric: "tabular-nums" }}>
                           {columnTasks.length}
                         </Typography>
                       </Box>
@@ -997,7 +997,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
           {confirmDialog?.title}
         </DialogTitle>
         <DialogContent>
-          <Typography sx={{ color: "var(--tx-3)", fontSize: "0.9rem", lineHeight: 1.6 }}>
+          <Typography sx={{ color: "var(--tx-3)", fontSize: "0.875rem", lineHeight: 1.6 }}>
             {confirmDialog?.message}
           </Typography>
         </DialogContent>
@@ -1102,7 +1102,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
         </DialogTitle>
         <DialogContent sx={{ pt: "12px !important" }}>
           {pendingTaskStage !== null && (
-            <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-3)", mb: 2 }}>
+            <Typography sx={{ fontSize: "0.875rem", color: "var(--tx-3)", mb: 2 }}>
               You need a project before creating tasks. Create one to continue.
             </Typography>
           )}

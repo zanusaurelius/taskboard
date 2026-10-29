@@ -142,9 +142,9 @@ export default function TaskCard({ task, onClick, onAddToFocus, privacyMode }: P
           disableFocusListener
           disableTouchListener
           enterDelay={600}
-          slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: "0.78rem", lineHeight: 1.5, whiteSpace: "pre-wrap" } } }}
+          slotProps={{ tooltip: { sx: { maxWidth: 280, fontSize: "0.8rem", lineHeight: 1.5, whiteSpace: "pre-wrap" } } }}
         >
-          <Typography sx={{ fontWeight: 500, fontSize: "0.9rem", lineHeight: 1.5, color: "var(--tx)", flex: 1 }}>
+          <Typography sx={{ fontWeight: 500, fontSize: "0.875rem", lineHeight: 1.5, color: "var(--tx)", flex: 1 }}>
             {task.title}
           </Typography>
         </Tooltip>
@@ -191,7 +191,7 @@ export default function TaskCard({ task, onClick, onAddToFocus, privacyMode }: P
             }}>
               <CalendarTodayIcon sx={{ fontSize: 12 }} />
               <Typography sx={{
-                fontSize: "0.75rem",
+                fontSize: "0.8rem",
                 fontWeight: isOverdue ? 700 : 400,
                 color: isOverdue ? "var(--danger-fg)" : "var(--tx-3)",
               }}>

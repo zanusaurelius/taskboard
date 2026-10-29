@@ -139,7 +139,7 @@ export function StreakBadge({ streak }: { streak: number }) {
   const hot = streak >= 3;
   return (
     <Typography component="span" title={`Current win streak: ${streak}`} sx={{
-      fontSize: "0.78rem", fontWeight: 700, fontVariantNumeric: "tabular-nums",
+      fontSize: "0.8rem", fontWeight: 700, fontVariantNumeric: "tabular-nums",
       color: hot ? "var(--streak)" : "var(--tx-3)", whiteSpace: "nowrap",
     }}>
       {hot ? "🔥 " : ""}{streak}
@@ -222,7 +222,7 @@ function HabitRow({ habit, first, today, weekStartsOn, narrow, allowBackfill, on
   );
   const name = (
     <ButtonBase onClick={onOpen} sx={{ justifyContent: "flex-start", textAlign: "left", borderRadius: 1, minWidth: 0, "&:hover .habit-name": { color: "var(--accent)" } }}>
-      <Typography className="habit-name" sx={{ fontSize: "0.9rem", fontWeight: 500, color: "var(--tx-2)", overflowWrap: "anywhere", transition: "color 0.15s" }}>
+      <Typography className="habit-name" sx={{ fontSize: "0.875rem", fontWeight: 500, color: "var(--tx-2)", overflowWrap: "anywhere", transition: "color 0.15s" }}>
         {habit.name || "Locked habit"}
       </Typography>
     </ButtonBase>
@@ -321,7 +321,7 @@ export function PeriodSwitch({ years, value, onChange }: { years: number[]; valu
         const on = o.key === current;
         return (
           <ButtonBase key={o.key} aria-pressed={on} onClick={() => onChange(o.period)} sx={{
-            fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 600, px: 1.25, py: 0.4, borderRadius: 1.5,
+            fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 600, px: 1.25, py: 0.4, borderRadius: 1.5,
             color: on ? "var(--tx)" : "var(--tx-3)",
             backgroundColor: on ? "var(--surface)" : "transparent",
             boxShadow: on ? "0 1px 2px rgba(0,0,0,0.12)" : "none",

@@ -127,9 +127,9 @@ export default function HabitsView() {
                   return (
                     <Box key={x.id} sx={{ display: "flex", alignItems: "center", gap: 2, px: 2.5, py: 1.25, borderBottom: "1px solid var(--divider)", "&:last-child": { borderBottom: 0 } }}>
                       <ButtonBase onClick={() => setDetailId(x.id)} sx={{ flex: 1, minWidth: 0, justifyContent: "flex-start", textAlign: "left", borderRadius: 1 }}>
-                        <Typography sx={{ fontSize: "0.88rem", color: "var(--tx-3)", overflowWrap: "anywhere" }}>{x.name || "Locked habit"}</Typography>
+                        <Typography sx={{ fontSize: "0.875rem", color: "var(--tx-3)", overflowWrap: "anywhere" }}>{x.name || "Locked habit"}</Typography>
                       </ButtonBase>
-                      <Typography sx={{ fontSize: "0.78rem", color: "var(--tx-3)", fontVariantNumeric: "tabular-nums" }}>{s.wins}–{s.losses}</Typography>
+                      <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-3)", fontVariantNumeric: "tabular-nums" }}>{s.wins}–{s.losses}</Typography>
                       <Button size="small" onClick={() => h.updateHabit(x.id, { archived: false })} sx={{ ...textButtonSx, color: "var(--accent)" }}>Restore</Button>
                     </Box>
                   );
@@ -250,13 +250,13 @@ function NewHabitDialog({ initialKind, onClose, onCreate }: {
                 "&.Mui-focusVisible": { borderColor: "var(--accent)" },
               }}>
                 <Typography sx={{ fontWeight: 700, color: "var(--tx)", fontSize: "0.95rem" }}>{KIND_COPY[k].title}</Typography>
-                <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-2)", mt: 0.25 }}>{KIND_COPY[k].explainer}</Typography>
+                <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-2)", mt: 0.25 }}>{KIND_COPY[k].explainer}</Typography>
               </ButtonBase>
             ))}
           </Box>
         ) : (
           <Box sx={{ display: "grid", gap: 2, pt: 0.5 }}>
-            <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-2)" }}>{KIND_COPY[kind].explainer}</Typography>
+            <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-2)" }}>{KIND_COPY[kind].explainer}</Typography>
             <TextField autoFocus size="small" label="Name" value={name} slotProps={{ htmlInput: { maxLength: 200 } }}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
@@ -264,7 +264,7 @@ function NewHabitDialog({ initialKind, onClose, onCreate }: {
             <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
               {PRESETS[kind].map((p) => (
                 <ButtonBase key={p} onClick={() => setName(p)} sx={{
-                  fontFamily: "inherit", fontSize: "0.78rem", px: 1.25, py: 0.5, borderRadius: 99,
+                  fontFamily: "inherit", fontSize: "0.8rem", px: 1.25, py: 0.5, borderRadius: 99,
                   border: `1px solid ${name === p ? "var(--accent-line)" : "var(--border)"}`,
                   color: name === p ? "var(--accent-fg)" : "var(--tx-2)",
                   backgroundColor: name === p ? "var(--accent-tint)" : "transparent",
@@ -274,7 +274,7 @@ function NewHabitDialog({ initialKind, onClose, onCreate }: {
             </Box>
             <FormControlLabel
               control={<Checkbox size="small" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />}
-              label={<Typography sx={{ fontSize: "0.85rem", color: "var(--tx-2)" }}>Private: hide it while privacy is on</Typography>}
+              label={<Typography sx={{ fontSize: "0.875rem", color: "var(--tx-2)" }}>Private: hide it while privacy is on</Typography>}
             />
           </Box>
         )}
@@ -347,14 +347,14 @@ function HabitDetailDialog({ habit, today, weekStartsOn, onClose, onOutcome, onR
             <Box role="tablist" sx={{ display: "inline-flex", p: "3px", borderRadius: 2, backgroundColor: "var(--surface-2)", border: "1px solid var(--border)", gap: "2px" }}>
               {(["weeks", "months"] as const).map((v) => (
                 <ButtonBase key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} sx={{
-                  fontFamily: "inherit", fontSize: "0.78rem", fontWeight: 600, px: 1.25, py: 0.4, borderRadius: 1.5,
+                  fontFamily: "inherit", fontSize: "0.8rem", fontWeight: 600, px: 1.25, py: 0.4, borderRadius: 1.5,
                   color: view === v ? "var(--tx)" : "var(--tx-3)",
                   backgroundColor: view === v ? "var(--surface)" : "transparent",
                   boxShadow: view === v ? "0 1px 2px rgba(0,0,0,0.12)" : "none",
                 }}>{v === "weeks" ? "Weeks" : "Months"}</ButtonBase>
               ))}
             </Box>
-            <Typography sx={{ fontSize: "0.75rem", color: "var(--tx-3)" }}>Tap a day to change it.</Typography>
+            <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-3)" }}>Tap a day to change it.</Typography>
           </Box>
 
           <Box sx={{ display: "grid", gap: view === "weeks" ? 0.5 : 2.5, maxHeight: 380, overflowY: "auto", pr: 0.5 }}>
@@ -363,10 +363,10 @@ function HabitDetailDialog({ habit, today, weekStartsOn, onClose, onOutcome, onR
               const color = result === "Won" ? WIN.fg : result === "Lost" ? LOSS.fg : "var(--tx-3)";
               return (
                 <Box key={w.start} sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto 44px 76px", alignItems: "center", gap: 1.5, py: 0.75, borderBottom: "1px solid var(--divider)" }}>
-                  <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-2)" }}>{shortDate(w.start)} – {shortDate(addDays(w.start, 6))}</Typography>
+                  <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-2)" }}>{shortDate(w.start)} – {shortDate(addDays(w.start, 6))}</Typography>
                   <WeekStrip outcomes={habit.outcomes} today={today} weekStartsOn={weekStartsOn} weekOf={w.start} size={20} onCycle={cycle} />
                   <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-2)", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{w.wins}–{w.losses}</Typography>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color, textAlign: "right" }}>{result}</Typography>
+                  <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, color, textAlign: "right" }}>{result}</Typography>
                 </Box>
               );
             }) : months.map((m) => {
@@ -374,7 +374,7 @@ function HabitDetailDialog({ habit, today, weekStartsOn, onClose, onOutcome, onR
               return (
                 <Box key={m.month} sx={{ display: "flex", gap: 3, flexWrap: "wrap", alignItems: "flex-start" }}>
                   <Box sx={{ minWidth: 130 }}>
-                    <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--tx)" }}>{monthName(m.month)}</Typography>
+                    <Typography sx={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--tx)" }}>{monthName(m.month)}</Typography>
                     <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-2)", fontVariantNumeric: "tabular-nums", mt: 0.25 }}>
                       <Box component="span" sx={{ color: WIN.fg, fontWeight: 700 }}>{m.wins}</Box>–<Box component="span" sx={{ color: LOSS.fg, fontWeight: 700 }}>{m.losses}</Box>
                       {days > 0 && ` · ${Math.round((m.wins / days) * 100)}%`}
@@ -390,13 +390,13 @@ function HabitDetailDialog({ habit, today, weekStartsOn, onClose, onOutcome, onR
         <FormControlLabel
           sx={{ ml: 0, gap: 1 }}
           control={<Switch size="small" checked={habit.private} onChange={(e) => onPrivate(e.target.checked)} />}
-          label={<Typography sx={{ fontSize: "0.85rem", color: "var(--tx-2)" }}>Private: hide it while privacy is on</Typography>}
+          label={<Typography sx={{ fontSize: "0.875rem", color: "var(--tx-2)" }}>Private: hide it while privacy is on</Typography>}
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5, gap: 1, flexWrap: "wrap" }}>
         {confirmDelete ? (
           <>
-            <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-2)", mr: "auto" }}>
+            <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-2)", mr: "auto" }}>
               Delete this habit and its whole record? Archiving keeps the record.
             </Typography>
             <Button onClick={() => setConfirmDelete(false)} sx={secondaryButtonSx}>Cancel</Button>

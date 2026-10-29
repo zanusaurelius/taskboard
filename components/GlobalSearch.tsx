@@ -202,7 +202,7 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
       slotProps={{
         paper: {
           sx: {
-            backgroundColor: "#1e293b",
+            backgroundColor: "var(--surface)",
             borderRadius: "12px",
             boxShadow: "0 25px 50px rgba(0,0,0,0.4)",
             overflow: "hidden",
@@ -229,22 +229,22 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
               startAdornment: (
                 <InputAdornment position="start">
                   {loading
-                    ? <CircularProgress size={16} sx={{ color: "#6366f1" }} />
-                    : <SearchIcon sx={{ color: "rgba(255,255,255,0.35)", fontSize: 20 }} />}
+                    ? <CircularProgress size={16} sx={{ color: "var(--accent)" }} />
+                    : <SearchIcon sx={{ color: "var(--tx-4)", fontSize: 20 }} />}
                 </InputAdornment>
               ),
             },
           }}
           sx={{
             "& .MuiOutlinedInput-root": {
-              backgroundColor: "rgba(255,255,255,0.06)",
-              color: "#f1f5f9",
+              backgroundColor: "var(--surface-2)",
+              color: "var(--tx)",
               borderRadius: 2,
-              "& fieldset": { border: "1px solid rgba(255,255,255,0.1)" },
+              "& fieldset": { border: "1px solid var(--border)" },
               "&:hover fieldset": { border: "1px solid rgba(99,102,241,0.4)" },
               "&.Mui-focused fieldset": { border: "1px solid rgba(99,102,241,0.7)" },
             },
-            "& input::placeholder": { color: "rgba(255,255,255,0.3)", opacity: 1 },
+            "& input::placeholder": { color: "var(--tx-3)", opacity: 1 },
           }}
         />
       </Box>
@@ -254,7 +254,7 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
         {/* Empty state — no query yet */}
         {!hasQuery && (
           <Box sx={{ textAlign: "center", py: 4, px: 2 }}>
-            <Typography sx={{ color: "rgba(255,255,255,0.3)", fontSize: "0.85rem" }}>
+            <Typography sx={{ color: "var(--tx-3)", fontSize: "0.875rem" }}>
               Search tasks, notes, journal, and files
             </Typography>
           </Box>
@@ -263,7 +263,7 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
         {/* No results */}
         {hasQuery && !loading && results && totalResults === 0 && (
           <Box sx={{ textAlign: "center", py: 4, px: 2 }}>
-            <Typography sx={{ color: "rgba(255,255,255,0.3)", fontSize: "0.85rem" }}>
+            <Typography sx={{ color: "var(--tx-3)", fontSize: "0.875rem" }}>
               No results for &ldquo;{query}&rdquo;
             </Typography>
           </Box>
@@ -276,8 +276,8 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
             {results.tasks.length > 0 && (
               <Box>
                 <Typography sx={{
-                  fontSize: "0.65rem", fontWeight: 700, letterSpacing: 1,
-                  color: "rgba(255,255,255,0.3)", textTransform: "uppercase",
+                  fontSize: "0.7rem", fontWeight: 700, letterSpacing: 1,
+                  color: "var(--tx-3)", textTransform: "uppercase",
                   px: 2, py: 0.75,
                 }}>
                   Tasks
@@ -298,8 +298,8 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
             {results.notes.length > 0 && (
               <Box>
                 <Typography sx={{
-                  fontSize: "0.65rem", fontWeight: 700, letterSpacing: 1,
-                  color: "rgba(255,255,255,0.3)", textTransform: "uppercase",
+                  fontSize: "0.7rem", fontWeight: 700, letterSpacing: 1,
+                  color: "var(--tx-3)", textTransform: "uppercase",
                   px: 2, py: 0.75,
                 }}>
                   Notes
@@ -320,8 +320,8 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
             {results.journal.length > 0 && (
               <Box>
                 <Typography sx={{
-                  fontSize: "0.65rem", fontWeight: 700, letterSpacing: 1,
-                  color: "rgba(255,255,255,0.3)", textTransform: "uppercase",
+                  fontSize: "0.7rem", fontWeight: 700, letterSpacing: 1,
+                  color: "var(--tx-3)", textTransform: "uppercase",
                   px: 2, py: 0.75,
                 }}>
                   Journal
@@ -345,8 +345,8 @@ export default function GlobalSearch({ open, onClose, onNavigate }: GlobalSearch
             {results.files.length > 0 && (
               <Box>
                 <Typography sx={{
-                  fontSize: "0.65rem", fontWeight: 700, letterSpacing: 1,
-                  color: "rgba(255,255,255,0.3)", textTransform: "uppercase",
+                  fontSize: "0.7rem", fontWeight: 700, letterSpacing: 1,
+                  color: "var(--tx-3)", textTransform: "uppercase",
                   px: 2, py: 0.75,
                 }}>
                   Files
@@ -400,15 +400,15 @@ function ResultRow({ title, meta, snippetText, onClick }: ResultRowProps) {
       }}
     >
       <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
-        <Typography sx={{ fontSize: "0.875rem", fontWeight: 600, color: "#f1f5f9", lineHeight: 1.4 }}>
+        <Typography sx={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--tx)", lineHeight: 1.4 }}>
           {title}
         </Typography>
-        <Typography sx={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.35)", flexShrink: 0 }}>
+        <Typography sx={{ fontSize: "0.7rem", color: "var(--tx-4)", flexShrink: 0 }}>
           {meta}
         </Typography>
       </Box>
       {snippetText && (
-        <Typography sx={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.45)", mt: 0.25, lineHeight: 1.4 }}>
+        <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-3)", mt: 0.25, lineHeight: 1.4 }}>
           {snippetText}
         </Typography>
       )}

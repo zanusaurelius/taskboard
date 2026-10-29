@@ -26,8 +26,8 @@ interface Props {
 }
 
 const fieldSx = {
-  "& .MuiOutlinedInput-root": { borderRadius: 1.5, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#6366f1" } },
-  "& .MuiInputLabel-root.Mui-focused": { color: "#6366f1" },
+  "& .MuiOutlinedInput-root": { borderRadius: 1.5, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "var(--accent)" } },
+  "& .MuiInputLabel-root.Mui-focused": { color: "var(--accent)" },
 };
 
 export default function VaultSetupModal({ open, onClose, onSuccess }: Props) {
@@ -111,10 +111,10 @@ export default function VaultSetupModal({ open, onClose, onSuccess }: Props) {
           <Box sx={{ width: 48, height: 48, borderRadius: 2, background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", display: "flex", alignItems: "center", justifyContent: "center", mb: 1.5 }}>
             <LockOutlinedIcon sx={{ color: "#fff", fontSize: 24 }} />
           </Box>
-          <Typography sx={{ fontWeight: 800, fontSize: "1.1rem", color: "#0f172a" }}>
+          <Typography sx={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--tx)" }}>
             {step === "password" ? "Create Notes Vault" : "Save Your Recovery Code"}
           </Typography>
-          <Typography sx={{ fontSize: "0.8rem", color: "#94a3b8", mt: 0.5, textAlign: "center" }}>
+          <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", mt: 0.5, textAlign: "center" }}>
             {step === "password"
               ? "Set a vault password to lock and hide notes. Separate from your account password."
               : "This is the only way to recover your vault if you forget your password. Store it safely."}
@@ -133,7 +133,7 @@ export default function VaultSetupModal({ open, onClose, onSuccess }: Props) {
                 required fullWidth size="small" autoComplete="new-password" fieldSx={fieldSx} />
               <Box sx={{ display: "flex", gap: 1.5, mt: 1 }}>
                 <Button variant="outlined" onClick={onClose} disabled={loading}
-                  sx={{ flex: 1, textTransform: "none", fontWeight: 600, borderRadius: 1.5, borderColor: "#e2e8f0", color: "#64748b" }}>
+                  sx={{ flex: 1, textTransform: "none", fontWeight: 600, borderRadius: 1.5, borderColor: "var(--border)", color: "var(--tx-3)" }}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={loading}
@@ -152,24 +152,24 @@ export default function VaultSetupModal({ open, onClose, onSuccess }: Props) {
             <Alert severity="warning" sx={{ borderRadius: 1.5, fontSize: "0.8rem" }}>
               This code is shown <strong>once</strong>. Write it down or save it in a password manager.
             </Alert>
-            <Box sx={{ backgroundColor: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 2, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <Typography sx={{ fontFamily: "monospace", fontSize: "1rem", fontWeight: 700, color: "#1e293b", letterSpacing: 2 }}>
+            <Box sx={{ backgroundColor: "var(--surface-2)", border: "1.5px solid var(--border)", borderRadius: 2, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Typography sx={{ fontFamily: "monospace", fontSize: "1rem", fontWeight: 700, color: "var(--tx)", letterSpacing: 2 }}>
                 {recoveryCode}
               </Typography>
               <Box sx={{ display: "flex", gap: 0.5 }}>
                 <Tooltip title={copied ? "Copied!" : "Copy"} placement="top">
-                  <IconButton size="small" onClick={handleCopy} sx={{ color: copied ? "#22c55e" : "#94a3b8" }}>
+                  <IconButton size="small" onClick={handleCopy} sx={{ color: copied ? "var(--success-fg)" : "var(--tx-4)" }}>
                     <ContentCopyIcon sx={{ fontSize: 16 }} />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Download as text file" placement="top">
-                  <IconButton size="small" onClick={handleDownload} sx={{ color: "#94a3b8" }}>
+                  <IconButton size="small" onClick={handleDownload} sx={{ color: "var(--tx-4)" }}>
                     <DownloadIcon sx={{ fontSize: 16 }} />
                   </IconButton>
                 </Tooltip>
               </Box>
             </Box>
-            <Typography sx={{ fontSize: "0.78rem", color: "#94a3b8" }}>
+            <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)" }}>
               Format: 4 groups of 6 characters. Hyphen-separated.
             </Typography>
             <Button onClick={handleFinish}

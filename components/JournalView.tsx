@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
@@ -11,6 +12,9 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SearchIcon from "@mui/icons-material/Search";
 import AutoStoriesOutlinedIcon from "@mui/icons-material/AutoStoriesOutlined";
 import { useVault } from "@/lib/vault-context";
+import PageHeader from "./PageHeader";
+import { primaryButtonSx } from "@/lib/ui";
+import EditNoteIcon from "@mui/icons-material/EditNote";
 
 interface Reflection {
   id: string;
@@ -52,23 +56,23 @@ function entryMatchesSearch(e: Reflection, q: string): boolean {
 
 const inputFieldSx = {
   "& .MuiOutlinedInput-root": {
-    borderRadius: 2, fontSize: "0.9rem", backgroundColor: "var(--surface-2)",
+    borderRadius: 2, fontSize: "0.875rem", backgroundColor: "var(--surface-2)",
     "& fieldset": { borderColor: "var(--border)" },
     "&:hover fieldset": { borderColor: "var(--border-2)" },
-    "&.Mui-focused fieldset": { borderColor: "#6366f1", borderWidth: 1.5 },
+    "&.Mui-focused fieldset": { borderColor: "var(--accent)", borderWidth: 1.5 },
   },
   "& textarea": { lineHeight: 1.6 },
 };
 
 const labelSx = {
-  fontSize: "0.68rem", fontWeight: 800, color: "var(--tx-4)",
+  fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)",
   textTransform: "uppercase" as const, letterSpacing: 1.1, mb: 0.75,
 };
 
 const viewAllSx = {
-  fontSize: "0.7rem", fontWeight: 600, color: "#818cf8",
+  fontSize: "0.7rem", fontWeight: 600, color: "var(--accent)",
   cursor: "pointer", ml: 1, userSelect: "none" as const,
-  "&:hover": { color: "#6366f1", textDecoration: "underline" },
+  "&:hover": { color: "var(--accent)", textDecoration: "underline" },
 };
 
 export default function JournalView() {
@@ -241,7 +245,17 @@ export default function JournalView() {
   const isToday = selectedDate === today;
 
   return (
-    <Box sx={{ display: "flex", height: "100%", overflow: "hidden" }}>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <PageHeader
+      title="Journal"
+      privacy={false}
+      actions={
+        <Button size="small" startIcon={<EditNoteIcon />} onClick={() => { setSelectedDate(today); setMobilePanel("detail"); }} sx={primaryButtonSx}>
+          Today
+        </Button>
+      }
+    />
+    <Box sx={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
 
       {/* ── Left panel ── */}
       <Box sx={{
@@ -263,7 +277,7 @@ export default function JournalView() {
               placeholder="Search journal…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              sx={{ fontSize: "0.82rem", flex: 1, color: "var(--tx-2)" }}
+              sx={{ fontSize: "0.8rem", flex: 1, color: "var(--tx-2)" }}
             />
           </Box>
         </Box>
@@ -272,7 +286,7 @@ export default function JournalView() {
         <Box sx={{ flex: 1, overflowY: "auto" }}>
           {loading ? (
             <Box sx={{ display: "flex", justifyContent: "center", pt: 4 }}>
-              <CircularProgress size={22} sx={{ color: "#6366f1" }} />
+              <CircularProgress size={22} sx={{ color: "var(--accent)" }} />
             </Box>
           ) : (
             <>
@@ -283,14 +297,14 @@ export default function JournalView() {
                   sx={{
                     px: 2, py: 1.25, cursor: "pointer",
                     backgroundColor: selectedDate === today ? "rgba(99,102,241,0.08)" : "transparent",
-                    borderLeft: selectedDate === today ? "3px solid #6366f1" : "3px solid transparent",
+                    borderLeft: selectedDate === today ? "3px solid var(--accent)" : "3px solid transparent",
                     "&:hover": { backgroundColor: selectedDate === today ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.03)" },
                   }}
                 >
-                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 700, color: selectedDate === today ? "#6366f1" : "var(--tx)" }}>
+                  <Typography sx={{ fontSize: "0.8rem", fontWeight: 700, color: selectedDate === today ? "var(--accent)" : "var(--tx)" }}>
                     Today
                   </Typography>
-                  <Typography sx={{ fontSize: "0.72rem", color: "var(--tx-4)", mt: 0.1 }}>
+                  <Typography sx={{ fontSize: "0.7rem", color: "var(--tx-4)", mt: 0.1 }}>
                     {formatDayShort(today)}
                   </Typography>
                 </Box>
@@ -300,7 +314,7 @@ export default function JournalView() {
               {months.map((month) => (
                 <Box key={month}>
                   <Typography sx={{
-                    fontSize: "0.65rem", fontWeight: 800, color: "var(--tx-4)",
+                    fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)",
                     textTransform: "uppercase", letterSpacing: 1,
                     px: 2, pt: 1.5, pb: 0.5,
                   }}>
@@ -313,16 +327,16 @@ export default function JournalView() {
                       sx={{
                         px: 2, py: 1, cursor: "pointer",
                         backgroundColor: selectedDate === entry.date ? "rgba(99,102,241,0.08)" : "transparent",
-                        borderLeft: selectedDate === entry.date ? "3px solid #6366f1" : "3px solid transparent",
+                        borderLeft: selectedDate === entry.date ? "3px solid var(--accent)" : "3px solid transparent",
                         "&:hover": { backgroundColor: selectedDate === entry.date ? "rgba(99,102,241,0.08)" : "rgba(0,0,0,0.03)" },
                       }}
                     >
-                      <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: selectedDate === entry.date ? "#6366f1" : "var(--tx)" }}>
+                      <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: selectedDate === entry.date ? "var(--accent)" : "var(--tx)" }}>
                         {formatDayShort(entry.date)}
                       </Typography>
                       {(entry.note || entry.gratitude || entry.body) && (
                         <Typography sx={{
-                          fontSize: "0.72rem", color: "var(--tx-4)", mt: 0.1,
+                          fontSize: "0.7rem", color: "var(--tx-4)", mt: 0.1,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           {entry.body ?? entry.note ?? entry.gratitude}
@@ -334,7 +348,7 @@ export default function JournalView() {
               ))}
 
               {!loading && months.length === 0 && !showTodayInList && (
-                <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)", px: 2, pt: 3, textAlign: "center" }}>
+                <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", px: 2, pt: 3, textAlign: "center" }}>
                   No entries match your search.
                 </Typography>
               )}
@@ -350,7 +364,7 @@ export default function JournalView() {
             <IconButton size="small" onClick={() => setMobilePanel("list")} sx={{ color: "var(--tx-2)" }}>
               <ArrowBackIcon sx={{ fontSize: 20 }} />
             </IconButton>
-            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--tx-2)" }}>Journal</Typography>
+            <Typography sx={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--tx-2)" }}>Journal</Typography>
           </Box>
         )}
         {!loading && focusField === null && (
@@ -367,7 +381,7 @@ export default function JournalView() {
                 </Typography>
               </Box>
               {saved && (
-                <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#22c55e" }}>
+                <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--success-fg)" }}>
                   Saved
                 </Typography>
               )}
@@ -429,7 +443,7 @@ export default function JournalView() {
                     alignItems: "flex-start",
                     "& fieldset": { borderColor: "var(--border)" },
                     "&:hover fieldset": { borderColor: "var(--border-2)" },
-                    "&.Mui-focused fieldset": { borderColor: "#6366f1", borderWidth: 1.5 },
+                    "&.Mui-focused fieldset": { borderColor: "var(--accent)", borderWidth: 1.5 },
                   },
                   "& textarea": { lineHeight: 1.8, py: 1.5, px: 0.5 },
                 }}
@@ -455,7 +469,7 @@ export default function JournalView() {
                 sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, cursor: "pointer", width: "fit-content" }}
                 onClick={() => setFocusField(null)}
               >
-                <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "#6366f1", "&:hover": { textDecoration: "underline" } }}>
+                <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent)", "&:hover": { textDecoration: "underline" } }}>
                   ← Back to entry
                 </Typography>
               </Box>
@@ -467,7 +481,7 @@ export default function JournalView() {
 
               {/* Items */}
               {streamItems.length === 0 ? (
-                <Typography sx={{ fontSize: "0.88rem", color: "var(--tx-4)", mt: 1 }}>
+                <Typography sx={{ fontSize: "0.875rem", color: "var(--tx-4)", mt: 1 }}>
                   No entries yet for this field.
                 </Typography>
               ) : (
@@ -487,7 +501,7 @@ export default function JournalView() {
                           <Typography sx={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--tx)", mb: 0.5 }}>
                             {formatDayFull(entry.date)}
                           </Typography>
-                          <Typography sx={{ fontSize: "0.9rem", color: "var(--tx-2)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                          <Typography sx={{ fontSize: "0.875rem", color: "var(--tx-2)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
                             {content}
                           </Typography>
                         </Box>
@@ -511,6 +525,7 @@ export default function JournalView() {
           </Box>
         )}
       </Box>
+    </Box>
     </Box>
   );
 }

@@ -123,7 +123,7 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
 
   const btnSx = (active: boolean) => ({
     p: 0.6, borderRadius: 1,
-    color: active ? "#6366f1" : "var(--tx-3)",
+    color: active ? "var(--accent)" : "var(--tx-3)",
     backgroundColor: active ? "rgba(99,102,241,0.15)" : "transparent",
     "&:hover": { backgroundColor: active ? "rgba(99,102,241,0.2)" : "var(--surface-hover, rgba(0,0,0,0.06))" },
   });
@@ -143,13 +143,13 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
       }}
       onDrop={() => setIsDragOver(false)}
       sx={{
-        border: isDragOver ? "2px dashed #6366f1" : "1px solid var(--border)",
+        border: isDragOver ? "2px dashed var(--accent)" : "1px solid var(--border)",
         borderRadius: 2,
         overflow: "hidden",
         backgroundColor: isDragOver ? "rgba(99,102,241,0.08)" : "transparent",
         transition: "border-color 0.15s, box-shadow 0.15s, background-color 0.15s",
         "&:focus-within": {
-          borderColor: "#6366f1",
+          borderColor: "var(--accent)",
           boxShadow: "0 0 0 2px rgba(99,102,241,0.15)",
         },
       }}
@@ -217,7 +217,7 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
           "& .rte-content": {
             outline: "none",
             minHeight,
-            fontSize: "0.9rem",
+            fontSize: "0.875rem",
             lineHeight: 1.65,
             color: "var(--tx-1)",
           },
@@ -248,7 +248,7 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
           "& .rte-content h2": { fontSize: "1.25em", fontWeight: 700, margin: "0.5em 0 0.3em" },
           "& .rte-content h3": { fontSize: "1.1em", fontWeight: 600, margin: "0.5em 0 0.3em" },
           "& .rte-content blockquote": {
-            borderLeft: "3px solid #e2e8f0",
+            borderLeft: "3px solid var(--border)",
             paddingLeft: "1em",
             color: "var(--tx-3)",
             margin: "0.5em 0",
@@ -264,7 +264,7 @@ export default function RichTextEditor({ value, onChange, minHeight = 130 }: Pro
             pointerEvents: "none",
             backgroundColor: "rgba(238,240,255,0.6)",
           }}>
-            <Typography sx={{ color: "#6366f1", fontWeight: 700, fontSize: "0.95rem" }}>
+            <Typography sx={{ color: "var(--accent)", fontWeight: 700, fontSize: "0.95rem" }}>
               Drop image here
             </Typography>
           </Box>

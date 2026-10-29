@@ -53,6 +53,8 @@ import relativeTime from "dayjs/plugin/relativeTime";
 import { useTaskBoardStore } from "@/lib/store";
 import { Note, Folder } from "@/lib/types";
 import { VaultProvider, useVault } from "@/lib/vault-context";
+import PageHeader from "./PageHeader";
+import { primaryButtonSx } from "@/lib/ui";
 import VaultSetupModal from "./VaultSetupModal";
 import VaultUnlockModal from "./VaultUnlockModal";
 
@@ -944,7 +946,19 @@ function NotesViewInner({ onCreateTask }: Props) {
   const showLockPrompt = activeNote?.locked && !isUnlocked;
 
   return (
-    <Box sx={{ display: "flex", height: "100%", overflow: "hidden" }}>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <PageHeader
+      title="Notes"
+      privacy={false}
+      onTitleClick={handleNotesHeaderClick}
+      actions={
+        <Button size="small" startIcon={<AddIcon />} onClick={handleNewNote} sx={primaryButtonSx}>
+          <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New note</Box>
+          <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Note</Box>
+        </Button>
+      }
+    />
+    <Box sx={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
 
       {/* ── Left panel ── */}
       <Box
@@ -953,40 +967,28 @@ function NotesViewInner({ onCreateTask }: Props) {
       >
 
         {/* Header */}
-        <Box sx={{ px: 2, pt: 2.5, pb: 1.5 }}>
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
-            <Typography
-              onClick={handleNotesHeaderClick}
-              sx={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--tx)", cursor: "default", userSelect: "none" }}
-            >
-              Notes
-            </Typography>
-            <Button size="small" startIcon={<AddIcon sx={{ fontSize: 16 }} />} onClick={handleNewNote}
-              sx={{ background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: "0.75rem", textTransform: "none", borderRadius: 1.5, px: 1.5, py: 0.5, minWidth: 0, "&:hover": { background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)" } }}>
-              New
-            </Button>
-          </Box>
+        <Box sx={{ px: 2, pt: 2, pb: 1.5 }}>
           {isRevealed && (
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, px: 0.75, py: 0.5, borderRadius: 1.5, backgroundColor: "rgba(99,102,241,0.12)" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                <ShieldOutlinedIcon sx={{ fontSize: 13, color: "#6366f1" }} />
-                <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#6366f1" }}>Vault open</Typography>
+                <ShieldOutlinedIcon sx={{ fontSize: 13, color: "var(--accent)" }} />
+                <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--accent)" }}>Vault open</Typography>
               </Box>
               <Tooltip title="Lock vault and hide hidden notes" placement="top">
-                <IconButton size="small" onClick={handleCloseVault} sx={{ p: 0.25, color: "#6366f1", "&:hover": { backgroundColor: "rgba(99,102,241,0.2)" } }}>
+                <IconButton size="small" onClick={handleCloseVault} sx={{ p: 0.25, color: "var(--accent)", "&:hover": { backgroundColor: "rgba(99,102,241,0.2)" } }}>
                   <LockOutlinedIcon sx={{ fontSize: 13 }} />
                 </IconButton>
               </Tooltip>
             </Box>
           )}
           {isUnlocked && !isRevealed && (
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, px: 0.75, py: 0.5, borderRadius: 1.5, backgroundColor: "#f0fdf4" }}>
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5, px: 0.75, py: 0.5, borderRadius: 1.5, backgroundColor: "var(--success-bg)" }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                <LockOpenOutlinedIcon sx={{ fontSize: 13, color: "#16a34a" }} />
-                <Typography sx={{ fontSize: "0.75rem", fontWeight: 600, color: "#16a34a" }}>Notes unlocked</Typography>
+                <LockOpenOutlinedIcon sx={{ fontSize: 13, color: "var(--success-fg)" }} />
+                <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--success-fg)" }}>Notes unlocked</Typography>
               </Box>
               <Tooltip title="Lock notes" placement="top">
-                <IconButton size="small" onClick={() => lockVault()} sx={{ p: 0.25, color: "#16a34a", "&:hover": { backgroundColor: "#dcfce7" } }}>
+                <IconButton size="small" onClick={() => lockVault()} sx={{ p: 0.25, color: "var(--success-fg)", "&:hover": { backgroundColor: "var(--success-bg)" } }}>
                   <LockOutlinedIcon sx={{ fontSize: 13 }} />
                 </IconButton>
               </Tooltip>
@@ -994,7 +996,7 @@ function NotesViewInner({ onCreateTask }: Props) {
           )}
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, backgroundColor: "var(--surface)", border: "1px solid var(--border)", borderRadius: 1.5, px: 1.25, py: 0.6 }}>
             <SearchIcon sx={{ fontSize: 16, color: "var(--tx-4)", flexShrink: 0 }} />
-            <InputBase value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search notes…" sx={{ fontSize: "0.82rem", color: "var(--tx-2)", flex: 1 }} />
+            <InputBase value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search notes…" sx={{ fontSize: "0.8rem", color: "var(--tx-2)", flex: 1 }} />
           </Box>
         </Box>
 
@@ -1023,7 +1025,7 @@ function NotesViewInner({ onCreateTask }: Props) {
           </Typography>
           <Tooltip title={foldersCollapsed ? "Expand folders" : "Collapse folders"} placement="top">
             <IconButton size="small" onClick={() => setFoldersCollapsed(c => !c)}
-              sx={{ p: 0.2, color: "var(--tx-4)", "&:hover": { color: "#64748b", backgroundColor: "var(--bg)" } }}>
+              sx={{ p: 0.2, color: "var(--tx-4)", "&:hover": { color: "var(--tx-3)", backgroundColor: "var(--bg)" } }}>
               {foldersCollapsed ? <ExpandMoreIcon sx={{ fontSize: 14 }} /> : <ExpandLessIcon sx={{ fontSize: 14 }} />}
             </IconButton>
           </Tooltip>
@@ -1051,7 +1053,7 @@ function NotesViewInner({ onCreateTask }: Props) {
                     onKeyDown={(e) => { if (e.key === "Enter") handleRenameFolder(); if (e.key === "Escape") setRenamingFolder(null); }}
                     onBlur={handleRenameFolder}
                     autoFocus
-                    sx={{ fontSize: "0.8rem", color: "var(--tx)", width: "100%", px: 1, py: 0.5, backgroundColor: "var(--surface)", borderRadius: 1.5, border: "1px solid #c7d2fe" }}
+                    sx={{ fontSize: "0.8rem", color: "var(--tx)", width: "100%", px: 1, py: 0.5, backgroundColor: "var(--surface)", borderRadius: 1.5, border: "1px solid var(--accent-line)" }}
                   />
                 ) : (
                   <FolderRow
@@ -1060,8 +1062,8 @@ function NotesViewInner({ onCreateTask }: Props) {
                     icon={
                       f.hidden
                         ? <Box sx={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
-                            <FolderOutlinedIcon sx={{ fontSize: 15, color: "#a5b4fc" }} />
-                            <LockOutlinedIcon sx={{ position: "absolute", fontSize: 8, color: "#6366f1", bottom: -1, right: -3 }} />
+                            <FolderOutlinedIcon sx={{ fontSize: 15, color: "var(--accent)" }} />
+                            <LockOutlinedIcon sx={{ position: "absolute", fontSize: 8, color: "var(--accent)", bottom: -1, right: -3 }} />
                           </Box>
                         : <FolderOutlinedIcon sx={{ fontSize: 15 }} />
                     }
@@ -1080,7 +1082,7 @@ function NotesViewInner({ onCreateTask }: Props) {
                     <EditIcon sx={{ fontSize: 12 }} />
                   </IconButton>
                   <IconButton size="small" onClick={() => handleDeleteFolder(f)}
-                    sx={{ p: 0.3, color: "var(--tx-3)", backgroundColor: "var(--surface)", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
+                    sx={{ p: 0.3, color: "var(--tx-3)", backgroundColor: "var(--surface)", "&:hover": { color: "var(--danger-fg)", backgroundColor: "var(--danger-bg)" } }}>
                     <DeleteOutlineIcon sx={{ fontSize: 12 }} />
                   </IconButton>
                 </Box>
@@ -1096,13 +1098,13 @@ function NotesViewInner({ onCreateTask }: Props) {
                 onBlur={() => { if (!newFolderName.trim()) { setNewFolderMode(false); setNewFolderName(""); } else handleCreateFolder(); }}
                 placeholder="Folder name…"
                 autoFocus
-                sx={{ fontSize: "0.8rem", color: "var(--tx)", width: "100%", px: 1, py: 0.5, mt: 0.5, backgroundColor: "var(--surface)", borderRadius: 1.5, border: "1px solid #c7d2fe" }}
+                sx={{ fontSize: "0.8rem", color: "var(--tx)", width: "100%", px: 1, py: 0.5, mt: 0.5, backgroundColor: "var(--surface)", borderRadius: 1.5, border: "1px solid var(--accent-line)" }}
               />
             ) : (
               <Box onClick={() => setNewFolderMode(true)}
-                sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1, py: 0.6, mt: 0.25, cursor: "pointer", borderRadius: 1.5, color: "var(--tx-4)", "&:hover": { color: "#6366f1", backgroundColor: "var(--bg)" }, transition: "all 0.15s" }}>
+                sx={{ display: "flex", alignItems: "center", gap: 0.75, px: 1, py: 0.6, mt: 0.25, cursor: "pointer", borderRadius: 1.5, color: "var(--tx-4)", "&:hover": { color: "var(--accent)", backgroundColor: "var(--bg)" }, transition: "all 0.15s" }}>
                 <CreateNewFolderOutlinedIcon sx={{ fontSize: 14 }} />
-                <Typography sx={{ fontSize: "0.78rem", fontWeight: 500 }}>New Folder</Typography>
+                <Typography sx={{ fontSize: "0.8rem", fontWeight: 500 }}>New Folder</Typography>
               </Box>
             )}
 
@@ -1116,14 +1118,14 @@ function NotesViewInner({ onCreateTask }: Props) {
                     active={selectedFolder === "trash"}
                     icon={<DeleteSweepIcon sx={{ fontSize: 15 }} />}
                     onClick={() => setSelectedFolder("trash")}
-                    sx={{ flex: 1, color: selectedFolder === "trash" ? "#ef4444" : "#94a3b8",
-                      backgroundColor: selectedFolder === "trash" ? "#fff1f2" : "transparent",
-                      "&:hover": { backgroundColor: selectedFolder === "trash" ? "#fff1f2" : "var(--surface-hover)" } }}
+                    sx={{ flex: 1, color: selectedFolder === "trash" ? "var(--danger-fg)" : "var(--tx-3)",
+                      backgroundColor: selectedFolder === "trash" ? "var(--danger-bg)" : "transparent",
+                      "&:hover": { backgroundColor: selectedFolder === "trash" ? "var(--danger-bg)" : "var(--surface-hover)" } }}
                   />
                   {selectedFolder === "trash" && (
                     <Tooltip title="Empty trash" placement="top">
                       <IconButton size="small" onClick={emptyTrash}
-                        sx={{ mr: 0.5, p: 0.4, color: "#ef4444", "&:hover": { backgroundColor: "#fff1f2" } }}>
+                        sx={{ mr: 0.5, p: 0.4, color: "var(--danger-fg)", "&:hover": { backgroundColor: "var(--danger-bg)" } }}>
                         <DeleteForeverIcon sx={{ fontSize: 14 }} />
                       </IconButton>
                     </Tooltip>
@@ -1154,7 +1156,7 @@ function NotesViewInner({ onCreateTask }: Props) {
               <Tooltip key={field} title={active ? (sortDir === "desc" ? "Oldest/A-Z first" : "Newest/Z-A first") : ""} placement="top">
                 <Button size="small" onClick={() => handleSort(field)}
                   endIcon={active ? (sortDir === "desc" ? <ArrowDownwardIcon sx={{ fontSize: "11px !important" }} /> : <ArrowUpwardIcon sx={{ fontSize: "11px !important" }} />) : undefined}
-                  sx={{ fontSize: "0.72rem", fontWeight: active ? 700 : 500, textTransform: "none", color: active ? "#6366f1" : "var(--tx-2)", backgroundColor: active ? "rgba(99,102,241,0.12)" : "transparent", borderRadius: 1.5, px: 1, py: 0.25, minWidth: 0, "& .MuiButton-endIcon": { ml: 0.25 }, "&:hover": { backgroundColor: active ? "rgba(99,102,241,0.2)" : "var(--surface-hover)", color: active ? "#6366f1" : "var(--tx-3)" } }}>
+                  sx={{ fontSize: "0.7rem", fontWeight: active ? 700 : 500, textTransform: "none", color: active ? "var(--accent)" : "var(--tx-2)", backgroundColor: active ? "rgba(99,102,241,0.12)" : "transparent", borderRadius: 1.5, px: 1, py: 0.25, minWidth: 0, "& .MuiButton-endIcon": { ml: 0.25 }, "&:hover": { backgroundColor: active ? "rgba(99,102,241,0.2)" : "var(--surface-hover)", color: active ? "var(--accent)" : "var(--tx-3)" } }}>
                   {SORT_LABELS[field]}
                 </Button>
               </Tooltip>
@@ -1172,26 +1174,26 @@ function NotesViewInner({ onCreateTask }: Props) {
             <>
               {trashNotes.length === 0 ? (
                 <Box sx={{ p: 3, textAlign: "center" }}>
-                  <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)" }}>Trash is empty</Typography>
+                  <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)" }}>Trash is empty</Typography>
                 </Box>
               ) : trashNotes.map((note) => (
-                <Box key={note.id} sx={{ px: 2, py: 1.25, borderBottom: "1px solid var(--divider)", display: "flex", alignItems: "center", gap: 1, opacity: 0.75, "&:hover": { opacity: 1, backgroundColor: "#fef2f2" }, transition: "all 0.1s" }}>
+                <Box key={note.id} sx={{ px: 2, py: 1.25, borderBottom: "1px solid var(--divider)", display: "flex", alignItems: "center", gap: 1, opacity: 0.75, "&:hover": { opacity: 1, backgroundColor: "var(--danger-bg)" }, transition: "all 0.1s" }}>
                   {note.locked && <LockOutlinedIcon sx={{ fontSize: 13, color: "var(--tx-4)", flexShrink: 0 }} />}
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontSize: "0.84rem", color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: note.locked ? "italic" : "normal" }}>
+                    <Typography sx={{ fontSize: "0.8rem", color: "var(--tx)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: note.locked ? "italic" : "normal" }}>
                       {note.locked ? "Locked note" : (note.title || "Untitled")}
                     </Typography>
-                    <Typography sx={{ fontSize: "0.72rem", color: "var(--tx-4)" }}>
+                    <Typography sx={{ fontSize: "0.7rem", color: "var(--tx-4)" }}>
                       Deleted {noteTimestamp(note.deletedAt!)}
                     </Typography>
                   </Box>
                   <Tooltip title="Restore" placement="top">
-                    <IconButton size="small" onClick={() => restoreNote(note.id)} sx={{ p: 0.5, color: "#6366f1", "&:hover": { backgroundColor: "#eef0ff" } }}>
+                    <IconButton size="small" onClick={() => restoreNote(note.id)} sx={{ p: 0.5, color: "var(--accent)", "&:hover": { backgroundColor: "var(--accent-tint)" } }}>
                       <RestoreFromTrashIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Delete forever" placement="top">
-                    <IconButton size="small" onClick={() => permanentDeleteNote(note.id)} sx={{ p: 0.5, color: "#ef4444", "&:hover": { backgroundColor: "#fff1f2" } }}>
+                    <IconButton size="small" onClick={() => permanentDeleteNote(note.id)} sx={{ p: 0.5, color: "var(--danger-fg)", "&:hover": { backgroundColor: "var(--danger-bg)" } }}>
                       <DeleteForeverIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                   </Tooltip>
@@ -1202,7 +1204,7 @@ function NotesViewInner({ onCreateTask }: Props) {
 
           {!isTrashView && sortedNotes.length === 0 && (
             <Box sx={{ p: 3, textAlign: "center" }}>
-              <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-4)" }}>
+              <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)" }}>
                 {search ? "No matching notes" : "No notes yet"}
               </Typography>
             </Box>
@@ -1237,7 +1239,7 @@ function NotesViewInner({ onCreateTask }: Props) {
                   cursor: isDragging ? "grabbing" : "pointer",
                   borderBottom: "1px solid var(--divider)",
                   backgroundColor: isActive ? "rgba(99,102,241,0.15)" : isSelected ? "rgba(165,180,252,0.12)" : "transparent",
-                  borderLeft: isActive ? "3px solid #6366f1" : isSelected ? "3px solid #a5b4fc" : "3px solid transparent",
+                  borderLeft: isActive ? "3px solid var(--accent)" : isSelected ? "3px solid #a5b4fc" : "3px solid transparent",
                   opacity: isDragged ? 0.45 : 1,
                   userSelect: "none",
                   "&:hover": { backgroundColor: isActive ? "rgba(99,102,241,0.2)" : isSelected ? "rgba(165,180,252,0.18)" : "var(--surface-hover)" },
@@ -1248,38 +1250,38 @@ function NotesViewInner({ onCreateTask }: Props) {
                 <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 0.5 }}>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flex: 1, minWidth: 0 }}>
                     {isLocked && (
-                      <LockOutlinedIcon sx={{ fontSize: 13, color: isUnlocked ? "#6366f1" : "#94a3b8", flexShrink: 0 }} />
+                      <LockOutlinedIcon sx={{ fontSize: 13, color: isUnlocked ? "var(--accent)" : "var(--tx-4)", flexShrink: 0 }} />
                     )}
                     {note.hidden && isRevealed && (
-                      <VisibilityOffOutlinedIcon sx={{ fontSize: 13, color: "#f59e0b", flexShrink: 0 }} />
+                      <VisibilityOffOutlinedIcon sx={{ fontSize: 13, color: "var(--warning-fg)", flexShrink: 0 }} />
                     )}
-                    <Typography sx={{ fontWeight: isActive ? 700 : 500, fontSize: "0.85rem", color: isLockedAndSealed ? "var(--tx-4)" : "var(--tx)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, fontStyle: isLockedAndSealed ? "italic" : "normal" }}>
+                    <Typography sx={{ fontWeight: isActive ? 700 : 500, fontSize: "0.875rem", color: isLockedAndSealed ? "var(--tx-4)" : "var(--tx)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, fontStyle: isLockedAndSealed ? "italic" : "normal" }}>
                       {displayTitle}
                     </Typography>
                   </Box>
                   <Box className="note-icons" sx={{ display: "flex", alignItems: "center", opacity: (note.starred || note.pinned) ? 1 : 0, transition: "opacity 0.15s", flexShrink: 0, gap: 0.25 }}>
                     <Tooltip title={note.starred ? "Unstar" : "Star"} placement="top">
                       <IconButton size="small" onClick={(e) => handleStar(e, note)}
-                        sx={{ p: 0.25, color: note.starred ? "#f59e0b" : "#94a3b8", "&:hover": { backgroundColor: "transparent", color: "#f59e0b" } }}>
+                        sx={{ p: 0.25, color: note.starred ? "var(--warning-fg)" : "var(--tx-4)", "&:hover": { backgroundColor: "transparent", color: "var(--warning-fg)" } }}>
                         {note.starred ? <StarIcon sx={{ fontSize: 13 }} /> : <StarBorderIcon sx={{ fontSize: 13 }} />}
                       </IconButton>
                     </Tooltip>
                     <Tooltip title={note.pinned ? "Unpin" : "Pin to top"} placement="top">
                       <IconButton size="small" onClick={(e) => handlePin(e, note)}
-                        sx={{ p: 0.25, color: note.pinned ? "#6366f1" : "#94a3b8", "&:hover": { backgroundColor: "transparent", color: "#6366f1" } }}>
+                        sx={{ p: 0.25, color: note.pinned ? "var(--accent)" : "var(--tx-4)", "&:hover": { backgroundColor: "transparent", color: "var(--accent)" } }}>
                         {note.pinned ? <PushPinIcon sx={{ fontSize: 13 }} /> : <PushPinOutlinedIcon sx={{ fontSize: 13 }} />}
                       </IconButton>
                     </Tooltip>
                   </Box>
                 </Box>
                 <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mt: 0.3 }}>
-                  <Typography sx={{ fontSize: "0.75rem", color: "var(--tx-3)", flexShrink: 0 }}>{noteTimestamp(note.updatedAt)}</Typography>
+                  <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-3)", flexShrink: 0 }}>{noteTimestamp(note.updatedAt)}</Typography>
                   {isLockedAndSealed ? (
-                    <Typography sx={{ fontSize: "0.75rem", color: "var(--border-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: 2 }}>
+                    <Typography sx={{ fontSize: "0.8rem", color: "var(--border-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: 2 }}>
                       {"•••••••••"}
                     </Typography>
                   ) : (
-                    preview && <Typography sx={{ fontSize: "0.75rem", color: "var(--tx-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview.slice(0, 60)}</Typography>
+                    preview && <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview.slice(0, 60)}</Typography>
                   )}
                 </Box>
               </Box>
@@ -1295,7 +1297,7 @@ function NotesViewInner({ onCreateTask }: Props) {
             <IconButton size="small" onClick={() => setMobilePanel("list")} sx={{ color: "var(--tx-2)" }}>
               <ArrowBackIcon sx={{ fontSize: 20 }} />
             </IconButton>
-            <Typography sx={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--tx-2)" }}>Notes</Typography>
+            <Typography sx={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--tx-2)" }}>Notes</Typography>
           </Box>
         )}
         {activeNote === null ? (
@@ -1303,21 +1305,21 @@ function NotesViewInner({ onCreateTask }: Props) {
             <NoteAltOutlinedIcon sx={{ fontSize: 52, color: "var(--border-2)" }} />
             <Typography sx={{ fontSize: "0.95rem", fontWeight: 500, color: "var(--tx-4)" }}>Select a note or create a new one</Typography>
             <Button startIcon={<AddIcon />} onClick={handleNewNote} variant="outlined"
-              sx={{ color: "#6366f1", borderColor: "#c7d2fe", textTransform: "none", fontWeight: 600, borderRadius: 2, "&:hover": { borderColor: "#6366f1", backgroundColor: "rgba(99,102,241,0.12)" } }}>
+              sx={{ color: "var(--accent)", borderColor: "var(--accent-line)", textTransform: "none", fontWeight: 600, borderRadius: 2, "&:hover": { borderColor: "var(--accent)", backgroundColor: "rgba(99,102,241,0.12)" } }}>
               New Note
             </Button>
           </Box>
         ) : showLockPrompt ? (
           /* Locked note, vault not unlocked — show lock prompt */
           <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
-            <LockOutlinedIcon sx={{ fontSize: 52, color: "#c7d2fe" }} />
+            <LockOutlinedIcon sx={{ fontSize: 52, color: "var(--accent-line)" }} />
             <Typography sx={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--tx-3)" }}>This note is locked</Typography>
-            <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-4)" }}>Unlock vault to read this note</Typography>
+            <Typography sx={{ fontSize: "0.875rem", color: "var(--tx-4)" }}>Unlock vault to read this note</Typography>
             <Button
               startIcon={<LockOpenOutlinedIcon />}
               onClick={() => setUnlockModalOpen({ open: true, mode: "unlock" })}
               variant="outlined"
-              sx={{ color: "#6366f1", borderColor: "#c7d2fe", textTransform: "none", fontWeight: 600, borderRadius: 2, "&:hover": { borderColor: "#6366f1", backgroundColor: "#eef0ff" } }}
+              sx={{ color: "var(--accent)", borderColor: "var(--accent-line)", textTransform: "none", fontWeight: 600, borderRadius: 2, "&:hover": { borderColor: "var(--accent)", backgroundColor: "var(--accent-tint)" } }}
             >
               Unlock
             </Button>
@@ -1326,11 +1328,11 @@ function NotesViewInner({ onCreateTask }: Props) {
           <>
             <Box sx={{ px: { xs: 1.5, sm: 3 }, py: { xs: 0.75, sm: 1.5 }, borderBottom: "1px solid var(--divider)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0, overflow: "hidden" }}>
-                <Typography sx={{ fontSize: "0.75rem", color: "var(--tx-4)", display: { xs: "none", sm: "block" }, flexShrink: 0 }}>
+                <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", display: { xs: "none", sm: "block" }, flexShrink: 0 }}>
                   {noteTimestamp(activeNote.updatedAt)} · auto-saved
                 </Typography>
                 {activeNote.folderId && folders.find((f) => f.id === activeNote.folderId) && (
-                  <Typography sx={{ fontSize: "0.75rem", color: "#6366f1", display: "flex", alignItems: "center", gap: 0.25, flexShrink: 0 }}>
+                  <Typography sx={{ fontSize: "0.8rem", color: "var(--accent)", display: "flex", alignItems: "center", gap: 0.25, flexShrink: 0 }}>
                     <FolderOutlinedIcon sx={{ fontSize: 12 }} />
                     <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
                       {folders.find((f) => f.id === activeNote.folderId)!.name}
@@ -1338,11 +1340,11 @@ function NotesViewInner({ onCreateTask }: Props) {
                   </Typography>
                 )}
                 {activeNote.starred && (
-                  <StarIcon sx={{ fontSize: 14, color: "#f59e0b", flexShrink: 0 }} />
+                  <StarIcon sx={{ fontSize: 14, color: "var(--warning-fg)", flexShrink: 0 }} />
                 )}
                 {activeNote.locked && isUnlocked && (
                   <Tooltip title="Note is encrypted" placement="top">
-                    <LockOutlinedIcon sx={{ fontSize: 14, color: "#6366f1", flexShrink: 0 }} />
+                    <LockOutlinedIcon sx={{ fontSize: 14, color: "var(--accent)", flexShrink: 0 }} />
                   </Tooltip>
                 )}
               </Box>
@@ -1363,18 +1365,18 @@ function NotesViewInner({ onCreateTask }: Props) {
                 {isMobile ? (
                   <Tooltip title="Send to Board" placement="top">
                     <IconButton size="small" onClick={handleCreateTask}
-                      sx={{ color: "#6366f1", backgroundColor: "rgba(99,102,241,0.12)", borderRadius: 1.5, "&:hover": { backgroundColor: "rgba(99,102,241,0.2)" } }}>
+                      sx={{ color: "var(--accent)", backgroundColor: "rgba(99,102,241,0.12)", borderRadius: 1.5, "&:hover": { backgroundColor: "rgba(99,102,241,0.2)" } }}>
                       <TaskAltIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   </Tooltip>
                 ) : (
                   <Button size="small" startIcon={<TaskAltIcon sx={{ fontSize: 15 }} />} onClick={handleCreateTask}
-                    sx={{ color: "#6366f1", fontWeight: 600, fontSize: "0.8rem", textTransform: "none", backgroundColor: "#eef0ff", borderRadius: 1.5, px: 1.5, "&:hover": { backgroundColor: "#e0e4ff" } }}>
+                    sx={{ color: "var(--accent)", fontWeight: 600, fontSize: "0.8rem", textTransform: "none", backgroundColor: "var(--accent-tint)", borderRadius: 1.5, px: 1.5, "&:hover": { backgroundColor: "var(--accent-tint)" } }}>
                     Send to Board
                   </Button>
                 )}
                 <IconButton size="small" onClick={handleDelete} title="Delete note"
-                  sx={{ color: "var(--tx-4)", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
+                  sx={{ color: "var(--tx-4)", "&:hover": { color: "var(--danger-fg)", backgroundColor: "var(--danger-bg)" } }}>
                   <DeleteOutlineIcon sx={{ fontSize: 18 }} />
                 </IconButton>
               </Box>
@@ -1408,18 +1410,18 @@ function NotesViewInner({ onCreateTask }: Props) {
         slotProps={{ paper: { sx: { minWidth: 200, borderRadius: 2, boxShadow: "0 8px 32px rgba(0,0,0,0.16)", py: 0.5 } } }}
       >
         <MenuItem onClick={ctxPin} sx={menuItemSx}>
-          <ListItemIcon>{ctxNote?.pinned ? <PushPinIcon sx={{ fontSize: 17, color: "#6366f1" }} /> : <PushPinOutlinedIcon sx={{ fontSize: 17 }} />}</ListItemIcon>
+          <ListItemIcon>{ctxNote?.pinned ? <PushPinIcon sx={{ fontSize: 17, color: "var(--accent)" }} /> : <PushPinOutlinedIcon sx={{ fontSize: 17 }} />}</ListItemIcon>
           <ListItemText primary={ctxNote?.pinned ? `Unpin${suffix}` : `Pin to top${suffix}`} slotProps={{ primary: { sx: { fontSize: "0.875rem" } } }} />
         </MenuItem>
         <MenuItem onClick={ctxStar} sx={menuItemSx}>
-          <ListItemIcon>{ctxNote?.starred ? <StarIcon sx={{ fontSize: 17, color: "#f59e0b" }} /> : <StarBorderIcon sx={{ fontSize: 17 }} />}</ListItemIcon>
+          <ListItemIcon>{ctxNote?.starred ? <StarIcon sx={{ fontSize: 17, color: "var(--warning-fg)" }} /> : <StarBorderIcon sx={{ fontSize: 17 }} />}</ListItemIcon>
           <ListItemText primary={ctxNote?.starred ? `Unstar${suffix}` : `Star${suffix}`} slotProps={{ primary: { sx: { fontSize: "0.875rem" } } }} />
         </MenuItem>
         {!isMultiCtx && (
           <MenuItem onClick={ctxLockNote} sx={menuItemSx}>
             <ListItemIcon>
               {ctxNote?.locked
-                ? <LockOpenOutlinedIcon sx={{ fontSize: 17, color: "#6366f1" }} />
+                ? <LockOpenOutlinedIcon sx={{ fontSize: 17, color: "var(--accent)" }} />
                 : <LockOutlinedIcon sx={{ fontSize: 17 }} />}
             </ListItemIcon>
             <ListItemText primary={ctxNote?.locked ? "Unlock note" : "Lock note"} slotProps={{ primary: { sx: { fontSize: "0.875rem" } } }} />
@@ -1434,7 +1436,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         <MenuItem onClick={ctxHideNote} sx={menuItemSx}>
           <ListItemIcon>
             {allHidden
-              ? <VisibilityOutlinedIcon sx={{ fontSize: 17, color: "#6366f1" }} />
+              ? <VisibilityOutlinedIcon sx={{ fontSize: 17, color: "var(--accent)" }} />
               : <VisibilityOffOutlinedIcon sx={{ fontSize: 17 }} />}
           </ListItemIcon>
           <ListItemText primary={allHidden ? `Unhide${suffix}` : `Hide${suffix}`} slotProps={{ primary: { sx: { fontSize: "0.875rem" } } }} />
@@ -1451,7 +1453,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         </Typography>
         <MenuItem onClick={() => ctxMoveToFolder(null)} sx={menuItemSx}>
           <ListItemIcon>
-            {contextMenu?.note.folderId === null ? <CheckIcon sx={{ fontSize: 17, color: "#6366f1" }} /> : <FolderOutlinedIcon sx={{ fontSize: 17 }} />}
+            {contextMenu?.note.folderId === null ? <CheckIcon sx={{ fontSize: 17, color: "var(--accent)" }} /> : <FolderOutlinedIcon sx={{ fontSize: 17 }} />}
           </ListItemIcon>
           <ListItemText primary="No folder" slotProps={{ primary: { sx: { fontSize: "0.875rem" } } }} />
         </MenuItem>
@@ -1459,17 +1461,17 @@ function NotesViewInner({ onCreateTask }: Props) {
           <MenuItem key={f.id} onClick={() => ctxMoveToFolder(f.id)} sx={menuItemSx}>
             <ListItemIcon>
               {contextMenu?.note.folderId === f.id
-                ? <CheckIcon sx={{ fontSize: 17, color: "#6366f1" }} />
+                ? <CheckIcon sx={{ fontSize: 17, color: "var(--accent)" }} />
                 : f.hidden
                   ? <Box sx={{ position: "relative", display: "inline-flex" }}>
-                      <FolderOutlinedIcon sx={{ fontSize: 17, color: "#a5b4fc" }} />
-                      <LockOutlinedIcon sx={{ position: "absolute", fontSize: 9, color: "#6366f1", bottom: -1, right: -3 }} />
+                      <FolderOutlinedIcon sx={{ fontSize: 17, color: "var(--accent)" }} />
+                      <LockOutlinedIcon sx={{ position: "absolute", fontSize: 9, color: "var(--accent)", bottom: -1, right: -3 }} />
                     </Box>
                   : <FolderOutlinedIcon sx={{ fontSize: 17 }} />}
             </ListItemIcon>
             <ListItemText
               primary={f.name}
-              slotProps={{ primary: { sx: { fontSize: "0.875rem", color: f.hidden ? "#6366f1" : undefined } } }}
+              slotProps={{ primary: { sx: { fontSize: "0.875rem", color: f.hidden ? "var(--accent)" : undefined } } }}
             />
           </MenuItem>
         ))}
@@ -1489,7 +1491,7 @@ function NotesViewInner({ onCreateTask }: Props) {
 
         <Divider sx={{ my: 0.5 }} />
 
-        <MenuItem onClick={ctxDelete} sx={{ ...menuItemSx, color: "#ef4444", "& .MuiListItemIcon-root": { color: "#ef4444" } }}>
+        <MenuItem onClick={ctxDelete} sx={{ ...menuItemSx, color: "var(--danger-fg)", "& .MuiListItemIcon-root": { color: "var(--danger-fg)" } }}>
           <ListItemIcon><DeleteForeverIcon sx={{ fontSize: 17 }} /></ListItemIcon>
           <ListItemText primary={`Delete${suffix}`} slotProps={{ primary: { sx: { fontSize: "0.875rem" } } }} />
         </MenuItem>
@@ -1504,7 +1506,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         sx={{ "& .MuiSnackbarContent-root": { borderRadius: 2, minWidth: 0, flexWrap: "nowrap" } }}
         message={
           <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, minWidth: 220 }}>
-            <Typography sx={{ fontSize: "0.84rem", fontWeight: 600, color: "#fff" }}>
+            <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: "#fff" }}>
               &ldquo;{pendingDelete?.label}&rdquo; will be deleted in {undoCountdown}s
             </Typography>
             <LinearProgress
@@ -1522,7 +1524,7 @@ function NotesViewInner({ onCreateTask }: Props) {
               if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
               setPendingDelete(null);
             }}
-            sx={{ color: "#a5b4fc", fontWeight: 700, fontSize: "0.82rem", textTransform: "none", ml: 1 }}
+            sx={{ color: "#a5b4fc", fontWeight: 700, fontSize: "0.8rem", textTransform: "none", ml: 1 }}
           >
             Undo
           </Button>
@@ -1536,7 +1538,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         sx={{ mb: !!pendingDelete ? 8 : 0, "& .MuiSnackbarContent-root": { borderRadius: 2, minWidth: 0, flexWrap: "nowrap" } }}
         message={
           <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, minWidth: 220 }}>
-            <Typography sx={{ fontSize: "0.84rem", fontWeight: 600, color: "#fff" }}>
+            <Typography sx={{ fontSize: "0.8rem", fontWeight: 600, color: "#fff" }}>
               Folder &ldquo;{pendingFolderDelete?.name}&rdquo; + contents deleted in {folderUndoCountdown}s
             </Typography>
             <LinearProgress
@@ -1554,7 +1556,7 @@ function NotesViewInner({ onCreateTask }: Props) {
               if (folderUndoIntervalRef.current) clearInterval(folderUndoIntervalRef.current);
               setPendingFolderDelete(null);
             }}
-            sx={{ color: "#a5b4fc", fontWeight: 700, fontSize: "0.82rem", textTransform: "none", ml: 1 }}
+            sx={{ color: "#a5b4fc", fontWeight: 700, fontSize: "0.8rem", textTransform: "none", ml: 1 }}
           >
             Undo
           </Button>
@@ -1590,7 +1592,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         <MenuItem onClick={folderCtxTogglePin} sx={menuItemSx}>
           <ListItemIcon>
             {folderCtxMenu?.folder.pinned
-              ? <PushPinIcon sx={{ fontSize: 17, color: "#6366f1" }} />
+              ? <PushPinIcon sx={{ fontSize: 17, color: "var(--accent)" }} />
               : <PushPinOutlinedIcon sx={{ fontSize: 17 }} />}
           </ListItemIcon>
           <ListItemText
@@ -1605,7 +1607,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         <MenuItem onClick={folderCtxToggleHide} sx={menuItemSx}>
           <ListItemIcon>
             {folderCtxMenu?.folder.hidden
-              ? <VisibilityOutlinedIcon sx={{ fontSize: 17, color: "#6366f1" }} />
+              ? <VisibilityOutlinedIcon sx={{ fontSize: 17, color: "var(--accent)" }} />
               : <VisibilityOffOutlinedIcon sx={{ fontSize: 17 }} />}
           </ListItemIcon>
           <ListItemText
@@ -1614,7 +1616,7 @@ function NotesViewInner({ onCreateTask }: Props) {
           />
         </MenuItem>
         <Divider sx={{ my: 0.5 }} />
-        <MenuItem onClick={folderCtxDelete} sx={{ ...menuItemSx, color: "#ef4444", "& .MuiListItemIcon-root": { color: "#ef4444" } }}>
+        <MenuItem onClick={folderCtxDelete} sx={{ ...menuItemSx, color: "var(--danger-fg)", "& .MuiListItemIcon-root": { color: "var(--danger-fg)" } }}>
           <ListItemIcon><DeleteForeverIcon sx={{ fontSize: 17 }} /></ListItemIcon>
           <ListItemText primary="Delete" slotProps={{ primary: { sx: { fontSize: "0.875rem" } } }} />
         </MenuItem>
@@ -1627,7 +1629,7 @@ function NotesViewInner({ onCreateTask }: Props) {
           Delete {batchDeleteConfirm?.notes.length} notes?
         </DialogTitle>
         <DialogContent sx={{ pt: 0 }}>
-          <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-3)" }}>
+          <Typography sx={{ fontSize: "0.875rem", color: "var(--tx-3)" }}>
             This will permanently delete all selected notes. Locked or hidden notes get a 30-second undo window; all others go straight to trash.
           </Typography>
         </DialogContent>
@@ -1713,6 +1715,7 @@ function NotesViewInner({ onCreateTask }: Props) {
         hasWebAuthn={hasWebAuthn}
       />
     </Box>
+    </Box>
   );
 }
 
@@ -1746,8 +1749,8 @@ function FolderRow({ label, count, active, icon, onClick, onContextMenu, pinned,
         display: "flex", alignItems: "center", gap: 0.75,
         px: 1, py: 0.65, borderRadius: 1.5, cursor: "pointer",
         backgroundColor: isDragOver ? "rgba(99,102,241,0.15)" : active ? "rgba(99,102,241,0.12)" : "transparent",
-        color: active ? "#6366f1" : "var(--tx-3)",
-        outline: isDragOver ? "2px dashed #6366f1" : "none",
+        color: active ? "var(--accent)" : "var(--tx-3)",
+        outline: isDragOver ? "2px dashed var(--accent)" : "none",
         outlineOffset: "-1px",
         "&:hover": { backgroundColor: active ? "rgba(99,102,241,0.2)" : "var(--surface-hover)" },
         transition: "all 0.1s",
@@ -1758,8 +1761,8 @@ function FolderRow({ label, count, active, icon, onClick, onContextMenu, pinned,
       <Typography sx={{ fontSize: "0.8rem", fontWeight: active ? 700 : 500, color: "inherit", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {label}
       </Typography>
-      {pinned && <PushPinIcon sx={{ fontSize: 11, color: active ? "#6366f1" : "#c7d2fe", flexShrink: 0, mr: 0.25 }} />}
-      <Typography sx={{ fontSize: "0.72rem", color: active ? "#6366f1" : "#94a3b8", fontWeight: 600, minWidth: "1.25rem", textAlign: "right", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+      {pinned && <PushPinIcon sx={{ fontSize: 11, color: active ? "var(--accent)" : "var(--accent-line)", flexShrink: 0, mr: 0.25 }} />}
+      <Typography sx={{ fontSize: "0.7rem", color: active ? "var(--accent)" : "var(--tx-4)", fontWeight: 600, minWidth: "1.25rem", textAlign: "right", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
         {count}
       </Typography>
     </Box>

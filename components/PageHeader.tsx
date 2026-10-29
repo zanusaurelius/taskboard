@@ -13,10 +13,12 @@ interface Props {
   actions?: React.ReactNode;
   /** Shows the privacy toggle; pass whether the page has sensitive tasks. */
   privacy?: { sensitiveTasks?: boolean } | false;
+  /** Click handler on the title, for pages that hang a gesture off it. */
+  onTitleClick?: () => void;
 }
 
 /** The bar at the top of every page: title on the left, search, privacy and actions on the right. */
-export default function PageHeader({ title, actions, privacy = { sensitiveTasks: false } }: Props) {
+export default function PageHeader({ title, actions, privacy = { sensitiveTasks: false }, onTitleClick }: Props) {
   return (
     <Box sx={{
       height: 60, flexShrink: 0,
@@ -25,7 +27,8 @@ export default function PageHeader({ title, actions, privacy = { sensitiveTasks:
       backgroundColor: "var(--surface)",
       borderBottom: "1px solid var(--border)",
     }}>
-      <Typography component="h1" sx={{ ...type.pageTitle, mr: "auto", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+      <Typography component="h1" onClick={onTitleClick}
+        sx={{ ...type.pageTitle, mr: "auto", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", userSelect: "none", cursor: "default" }}>
         {title}
       </Typography>
       <Tooltip title="Search everything  ⌘K" placement="bottom" arrow>

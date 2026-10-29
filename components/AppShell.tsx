@@ -317,7 +317,7 @@ function AppShellInner() {
 
         {session?.user && (
           <Tooltip title="Settings" placement="right" arrow>
-            <Avatar onClick={() => navigate("settings")} sx={{ width: 32, height: 32, fontSize: "0.75rem", fontWeight: 700, bgcolor: view === "settings" ? "#6366f1" : "#334155", color: view === "settings" ? "#fff" : "#94a3b8", mb: 0.5, cursor: "pointer", transition: "background-color 0.15s", "&:hover": { bgcolor: "#6366f1", color: "#fff" } }}>
+            <Avatar onClick={() => navigate("settings")} sx={{ width: 32, height: 32, fontSize: "0.8rem", fontWeight: 700, bgcolor: view === "settings" ? "#6366f1" : "#334155", color: view === "settings" ? "#fff" : "#94a3b8", mb: 0.5, cursor: "pointer", transition: "background-color 0.15s", "&:hover": { bgcolor: "#6366f1", color: "#fff" } }}>
               {initials}
             </Avatar>
           </Tooltip>
@@ -350,7 +350,7 @@ function AppShellInner() {
             px: 2, py: 0.6,
             backgroundColor: syncError ? "#7f1d1d" : syncing ? "#1e3a5f" : "#7c3200",
             color: "#fff",
-            fontSize: "0.75rem",
+            fontSize: "0.8rem",
             fontWeight: 500,
             flexShrink: 0,
           }}>
@@ -442,7 +442,7 @@ function KeyboardShortcutsModal({ open, onClose }: { open: boolean; onClose: () 
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {SHORTCUTS.map(({ group, items }) => (
             <Box key={group}>
-              <Typography sx={{ fontSize: "0.65rem", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 1, mb: 0.75 }}>
+              <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 1, mb: 0.75 }}>
                 {group}
               </Typography>
               {items.map(({ key, description }, i) => (
@@ -462,7 +462,7 @@ function KeyboardShortcutsModal({ open, onClose }: { open: boolean; onClose: () 
             </Box>
           ))}
         </Box>
-        <Typography sx={{ fontSize: "0.72rem", color: "#475569", mt: 2.5, lineHeight: 1.5 }}>
+        <Typography sx={{ fontSize: "0.7rem", color: "#475569", mt: 2.5, lineHeight: 1.5 }}>
           Single-key shortcuts only fire when you&apos;re not typing in a field.
         </Typography>
       </Box>

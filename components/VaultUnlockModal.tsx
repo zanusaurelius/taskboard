@@ -27,8 +27,8 @@ interface Props {
 }
 
 const fieldSx = {
-  "& .MuiOutlinedInput-root": { borderRadius: 1.5, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#6366f1" } },
-  "& .MuiInputLabel-root.Mui-focused": { color: "#6366f1" },
+  "& .MuiOutlinedInput-root": { borderRadius: 1.5, "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "var(--accent)" } },
+  "& .MuiInputLabel-root.Mui-focused": { color: "var(--accent)" },
 };
 
 export default function VaultUnlockModal({ open, onClose, onSuccess, mode, hasWebAuthn }: Props) {
@@ -131,11 +131,11 @@ export default function VaultUnlockModal({ open, onClose, onSuccess, mode, hasWe
           <Box sx={{ width: 48, height: 48, borderRadius: 2, background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", display: "flex", alignItems: "center", justifyContent: "center", mb: 1.5 }}>
             {icon}
           </Box>
-          <Typography sx={{ fontWeight: 800, fontSize: "1.1rem", color: "#0f172a" }}>{title}</Typography>
-          <Typography sx={{ fontSize: "0.8rem", color: "#94a3b8", mt: 0.5, textAlign: "center" }}>{subtitle}</Typography>
+          <Typography sx={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--tx)" }}>{title}</Typography>
+          <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)", mt: 0.5, textAlign: "center" }}>{subtitle}</Typography>
         </Box>
 
-        {error && <Alert severity="error" sx={{ borderRadius: 1.5, mb: 2, fontSize: "0.82rem" }}>{error}</Alert>}
+        {error && <Alert severity="error" sx={{ borderRadius: 1.5, mb: 2, fontSize: "0.8rem" }}>{error}</Alert>}
 
         {/* Biometric button */}
         {hasWebAuthn && (
@@ -144,12 +144,12 @@ export default function VaultUnlockModal({ open, onClose, onSuccess, mode, hasWe
               fullWidth
               onClick={handleBiometric}
               disabled={biometricLoading || loading}
-              startIcon={biometricLoading ? <CircularProgress size={18} sx={{ color: "#6366f1" }} /> : <FingerprintIcon />}
-              sx={{ mb: 2, borderRadius: 1.5, textTransform: "none", fontWeight: 600, py: 1.1, border: "1.5px solid #c7d2fe", color: "#6366f1", backgroundColor: "#f5f3ff", "&:hover": { backgroundColor: "#ede9fe" } }}>
+              startIcon={biometricLoading ? <CircularProgress size={18} sx={{ color: "var(--accent)" }} /> : <FingerprintIcon />}
+              sx={{ mb: 2, borderRadius: 1.5, textTransform: "none", fontWeight: 600, py: 1.1, border: "1.5px solid var(--accent-line)", color: "var(--accent)", backgroundColor: "var(--accent-tint)", "&:hover": { backgroundColor: "var(--accent-tint)" } }}>
               {biometricLoading ? "Waiting for biometric…" : "Use Touch ID / Face ID"}
             </Button>
             <Divider sx={{ mb: 2 }}>
-              <Typography sx={{ fontSize: "0.75rem", color: "#94a3b8" }}>or use password</Typography>
+              <Typography sx={{ fontSize: "0.8rem", color: "var(--tx-4)" }}>or use password</Typography>
             </Divider>
           </>
         )}
@@ -160,10 +160,10 @@ export default function VaultUnlockModal({ open, onClose, onSuccess, mode, hasWe
             <Button key={t} size="small" onClick={() => { setTab(t); setError(""); }}
               startIcon={t === "password" ? <LockOpenOutlinedIcon sx={{ fontSize: 15 }} /> : <KeyOutlinedIcon sx={{ fontSize: 15 }} />}
               sx={{
-                flex: 1, textTransform: "none", fontWeight: 600, fontSize: "0.78rem", borderRadius: 1.5,
-                color: tab === t ? "#6366f1" : "#94a3b8",
-                backgroundColor: tab === t ? "#eef0ff" : "transparent",
-                "&:hover": { backgroundColor: tab === t ? "#eef0ff" : "#f1f5f9" },
+                flex: 1, textTransform: "none", fontWeight: 600, fontSize: "0.8rem", borderRadius: 1.5,
+                color: tab === t ? "var(--accent)" : "var(--tx-4)",
+                backgroundColor: tab === t ? "var(--accent-tint)" : "transparent",
+                "&:hover": { backgroundColor: tab === t ? "var(--accent-tint)" : "var(--surface-hover)" },
               }}>
               {t === "password" ? "Password" : "Recovery code"}
             </Button>
@@ -177,7 +177,7 @@ export default function VaultUnlockModal({ open, onClose, onSuccess, mode, hasWe
                 required fullWidth size="small" autoComplete="current-password" fieldSx={fieldSx} />
               <Box sx={{ display: "flex", gap: 1.5 }}>
                 <Button variant="outlined" onClick={onClose} disabled={loading}
-                  sx={{ flex: 1, textTransform: "none", fontWeight: 600, borderRadius: 1.5, borderColor: "#e2e8f0", color: "#64748b" }}>
+                  sx={{ flex: 1, textTransform: "none", fontWeight: 600, borderRadius: 1.5, borderColor: "var(--border)", color: "var(--tx-3)" }}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={loading}
@@ -197,7 +197,7 @@ export default function VaultUnlockModal({ open, onClose, onSuccess, mode, hasWe
                 required fullWidth size="small" fieldSx={fieldSx} />
               <Box sx={{ display: "flex", gap: 1.5 }}>
                 <Button variant="outlined" onClick={onClose} disabled={loading}
-                  sx={{ flex: 1, textTransform: "none", fontWeight: 600, borderRadius: 1.5, borderColor: "#e2e8f0", color: "#64748b" }}>
+                  sx={{ flex: 1, textTransform: "none", fontWeight: 600, borderRadius: 1.5, borderColor: "var(--border)", color: "var(--tx-3)" }}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={loading}

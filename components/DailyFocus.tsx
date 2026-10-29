@@ -417,7 +417,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
         transition: "background-color 0.15s",
       }} onClick={toggleCollapsed}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--tx)" }}>
+          <Typography sx={{ fontWeight: 700, fontSize: "0.875rem", color: "var(--tx)" }}>
             Daily Focus
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", border: "1px solid var(--border)", borderRadius: 2, px: 0.25, backgroundColor: "var(--surface-2)" }} onClick={(e) => e.stopPropagation()}>
@@ -450,7 +450,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                 return (
                   <Box sx={{ ml: 0.75, px: 1, py: 0.2, borderRadius: 99,
                     backgroundColor: "var(--accent-tint)", display: "inline-flex", alignItems: "center" }}>
-                    <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--accent)", lineHeight: 1 }}>
+                    <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--accent)", lineHeight: 1 }}>
                       {relativeLabel}
                     </Typography>
                   </Box>
@@ -461,7 +461,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                 <Button
                   size="small"
                   onClick={(e) => { e.stopPropagation(); setDayOffset(0); }}
-                  sx={{ ml: 0.5, textTransform: "none", fontSize: "0.72rem", fontWeight: 600,
+                  sx={{ ml: 0.5, textTransform: "none", fontSize: "0.7rem", fontWeight: 600,
                     color: "var(--accent)", backgroundColor: "var(--accent-tint)", borderRadius: 99,
                     px: 1, py: 0.15, minWidth: 0, "&:hover": { backgroundColor: "var(--accent-tint)", opacity: 0.8 } }}
                 >
@@ -477,7 +477,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                   backgroundColor: completedGoals === goals.length ? "var(--success-bg)" : "var(--surface-2)",
                   borderRadius: 99, px: 1.25, py: 0.2,
                 }}>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: completedGoals === goals.length ? "var(--success-fg)" : "var(--tx-3)" }}>
+                  <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, color: completedGoals === goals.length ? "var(--success-fg)" : "var(--tx-3)" }}>
                     {completedGoals}/{goals.length} goals
                   </Typography>
                 </Box>
@@ -487,7 +487,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                   backgroundColor: loggedHabits === habits.length ? "var(--success-bg)" : "var(--surface-2)",
                   borderRadius: 99, px: 1.25, py: 0.2,
                 }}>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: loggedHabits === habits.length ? "var(--success-fg)" : "var(--tx-3)" }}>
+                  <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, color: loggedHabits === habits.length ? "var(--success-fg)" : "var(--tx-3)" }}>
                     {loggedHabits}/{habits.length} habits
                   </Typography>
                 </Box>
@@ -522,10 +522,10 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               borderLeft: "3px solid #6366f1",
               pl: 1.5, py: 0.5,
             }}>
-              <Typography sx={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--accent)", textTransform: "uppercase", letterSpacing: 0.8, flexShrink: 0, mt: "1px" }}>
+              <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--accent)", textTransform: "uppercase", letterSpacing: 0.8, flexShrink: 0, mt: "1px" }}>
                 One thing to do better today
               </Typography>
-              <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-2)", fontWeight: 500, lineHeight: 1.4 }}>
+              <Typography sx={{ fontSize: "0.875rem", color: "var(--tx-2)", fontWeight: 500, lineHeight: 1.4 }}>
                 {prevDayReflection}
               </Typography>
             </Box>
@@ -539,7 +539,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               </Typography>
               <Button size="small" endIcon={<ArrowForwardIcon sx={{ fontSize: "14px !important" }} />}
                 onClick={() => window.dispatchEvent(new CustomEvent("app:navigate", { detail: "habits" }))}
-                sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 600, color: "var(--accent)", minWidth: 0, py: 0 }}>
+                sx={{ textTransform: "none", fontSize: "0.8rem", fontWeight: 600, color: "var(--accent)", minWidth: 0, py: 0 }}>
                 {habits.length === 0 ? "Add a habit" : "Habits"}
               </Button>
             </Box>
@@ -571,11 +571,11 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               </Typography>
               {isToday && carryOver.length > 0 && (
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <Typography sx={{ fontSize: "0.75rem", color: "var(--warning-fg)", fontWeight: 500 }}>
+                  <Typography sx={{ fontSize: "0.8rem", color: "var(--warning-fg)", fontWeight: 500 }}>
                     {carryOver.length} unfinished from yesterday
                   </Typography>
                   <Button size="small" onClick={handleCarryOver}
-                    sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 600, color: "var(--warning-fg)",
+                    sx={{ textTransform: "none", fontSize: "0.8rem", fontWeight: 600, color: "var(--warning-fg)",
                       backgroundColor: "var(--warning-bg)", borderRadius: 1.5, px: 1.25, py: 0.3, minWidth: 0,
                       "&:hover": { backgroundColor: "var(--warning-bg)", filter: "brightness(0.95)" } }}>
                     Carry over
@@ -963,14 +963,14 @@ function GoalSlot({
             renderOption={(props, option) => {
               const isLocked = !option.title && !!(option.locked || option.encTitle);
               return (
-                <Box component="li" {...props} sx={{ fontSize: "0.85rem", opacity: isLocked ? 0.65 : 1 }}>
+                <Box component="li" {...props} sx={{ fontSize: "0.875rem", opacity: isLocked ? 0.65 : 1 }}>
                   <Box sx={{ display: "flex", flexDirection: "column" }}>
-                    <Typography sx={{ fontSize: "0.85rem", fontWeight: 500, color: isLocked ? "var(--tx-2)" : "inherit" }}>
+                    <Typography sx={{ fontSize: "0.875rem", fontWeight: 500, color: isLocked ? "var(--tx-2)" : "inherit" }}>
                       {isLocked ? "🔒 Locked task" : option.title}
                     </Typography>
                     {isLocked
                       ? <Typography sx={{ fontSize: "0.7rem", color: "var(--tx-3)" }}>Unlock vault to link this task</Typography>
-                      : option.project && <Typography sx={{ fontSize: "0.72rem", color: "var(--tx-4)" }}>{option.project.name}</Typography>
+                      : option.project && <Typography sx={{ fontSize: "0.7rem", color: "var(--tx-4)" }}>{option.project.name}</Typography>
                     }
                   </Box>
                 </Box>
@@ -1014,7 +1014,7 @@ function GoalSlot({
       }}>
         <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--border-2)" }}>{numberLabel}</Typography>
       </Box>
-      <Typography sx={{ fontSize: "0.85rem", color: "var(--border-2)", fontWeight: 500 }}>
+      <Typography sx={{ fontSize: "0.875rem", color: "var(--border-2)", fontWeight: 500 }}>
         {canAdd ? "Add a goal…" : "—"}
       </Typography>
     </Box>
