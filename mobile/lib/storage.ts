@@ -67,3 +67,14 @@ export async function getAutoArchiveDays(): Promise<number> {
 export async function setAutoArchiveDays(n: number): Promise<void> {
   return SecureStore.setItemAsync(AUTO_ARCHIVE_KEY, String(n));
 }
+
+// The account (server URL + username) that the offline cache and queue belong to.
+const LAST_ACCOUNT_KEY = 'taskboard_last_account';
+
+export async function getLastAccount(): Promise<string | null> {
+  return SecureStore.getItemAsync(LAST_ACCOUNT_KEY);
+}
+
+export async function setLastAccount(account: string): Promise<void> {
+  return SecureStore.setItemAsync(LAST_ACCOUNT_KEY, account);
+}

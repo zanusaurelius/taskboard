@@ -103,6 +103,8 @@ export function weekRecords(
   createdDate: string,
   today: string,
   weekStartsOn: WeekStart,
+  /** False when `today` is the end of a finished period (a past year), so no week is still in play. */
+  liveWeek = true,
 ): WeekRecord[] {
   const past = logs.filter((l) => l.date <= today);
   let first = createdDate;
@@ -112,7 +114,7 @@ export function weekRecords(
   const currentStart = weekStartOf(today, weekStartsOn);
   const weeks = new Map<string, WeekRecord>();
   for (let s = weekStartOf(first, weekStartsOn); s <= currentStart; s = addDays(s, 7)) {
-    weeks.set(s, { start: s, wins: 0, losses: 0, current: s === currentStart });
+    weeks.set(s, { start: s, wins: 0, losses: 0, current: liveWeek && s === currentStart });
   }
   for (const l of past) {
     const week = weeks.get(weekStartOf(l.date, weekStartsOn));
@@ -132,6 +134,7 @@ export function habitStats(
   createdDate: string,
   today: string,
   weekStartsOn: WeekStart,
+  liveWeek = true,
 ): HabitStats {
   const past = logs.filter((l) => l.date <= today);
   const losses = past.filter((l) => l.isLoss).length;
@@ -139,7 +142,7 @@ export function habitStats(
   const { current, best } = winStreaks(past, today);
 
   // A finished week is won if it has more wins than losses. The current week is still in play.
-  const finished = weekRecords(past, createdDate, today, weekStartsOn).filter((w) => !w.current);
+  const finished = weekRecords(past, createdDate, today, weekStartsOn, liveWeek).filter((w) => !w.current);
   const weeksWon = finished.filter((w) => w.wins > w.losses).length;
   const weeksLost = finished.filter((w) => w.losses > w.wins).length;
 
@@ -188,7 +191,8 @@ export function habitStatsFor(
   const to = `${period.year}-12-31`;
   const end = today < to ? today : to;
   const inYear = logs.filter((l) => l.date >= from && l.date <= end);
-  const stats = habitStats(inYear, createdDate > from ? createdDate : from, end, weekStartsOn);
+  // For a past year, its last week is finished even though it ends on Dec 31.
+  const stats = habitStats(inYear, createdDate > from ? createdDate : from, end, weekStartsOn, end === today);
   return { ...stats, currentStreak: winStreaks(logs, today).current };
 }
 
@@ -235,4 +239,12 @@ export function monthGrid(month: string, weekStartsOn: WeekStart): (string | nul
   const weeks: (string | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
   return weeks;
+}
+
+/** A real calendar date in YYYY-MM-DD form within a sane range (rejects 2026-02-31, 0001-01-01). */
+export function isValidDate(date: unknown): date is string {
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const year = Number(date.slice(0, 4));
+  if (year < 1970 || year > 2999) return false;
+  return fromUtcMs(toUtcMs(date)) === date;
 }

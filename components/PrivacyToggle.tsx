@@ -48,7 +48,7 @@ export default function PrivacyToggle({ sensitiveTasks = false }: Props) {
 
   const toggle = () => {
     if (on) {
-      if (vaultExists && (sensitiveTasks || privateHabits > 0)) setUnlockOpen(true);
+      if (vaultExists && (sensitiveTasks || privateHabits === null || privateHabits > 0)) setUnlockOpen(true);
       else setOn(false);
     } else {
       lockVault();

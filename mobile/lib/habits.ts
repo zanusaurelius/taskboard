@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AppState, DeviceEventEmitter } from 'react-native';
 import { apiFetch, isOk } from './api';
-import { dequeuePath, enqueueReplacing, getCached, pendingWithPrefix, setCached } from './offline-db';
+import { enqueueReplacing, getCached, pendingWithPrefix, setCached } from './offline-db';
 import { flushQueue, onQueueFlushed } from './sync';
 import { useVault } from './vault-context';
 import { usePrivacyMode } from './privacy';
@@ -223,30 +223,21 @@ export function useHabits() {
       setCached(CACHE_KEY, summaryRef.current);
     }
 
+    // Every tap goes through the queue: it is saved before any network call, so it survives the
+    // app being closed, and the single-flight flush sends writes in order, so an older value can
+    // never land after a newer one. A newer tap on the same day replaces the queued one.
     const path = logPath(id, date);
     const key = `${id}|${date}`;
     const prev = writeChains.current.get(key) ?? Promise.resolve();
     const next = prev.then(async () => {
-      // This value supersedes anything queued earlier for the same day.
-      await dequeuePath('PUT', path).catch(() => {});
-      const res = await apiFetch(path, { method: 'PUT', body: JSON.stringify({ outcome }) });
-      if (isOk(res)) {
-        setOffline(false);
-        announce();
-        return;
-      }
-      const status = (res as { status?: number }).status ?? 0;
-      if (status === 0 || status === 401 || status === 423 || status >= 500) {
-        await enqueueReplacing('PUT', path, { outcome });
-        if (status === 0) setOffline(true);
-        announce();
-      } else {
-        // The server rejected it (e.g. the habit was deleted elsewhere); show what it has.
-        load();
-      }
+      await enqueueReplacing('PUT', path, { outcome });
+      announce();
+      const result = await flushQueue();
+      if (result.offline) setOffline(true);
+      else if (result.flushed > 0) setOffline(false);
     });
     writeChains.current.set(key, next.catch(() => {}));
-  }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Only private habit names are encrypted, and only while the vault is unlocked.
   const encryptName = useCallback(async (name: string, isPrivate: boolean): Promise<{ text: string; encText?: string | null }> => {
@@ -290,9 +281,16 @@ export function useHabits() {
   const reorder = useCallback(async (kind: HabitKind, orderedIds: string[]): Promise<string | null> => {
     const current = [...habits].sort((a, b) => a.position - b.position);
     const byId = new Map(current.map((h) => [h.id, h]));
-    const moved = orderedIds.map((id) => byId.get(id)).filter((h): h is HabitItem => !!h);
-    const rest = current.filter((h) => !orderedIds.includes(h.id));
-    const group = (k: HabitKind) => (k === kind ? [...moved, ...rest.filter((h) => h.kind === k)] : rest.filter((h) => h.kind === k));
+    // Only the dragged habits change places. Habits not in the list (hidden private ones,
+    // archived ones) keep their slots, so revealing them later doesn't show a scrambled order.
+    const group = (k: HabitKind) => {
+      const all = current.filter((h) => h.kind === k);
+      if (k !== kind) return all;
+      const slots = all.map((h, i) => (orderedIds.includes(h.id) ? i : -1)).filter((i) => i >= 0);
+      const result = [...all];
+      slots.forEach((slot, n) => { const h = byId.get(orderedIds[n]); if (h) result[slot] = h; });
+      return result;
+    };
     const next = [...group('GOOD'), ...group('BAD')].map((h, i) => ({ ...h, position: i }));
     const before = new Map(current.map((h) => [h.id, h.position]));
     setHabits(next);

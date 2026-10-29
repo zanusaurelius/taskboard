@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/get-user-id";
+import { isValidDate } from "@/lib/habit-stats";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getUserId(request);
@@ -12,7 +13,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const body = await request.json().catch(() => null);
   const date = body?.date;
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (!isValidDate(date)) {
     return NextResponse.json({ error: "date required (YYYY-MM-DD)" }, { status: 400 });
   }
 
@@ -35,7 +36,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
   const { searchParams } = new URL(request.url);
   const date = searchParams.get("date");
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (!isValidDate(date)) {
     return NextResponse.json({ error: "date required (YYYY-MM-DD)" }, { status: 400 });
   }
 

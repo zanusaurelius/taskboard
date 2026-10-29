@@ -39,7 +39,10 @@ export default function HabitsScreen() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [reordering, setReordering] = useState<HabitKind | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [periodKey, setPeriodKey] = useState(h.today.slice(0, 4));
+  // null follows the current year, so the app moves on with it at New Year.
+  const [chosenKey, setChosenKey] = useState<string | null>(null);
+  const periodKey = chosenKey ?? h.today.slice(0, 4);
+  const setPeriodKey = (k: string) => setChosenKey(k === h.today.slice(0, 4) ? null : k);
   const [privacyOn, setPrivacyOn] = usePrivacyMode();
   const { lock } = useVault();
   const [vaultExists, setVaultExists] = useState(false);
@@ -52,7 +55,7 @@ export default function HabitsScreen() {
   // Revealing private habits asks for the vault password when a vault is set up.
   const togglePrivacy = () => {
     if (privacyOn) {
-      if (vaultExists && h.privateCount > 0) setUnlockVisible(true);
+      if (vaultExists && (h.loading || h.privateCount > 0)) setUnlockVisible(true);
       else setPrivacyOn(false);
     } else {
       lock();
@@ -333,7 +336,9 @@ function HabitDetailModal({ colors, habit, today, weekStartsOn, onClose, onCycle
   const s = makeStyles(colors);
   const wl = winLossColors(colors);
   const [name, setName] = useState(habit.name);
-  const [periodKey, setPeriodKey] = useState(today.slice(0, 4));
+  const [chosenKey, setChosenKey] = useState<string | null>(null);
+  const periodKey = chosenKey ?? today.slice(0, 4);
+  const setPeriodKey = (k: string) => setChosenKey(k === today.slice(0, 4) ? null : k);
   const [view, setView] = useState<'weeks' | 'months'>('weeks');
   const logs = habitLogs(habit);
   const st = habitStatsFor(logs, habit.createdDate, today, weekStartsOn, periodFromKey(periodKey));

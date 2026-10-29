@@ -6,6 +6,9 @@ import { getToken } from './storage';
 const MAX_RETRY = 5;
 
 let isFlushing = false;
+// Set when a flush is requested while one is running, so writes queued meanwhile go out
+// right after it instead of waiting for the next reconnect.
+let flushAgain = false;
 
 const flushListeners = new Set<() => void>();
 
@@ -21,26 +24,51 @@ export type ConflictHandler = (op: {
   body: object | null;
 }, serverItem: unknown) => void;
 
-export async function flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: number; failed: number; dropped: number }> {
-  if (isFlushing) return { flushed: 0, failed: 0, dropped: 0 };
+export interface FlushResult {
+  flushed: number;
+  failed: number;
+  dropped: number;
+  /** Stopped because the server couldn't be reached; ops are still queued. */
+  offline: boolean;
+}
+
+/**
+ * Sends queued writes in order. Only one flush runs at a time, so two writes to the same
+ * path can never be in flight together; a call made during a flush re-runs it afterwards.
+ */
+export async function flushQueue(onConflict?: ConflictHandler): Promise<FlushResult> {
+  if (isFlushing) {
+    flushAgain = true;
+    return { flushed: 0, failed: 0, dropped: 0, offline: false };
+  }
   isFlushing = true;
+  const total: FlushResult = { flushed: 0, failed: 0, dropped: 0, offline: false };
   try {
-    const result = await _flushQueue(onConflict);
-    if (result.flushed > 0 || result.failed > 0) flushListeners.forEach((cb) => cb());
-    return result;
+    do {
+      flushAgain = false;
+      const result = await _flushQueue(onConflict);
+      total.flushed += result.flushed;
+      total.failed += result.failed;
+      total.dropped += result.dropped;
+      total.offline = result.offline;
+      if (result.offline) break;
+    } while (flushAgain);
+    if (total.flushed > 0 || total.failed > 0) flushListeners.forEach((cb) => cb());
+    return total;
   } finally {
     isFlushing = false;
   }
 }
 
-async function _flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: number; failed: number; dropped: number }> {
+async function _flushQueue(onConflict?: ConflictHandler): Promise<FlushResult> {
   const token = await getToken();
-  if (!token) return { flushed: 0, failed: 0, dropped: 0 };
+  if (!token) return { flushed: 0, failed: 0, dropped: 0, offline: false };
 
   const ops = await allPending();
   let flushed = 0;
   let failed = 0;
   let dropped = 0;
+  let offline = false;
 
   for (const op of ops) {
     if (op.retry_count >= MAX_RETRY) {
@@ -71,6 +99,7 @@ async function _flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: num
       // Network error — stop flushing, will retry when back online. Not counted as a retry:
       // being offline says nothing about the op, and counting it would discard offline
       // changes after a few failed reconnects.
+      offline = true;
       break;
     } else if (!isOk(result) && (result.status === 401 || result.status === 423)) {
       // Auth expired or DB locked — stop flushing, preserve ops for after re-auth/unlock
@@ -88,7 +117,7 @@ async function _flushQueue(onConflict?: ConflictHandler): Promise<{ flushed: num
     }
   }
 
-  return { flushed, failed, dropped };
+  return { flushed, failed, dropped, offline };
 }
 
 

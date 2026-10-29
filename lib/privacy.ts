@@ -7,14 +7,17 @@ import { create } from "zustand";
 interface PrivacyState {
   on: boolean;
   setOn: (on: boolean) => void;
-  /** How many private habits exist, so the toggle knows whether revealing needs the vault. */
-  privateHabits: number;
+  /**
+   * How many private habits exist, so the toggle knows whether revealing needs the vault.
+   * null until habits have loaded; the toggle treats that as "there might be some".
+   */
+  privateHabits: number | null;
   setPrivateHabits: (n: number) => void;
 }
 
 export const usePrivacy = create<PrivacyState>((set) => ({
   on: true,
   setOn: (on) => set({ on }),
-  privateHabits: 0,
+  privateHabits: null,
   setPrivateHabits: (privateHabits) => set({ privateHabits }),
 }));

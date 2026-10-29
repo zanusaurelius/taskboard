@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -151,7 +151,9 @@ function NotesViewInner({ onCreateTask }: Props) {
   const notesRef = useRef(notes);
   const isUnlockedRef = useRef(isUnlocked);
   const revealTokenRef = useRef(revealToken);
-  useEffect(() => {
+  // A layout effect, so they're current before a setTimeout(…, 0) queued in the same commit
+  // (the action that runs after a vault unlock) reads them.
+  useLayoutEffect(() => {
     encryptRef.current = encrypt;
     notesRef.current = notes;
     isUnlockedRef.current = isUnlocked;

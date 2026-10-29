@@ -1,5 +1,5 @@
-import { getToken, getBaseUrl, clearToken, clearAll } from './storage';
-import { clearCache, getCached, setCached } from './offline-db';
+import { getToken, getBaseUrl, clearToken, clearAll, getLastAccount, setLastAccount } from './storage';
+import { clearCache, clearOfflineData, getCached, setCached } from './offline-db';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -99,6 +99,13 @@ export async function login(
       return { ok: false, error: body.error ?? 'Login failed' };
     }
     const { token } = await res.json();
+    // Cached data and queued writes belong to one account on one server. Signing in as someone
+    // else, or to another server, must not show or send the previous account's data.
+    const account = `${url}|${username.trim().toLowerCase()}`;
+    if ((await getLastAccount()) !== account) {
+      await clearOfflineData().catch(() => {});
+      await setLastAccount(account);
+    }
     await Promise.all([setBaseUrl(url), setToken(token)]);
     return { ok: true };
   } catch {

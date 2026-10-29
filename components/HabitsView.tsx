@@ -47,7 +47,10 @@ export default function HabitsView() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const thisYear = Number(h.today.slice(0, 4));
-  const [period, setPeriod] = useState<StatsPeriod>({ kind: "year", year: thisYear });
+  // null follows the current year, so a tab left open over New Year moves on with it.
+  const [chosenPeriod, setChosenPeriod] = useState<StatsPeriod | null>(null);
+  const period: StatsPeriod = useMemo(() => chosenPeriod ?? { kind: "year", year: thisYear }, [chosenPeriod, thisYear]);
+  const setPeriod = (p: StatsPeriod) => setChosenPeriod(p.kind === "year" && p.year === thisYear ? null : p);
 
   const active = h.habits.filter((x) => !x.archivedAt);
   const archived = h.habits.filter((x) => x.archivedAt);
@@ -308,7 +311,10 @@ function HabitDetailDialog({ habit, today, weekStartsOn, onClose, onOutcome, onR
   const [view, setView] = useState<"weeks" | "months">("weeks");
   const logs = habitLogs(habit);
   const years = yearsWithLogs(logs, today);
-  const [period, setPeriod] = useState<StatsPeriod>({ kind: "year", year: Number(today.slice(0, 4)) });
+  const thisYear = Number(today.slice(0, 4));
+  const [chosenPeriod, setChosenPeriod] = useState<StatsPeriod | null>(null);
+  const period: StatsPeriod = chosenPeriod ?? { kind: "year", year: thisYear };
+  const setPeriod = (p: StatsPeriod) => setChosenPeriod(p.kind === "year" && p.year === thisYear ? null : p);
 
   const s = habitStatsFor(logs, habit.createdDate, today, weekStartsOn, period);
   const weeks = weekRecords(logs, habit.createdDate, today, weekStartsOn);

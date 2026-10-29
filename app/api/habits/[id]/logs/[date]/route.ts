@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/get-user-id";
+import { isValidDate } from "@/lib/habit-stats";
 
 // Sets one day's outcome for a habit. Idempotent, so the phone can queue it offline and replay
 // it safely: { outcome: "W" | "L" } records the day, { outcome: null } clears it.
@@ -9,7 +10,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id: habitId, date } = await params;
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (!isValidDate(date)) {
     return NextResponse.json({ error: "date must be YYYY-MM-DD" }, { status: 400 });
   }
 

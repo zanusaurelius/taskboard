@@ -337,7 +337,8 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
     }).catch(() => setArchiveError(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Follow the store's tasks, except mid-drag, when localTasks holds the drag preview.
-  const [syncedFrom, setSyncedFrom] = useState({ tasks, activeId });
+  // Starts unsynced so the first render copies the store's tasks (the board remounts on every visit).
+  const [syncedFrom, setSyncedFrom] = useState<{ tasks: Task[] | null; activeId: typeof activeId }>({ tasks: null, activeId });
   if (syncedFrom.tasks !== tasks || syncedFrom.activeId !== activeId) {
     setSyncedFrom({ tasks, activeId });
     if (activeId === null) setLocalTasks(tasks);

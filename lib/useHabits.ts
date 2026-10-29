@@ -9,6 +9,8 @@ export interface HabitItem {
   id: string;
   name: string;
   encText: string | null;
+  /** The name is encrypted and couldn't be decrypted (vault locked); name is empty. */
+  locked: boolean;
   kind: HabitKind;
   archivedAt: string | null;
   private: boolean;
@@ -66,12 +68,20 @@ export function useHabits() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const loadSeq = useRef(0);
+  // Taps not yet confirmed by the server, keyed "habitId|date". A reload that started before
+  // a tap landed would otherwise put the old value back on screen.
+  const pendingWrites = useRef(new Map<string, { outcome: HabitOutcome | null; n: number }>());
+  const writeCount = useRef(0);
+  // One chain per habit and day, so quick repeated taps reach the server in order.
+  const writeChains = useRef(new Map<string, Promise<unknown>>());
   const id = useId();
   const instanceId = useRef(id);
 
-  const decryptName = useCallback(async (text: string, encText: string | null) => {
-    if (!encText || !vault.masterKey) return text;
-    return (await vault.decrypt(JSON.parse(encText))) ?? text;
+  // null when the name is encrypted and can't be read right now.
+  const decryptName = useCallback(async (text: string, encText: string | null): Promise<string | null> => {
+    if (!encText) return text;
+    if (!vault.masterKey) return null;
+    return vault.decrypt(JSON.parse(encText));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vault.masterKey]);
 
@@ -88,17 +98,21 @@ export function useHabits() {
     const res = await fetch("/api/habits/summary");
     if (!res.ok) throw new Error(String(res.status));
     const data: { weekStartsOn: number; habits: SummaryHabit[] } = await res.json();
-    const items = await Promise.all(data.habits.map(async (h): Promise<HabitItem> => ({
-      id: h.id,
-      name: await decryptName(h.text, h.encText),
-      encText: h.encText,
-      kind: h.kind === "BAD" ? "BAD" : "GOOD",
-      archivedAt: h.archivedAt,
-      private: !!h.private,
-      position: h.position,
-      createdDate: localDateStr(new Date(h.createdAt)),
-      outcomes: Object.fromEntries(h.logs.map((l) => [l.date, l.isLoss ? "L" : "W"])),
-    })));
+    const items = await Promise.all(data.habits.map(async (h): Promise<HabitItem> => {
+      const name = await decryptName(h.text, h.encText);
+      return {
+        id: h.id,
+        name: name ?? "",
+        locked: name === null,
+        encText: h.encText,
+        kind: h.kind === "BAD" ? "BAD" : "GOOD",
+        archivedAt: h.archivedAt,
+        private: !!h.private,
+        position: h.position,
+        createdDate: localDateStr(new Date(h.createdAt)),
+        outcomes: Object.fromEntries(h.logs.map((l) => [l.date, l.isLoss ? "L" : "W"])),
+      };
+    }));
     return { items, weekStartsOn: (data.weekStartsOn === 1 ? 1 : 0) as WeekStart };
   }, [decryptName]);
 
@@ -109,7 +123,18 @@ export function useHabits() {
     return fetchItems().then(
       (result) => {
         if (seq !== loadSeq.current) return;
-        setHabits(result.items);
+        const pending = pendingWrites.current;
+        setHabits(pending.size === 0 ? result.items : result.items.map((h) => {
+          let outcomes = h.outcomes;
+          for (const [key, w] of pending) {
+            const [hid, date] = key.split("|");
+            if (hid !== h.id) continue;
+            outcomes = { ...outcomes };
+            if (w.outcome) outcomes[date] = w.outcome;
+            else delete outcomes[date];
+          }
+          return outcomes === h.outcomes ? h : { ...h, outcomes };
+        }));
         setWeekStartsOn(result.weekStartsOn);
         setError(null);
         setLoading(false);
@@ -140,24 +165,35 @@ export function useHabits() {
     setHabits((prev) => prev.map((h) => (h.id === id ? fn(h) : h)));
 
   /** Sets or clears one day. Optimistic; reloads from the server if the save fails. */
-  const setOutcome = useCallback(async (id: string, date: string, outcome: HabitOutcome | null) => {
+  const setOutcome = useCallback((id: string, date: string, outcome: HabitOutcome | null) => {
     patchLocal(id, (h) => {
       const outcomes = { ...h.outcomes };
       if (outcome) outcomes[date] = outcome;
       else delete outcomes[date];
       return { ...h, outcomes };
     });
-    const res = await fetch(`/api/habits/${id}/logs/${date}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ outcome }),
-    }).catch(() => null);
-    if (!res?.ok) {
-      setError("That change didn't save. Check your connection and try again.");
-      reload();
-      return;
-    }
-    announce();
+    const key = `${id}|${date}`;
+    const n = ++writeCount.current;
+    pendingWrites.current.set(key, { outcome, n });
+    const settle = () => { if (pendingWrites.current.get(key)?.n === n) pendingWrites.current.delete(key); };
+
+    const prev = writeChains.current.get(key) ?? Promise.resolve();
+    const next = prev.then(async () => {
+      const res = await fetch(`/api/habits/${id}/logs/${date}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outcome }),
+      }).catch(() => null);
+      settle();
+      if (!res?.ok) {
+        setError("That change didn't save. Check your connection and try again.");
+        reload();
+        return;
+      }
+      announce();
+    });
+    writeChains.current.set(key, next);
+    return next;
   }, [reload]);
 
   const createHabit = useCallback(async (kind: HabitKind, name: string, isPrivate = false) => {
@@ -180,7 +216,8 @@ export function useHabits() {
     const current = habits.find((h) => h.id === id);
     const isPrivate = fields.private ?? current?.private ?? false;
     // Changing the name or the private flag rewrites the stored name to match the new rule.
-    const newName = name ?? (fields.private !== undefined ? current?.name : undefined);
+    // A name that can't be decrypted right now is left as it is rather than overwritten.
+    const newName = name ?? (fields.private !== undefined && current && !current.locked ? current.name : undefined);
     const body = { ...rest, ...(newName !== undefined && (await encryptName(newName, isPrivate))) };
     const res = await fetch(`/api/habits/${id}?date=${localDateStr(new Date())}`, {
       method: "PATCH",
@@ -210,9 +247,16 @@ export function useHabits() {
   const reorder = useCallback(async (kind: HabitKind, orderedIds: string[]) => {
     const current = [...habits].sort((a, b) => a.position - b.position);
     const byId = new Map(current.map((h) => [h.id, h]));
-    const moved = orderedIds.map((id) => byId.get(id)).filter((h): h is HabitItem => !!h);
-    const rest = current.filter((h) => !orderedIds.includes(h.id));
-    const group = (k: HabitKind) => (k === kind ? [...moved, ...rest.filter((h) => h.kind === k)] : rest.filter((h) => h.kind === k));
+    // Only the dragged habits change places. Habits not in the list (hidden private ones,
+    // archived ones) keep their slots, so revealing them later doesn't show a scrambled order.
+    const group = (k: HabitKind) => {
+      const all = current.filter((h) => h.kind === k);
+      if (k !== kind) return all;
+      const slots = all.map((h, i) => (orderedIds.includes(h.id) ? i : -1)).filter((i) => i >= 0);
+      const result = [...all];
+      slots.forEach((slot, n) => { const h = byId.get(orderedIds[n]); if (h) result[slot] = h; });
+      return result;
+    };
     const next = [...group("GOOD"), ...group("BAD")].map((h, i) => ({ ...h, position: i }));
     setHabits(next);
     const before = new Map(current.map((h) => [h.id, h.position]));

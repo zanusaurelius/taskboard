@@ -137,8 +137,9 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
     const viewGoals = await vaultDecryptGoals(raw);
     let carry: DailyGoal[] = [];
     if (isToday) {
-      const carryRes = await fetch(`/api/daily-goals?carryover=true&today=${today}`);
-      const carryRaw: DailyGoal[] = carryRes.ok ? await carryRes.json() : [];
+      // A failed carry-over lookup mustn't hide the day's goals.
+      const carryRes = await fetch(`/api/daily-goals?carryover=true&today=${today}`).catch(() => null);
+      const carryRaw: DailyGoal[] = carryRes?.ok ? await carryRes.json() : [];
       carry = await vaultDecryptGoals(carryRaw);
     }
     return { goals: [...viewGoals.filter(g => !g.completed), ...viewGoals.filter(g => g.completed)], carry };
