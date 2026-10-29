@@ -30,27 +30,10 @@ import {
   type HabitKind, type StatsPeriod, type WeekStart,
 } from "@/lib/habit-stats";
 import { WeekStrip, MonthCalendar, PeriodSwitch, nextOutcome, groupLabelSx, SortableHabitRows, WIN, LOSS } from "./HabitParts";
-import PrivacyToggle from "./PrivacyToggle";
+import PageHeader from "./PageHeader";
+import { cardSx, pageBodySx, primaryButtonSx, secondaryButtonSx, textButtonSx, type } from "@/lib/ui";
 
 const KINDS: HabitKind[] = ["GOOD", "BAD"];
-
-const primaryBtnSx = {
-  textTransform: "none", fontWeight: 600, fontSize: "0.85rem", borderRadius: 2, px: 2, color: "#fff",
-  background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-  "&:hover": { background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)" },
-  "&.Mui-disabled": { color: "rgba(255,255,255,0.7)", opacity: 0.6 },
-} as const;
-
-// backgroundImage: none removes MUI's dark-mode elevation tint, which made dialogs lighter
-// than everything else on the page.
-const dialogPaperSx = {
-  borderRadius: 3, backgroundColor: "var(--surface)", backgroundImage: "none",
-  border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.35)",
-} as const;
-
-const cardSx = {
-  backgroundColor: "var(--surface)", borderRadius: 2.5, boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
-} as const;
 
 const shortDate = (d: string) =>
   new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -86,14 +69,17 @@ export default function HabitsView() {
   }
 
   return (
-    <Box sx={{ minHeight: "100%", backgroundColor: "var(--surface-2)" }}>
-      <Box sx={{ maxWidth: 1000, mx: "auto", px: { xs: 2, sm: 4 }, py: { xs: 2.5, sm: 4 }, display: "flex", flexDirection: "column", gap: 3 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
-          <Typography component="h1" sx={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--tx)" }}>Habits</Typography>
-          <Box sx={{ flex: 1 }} />
-          <PrivacyToggle />
-          <Button startIcon={<AddIcon />} onClick={() => setCreating("pick")} sx={primaryBtnSx}>New habit</Button>
-        </Box>
+    <Box sx={{ minHeight: "100%", backgroundColor: "var(--bg)", display: "flex", flexDirection: "column" }}>
+      <PageHeader
+        title="Habits"
+        actions={
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setCreating("pick")} sx={primaryButtonSx}>
+            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New habit</Box>
+            <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Habit</Box>
+          </Button>
+        }
+      />
+      <Box sx={pageBodySx}>
 
         {active.length > 0 && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
@@ -108,7 +94,7 @@ export default function HabitsView() {
         )}
 
         {h.hiddenCount > 0 && (
-          <Typography sx={{ display: "flex", alignItems: "center", gap: 0.75, fontSize: "0.8rem", color: "var(--tx-3)" }}>
+          <Typography sx={{ ...type.small, display: "flex", alignItems: "center", gap: 0.75 }}>
             <VisibilityOffOutlinedIcon sx={{ fontSize: 16 }} />
             {h.hiddenCount} private habit{h.hiddenCount === 1 ? " is" : "s are"} hidden. Turn off privacy to see {h.hiddenCount === 1 ? "it" : "them"}.
           </Typography>
@@ -144,7 +130,7 @@ export default function HabitsView() {
                         <Typography sx={{ fontSize: "0.88rem", color: "var(--tx-3)", overflowWrap: "anywhere" }}>{x.name || "Locked habit"}</Typography>
                       </ButtonBase>
                       <Typography sx={{ fontSize: "0.78rem", color: "var(--tx-3)", fontVariantNumeric: "tabular-nums" }}>{s.wins}–{s.losses}</Typography>
-                      <Button size="small" onClick={() => h.updateHabit(x.id, { archived: false })} sx={{ textTransform: "none", color: "#6366f1", fontWeight: 600 }}>Restore</Button>
+                      <Button size="small" onClick={() => h.updateHabit(x.id, { archived: false })} sx={{ ...textButtonSx, color: "var(--accent)" }}>Restore</Button>
                     </Box>
                   );
                 })}
@@ -187,7 +173,7 @@ export default function HabitsView() {
 function Stat({ label, value, color }: { label: string; value: number | string; color?: string }) {
   return (
     <Box sx={{ ...cardSx, px: 2, py: 1.5 }}>
-      <Typography sx={{ fontSize: "1.4rem", fontWeight: 800, color: color ?? "var(--tx)", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{value}</Typography>
+      <Typography sx={{ fontSize: "1.25rem", fontWeight: 700, color: color ?? "var(--tx)", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{value}</Typography>
       <Typography sx={{ ...groupLabelSx, mt: 0.25 }}>{label}</Typography>
     </Box>
   );
@@ -211,14 +197,13 @@ function HabitGroup({ kind, items, today, weekStartsOn, narrow, onOutcome, onOpe
       <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
         <Typography component="h2" sx={groupLabelSx}>{KIND_COPY[kind].group}</Typography>
         <Box sx={{ flex: 1 }} />
-        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 16 }} />} onClick={onAdd}
-          sx={{ textTransform: "none", fontSize: "0.78rem", color: "var(--tx-3)", "&:hover": { color: "#6366f1" } }}>
+        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 16 }} />} onClick={onAdd} sx={textButtonSx}>
           Add {KIND_COPY[kind].title.toLowerCase()}
         </Button>
       </Box>
       <Box sx={{ ...cardSx, py: 0.75 }}>
         {items.length === 0 ? (
-          <Typography sx={{ px: 2.5, py: 2, fontSize: "0.85rem", color: "var(--tx-3)" }}>
+          <Typography sx={{ ...type.body, color: "var(--tx-3)", px: 2.5, py: 2 }}>
             {kind === "GOOD" ? "Add something you want to do every day." : "Add something you want to stop doing."}
           </Typography>
         ) : (
@@ -250,7 +235,7 @@ function NewHabitDialog({ initialKind, onClose, onCreate }: {
   };
 
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="xs" slotProps={{ paper: { sx: dialogPaperSx } }}>
+    <Dialog open onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle sx={{ fontWeight: 700, color: "var(--tx)", pb: 1 }}>
         {kind ? `New ${KIND_COPY[kind].title.toLowerCase()}` : "New habit"}
       </DialogTitle>
@@ -262,7 +247,7 @@ function NewHabitDialog({ initialKind, onClose, onCreate }: {
                 display: "block", textAlign: "left", p: 2, borderRadius: 2, border: "1px solid var(--border)",
                 backgroundColor: "var(--surface-2)",
                 "&:hover": { borderColor: "var(--accent-line)", backgroundColor: "var(--accent-tint)" },
-                "&.Mui-focusVisible": { borderColor: "#6366f1" },
+                "&.Mui-focusVisible": { borderColor: "var(--accent)" },
               }}>
                 <Typography sx={{ fontWeight: 700, color: "var(--tx)", fontSize: "0.95rem" }}>{KIND_COPY[k].title}</Typography>
                 <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-2)", mt: 0.25 }}>{KIND_COPY[k].explainer}</Typography>
@@ -275,7 +260,7 @@ function NewHabitDialog({ initialKind, onClose, onCreate }: {
             <TextField autoFocus size="small" label="Name" value={name} slotProps={{ htmlInput: { maxLength: 200 } }}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 }, "& .Mui-focused fieldset": { borderColor: "#6366f1 !important" }, "& .MuiInputLabel-root.Mui-focused": { color: "#6366f1" } }} />
+              />
             <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
               {PRESETS[kind].map((p) => (
                 <ButtonBase key={p} onClick={() => setName(p)} sx={{
@@ -288,7 +273,7 @@ function NewHabitDialog({ initialKind, onClose, onCreate }: {
               ))}
             </Box>
             <FormControlLabel
-              control={<Checkbox size="small" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} sx={{ "&.Mui-checked": { color: "#6366f1" } }} />}
+              control={<Checkbox size="small" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />}
               label={<Typography sx={{ fontSize: "0.85rem", color: "var(--tx-2)" }}>Private: hide it while privacy is on</Typography>}
             />
           </Box>
@@ -296,10 +281,10 @@ function NewHabitDialog({ initialKind, onClose, onCreate }: {
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5 }}>
         {kind && !initialKind && (
-          <Button onClick={() => setKind(null)} sx={{ textTransform: "none", color: "var(--tx-2)", mr: "auto" }}>Back</Button>
+          <Button onClick={() => setKind(null)} sx={{ ...secondaryButtonSx, mr: "auto" }}>Back</Button>
         )}
-        <Button onClick={onClose} sx={{ textTransform: "none", color: "var(--tx-2)" }}>Cancel</Button>
-        {kind && <Button onClick={submit} disabled={!name.trim() || saving} sx={primaryBtnSx}>Add habit</Button>}
+        <Button onClick={onClose} sx={secondaryButtonSx}>Cancel</Button>
+        {kind && <Button onClick={submit} disabled={!name.trim() || saving} sx={primaryButtonSx}>Add habit</Button>}
       </DialogActions>
     </Dialog>
   );
@@ -332,7 +317,7 @@ function HabitDetailDialog({ habit, today, weekStartsOn, onClose, onOutcome, onR
   const cycle = (date: string) => onOutcome(habit.id, date, nextOutcome(habit.outcomes[date]));
 
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="sm" slotProps={{ paper: { sx: dialogPaperSx } }}>
+    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, pb: 1 }}>
         <Typography component="span" sx={groupLabelSx}>{KIND_COPY[habit.kind].group}{habit.archivedAt ? " · Archived" : ""}</Typography>
         <Box sx={{ flex: 1 }} />
@@ -342,7 +327,7 @@ function HabitDetailDialog({ habit, today, weekStartsOn, onClose, onOutcome, onR
         <TextField variant="standard" value={name} placeholder="Name" slotProps={{ htmlInput: { maxLength: 200, "aria-label": "Habit name" } }}
           onChange={(e) => setName(e.target.value)} onBlur={saveName}
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-          sx={{ "& input": { fontSize: "1.25rem", fontWeight: 700, color: "var(--tx)" }, "& .MuiInput-underline:before": { borderColor: "var(--border)" }, "& .MuiInput-underline:after": { borderColor: "#6366f1" } }} />
+          sx={{ "& input": { fontSize: "1.25rem", fontWeight: 700, color: "var(--tx)" }, "& .MuiInput-underline:before": { borderColor: "var(--border)" }, "& .MuiInput-underline:after": { borderColor: "var(--accent)" } }} />
 
         <Box sx={{ display: "grid", gap: 1.25 }}>
           <PeriodSwitch years={years} value={period} onChange={setPeriod} />
@@ -404,8 +389,7 @@ function HabitDetailDialog({ habit, today, weekStartsOn, onClose, onOutcome, onR
 
         <FormControlLabel
           sx={{ ml: 0, gap: 1 }}
-          control={<Switch size="small" checked={habit.private} onChange={(e) => onPrivate(e.target.checked)}
-            sx={{ "& .Mui-checked": { color: "#6366f1" }, "& .Mui-checked + .MuiSwitch-track": { backgroundColor: "#6366f1" } }} />}
+          control={<Switch size="small" checked={habit.private} onChange={(e) => onPrivate(e.target.checked)} />}
           label={<Typography sx={{ fontSize: "0.85rem", color: "var(--tx-2)" }}>Private: hide it while privacy is on</Typography>}
         />
       </DialogContent>
@@ -415,13 +399,13 @@ function HabitDetailDialog({ habit, today, weekStartsOn, onClose, onOutcome, onR
             <Typography sx={{ fontSize: "0.82rem", color: "var(--tx-2)", mr: "auto" }}>
               Delete this habit and its whole record? Archiving keeps the record.
             </Typography>
-            <Button onClick={() => setConfirmDelete(false)} sx={{ textTransform: "none", color: "var(--tx-2)" }}>Cancel</Button>
-            <Button onClick={onDelete} sx={{ textTransform: "none", color: "#fff", backgroundColor: "#dc2626", "&:hover": { backgroundColor: "#b91c1c" } }}>Delete</Button>
+            <Button onClick={() => setConfirmDelete(false)} sx={secondaryButtonSx}>Cancel</Button>
+            <Button onClick={onDelete} sx={{ ...primaryButtonSx, backgroundColor: "var(--danger-fg)", "&:hover": { backgroundColor: "var(--danger-fg)", opacity: 0.9 } }}>Delete</Button>
           </>
         ) : (
           <>
-            <Button onClick={() => setConfirmDelete(true)} sx={{ textTransform: "none", color: LOSS.fg, mr: "auto" }}>Delete</Button>
-            <Button onClick={() => onArchive(!habit.archivedAt)} sx={{ textTransform: "none", color: "var(--tx-2)", border: "1px solid var(--border)", borderRadius: 2, px: 2 }}>
+            <Button onClick={() => setConfirmDelete(true)} sx={{ ...textButtonSx, color: "var(--danger-fg)", mr: "auto" }}>Delete</Button>
+            <Button onClick={() => onArchive(!habit.archivedAt)} sx={secondaryButtonSx}>
               {habit.archivedAt ? "Restore" : "Archive"}
             </Button>
           </>

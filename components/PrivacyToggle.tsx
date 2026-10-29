@@ -8,6 +8,7 @@ import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import { usePrivacy } from "@/lib/privacy";
 import { useVault } from "@/lib/vault-context";
 import VaultUnlockModal from "./VaultUnlockModal";
+import { secondaryButtonSx } from "@/lib/ui";
 
 interface Props {
   /** Sensitive tasks on the current page, besides private habits. */
@@ -65,14 +66,10 @@ export default function PrivacyToggle({ sensitiveTasks = false }: Props) {
           aria-pressed={on}
           startIcon={on ? <VisibilityOffOutlinedIcon sx={{ fontSize: "18px !important" }} /> : <VisibilityOutlinedIcon sx={{ fontSize: "18px !important" }} />}
           sx={{
-            textTransform: "none", fontSize: "0.85rem", fontWeight: 600, borderRadius: 2,
-            px: { xs: 1, sm: 1.5 }, minWidth: 0,
-            border: "1px solid",
-            borderColor: on ? "var(--accent-line)" : "var(--border-2)",
-            backgroundColor: on ? "var(--accent-tint)" : "transparent",
-            color: on ? "var(--accent-fg)" : "var(--tx-2)",
+            ...secondaryButtonSx,
+            px: { xs: 1, sm: 1.5 },
+            ...(on && { borderColor: "var(--accent-line)", backgroundColor: "var(--accent-tint)", color: "var(--accent-fg)", "&:hover": { backgroundColor: "var(--accent-tint)", borderColor: "var(--accent-line)" } }),
             "& .MuiButton-startIcon": { mr: { xs: 0, sm: 0.75 }, ml: 0 },
-            "&:hover": { backgroundColor: on ? "var(--accent-tint)" : "var(--surface-2)", borderColor: on ? "var(--accent-line)" : "var(--tx-4)" },
           }}
         >
           <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>{on ? "Private" : "Showing all"}</Box>

@@ -11,6 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { KIND_COPY } from "@/lib/habit-kind";
 import { dayOfWeek, monthGrid, weekDates, type HabitKind, type StatsPeriod, type WeekStart } from "@/lib/habit-stats";
 import { statsFor, type HabitItem } from "@/lib/useHabits";
+import { type } from "@/lib/ui";
 import type { HabitOutcome } from "@/lib/types";
 
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -32,11 +33,13 @@ interface WeekStripProps {
   weekOf?: string;
   showLabels?: boolean;
   size?: number;
+  /** Rings today's cell. Off where today's W/L buttons sit beside the strip and already mark it. */
+  markToday?: boolean;
   /** When set, past days and today can be tapped to cycle their result. */
   onCycle?: (date: string) => void;
 }
 
-export function WeekStrip({ outcomes, today, weekStartsOn, weekOf, showLabels, size = 22, onCycle }: WeekStripProps) {
+export function WeekStrip({ outcomes, today, weekStartsOn, weekOf, showLabels, size = 22, markToday = true, onCycle }: WeekStripProps) {
   const dates = weekDates(weekOf ?? today, weekStartsOn);
   return (
     <Box sx={{ display: "flex", gap: "3px" }}>
@@ -46,15 +49,20 @@ export function WeekStrip({ outcomes, today, weekStartsOn, weekOf, showLabels, s
         const isToday = date === today;
         const dow = dayOfWeek(date);
         const label = `${DAY_NAMES[dow]} ${date}: ${o === "W" ? "win" : o === "L" ? "loss" : future ? "upcoming" : "not logged"}`;
-        const cell = (
+        // Later days are a faint dot: there is nothing to read in them yet.
+        const cell = future ? (
+          <Box sx={{ width: size, height: size, display: "grid", placeItems: "center" }}>
+            <Box sx={{ width: 4, height: 4, borderRadius: 99, backgroundColor: "var(--border-2)" }} />
+          </Box>
+        ) : (
           <Box sx={{
-            width: size, height: size + 2, borderRadius: "5px",
+            width: size, height: size, borderRadius: "5px",
             display: "grid", placeItems: "center",
-            fontSize: size * 0.03 + "rem", fontWeight: 800,
-            backgroundColor: o === "W" ? WIN.bg : o === "L" ? LOSS.bg : future ? "transparent" : "var(--border)",
+            fontSize: Math.round(size * 0.5) + "px", fontWeight: 800,
+            backgroundColor: o === "W" ? WIN.bg : o === "L" ? LOSS.bg : "var(--surface-2)",
+            boxShadow: o ? "none" : "inset 0 0 0 1px var(--border)",
             color: o === "W" ? WIN.fg : o === "L" ? LOSS.fg : "var(--tx-4)",
-            border: future ? "1px dashed var(--border)" : "none",
-            outline: isToday ? "2px solid #6366f1" : "none",
+            outline: isToday && markToday ? "2px solid var(--accent)" : "none",
             outlineOffset: "1px",
           }}>
             {o ?? ""}
@@ -63,13 +71,13 @@ export function WeekStrip({ outcomes, today, weekStartsOn, weekOf, showLabels, s
         return (
           <Box key={date} sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "3px" }}>
             {showLabels && (
-              <Typography component="span" sx={{ fontSize: "0.58rem", fontWeight: 700, color: isToday ? "#6366f1" : "var(--tx-4)", lineHeight: 1 }}>
+              <Typography component="span" sx={{ fontSize: "0.6rem", fontWeight: 700, color: isToday ? "var(--accent)" : "var(--tx-4)", lineHeight: 1 }}>
                 {DAY_LETTERS[dow]}
               </Typography>
             )}
             {onCycle && !future ? (
               <ButtonBase aria-label={label} title={label} onClick={() => onCycle(date)}
-                sx={{ borderRadius: "5px", "&:hover": { filter: "brightness(0.95)" }, "&.Mui-focusVisible": { outline: "2px solid #6366f1", outlineOffset: "2px" } }}>
+                sx={{ borderRadius: "5px", "&:hover": { filter: "brightness(0.95)" }, "&.Mui-focusVisible": { outline: "2px solid var(--accent)", outlineOffset: "2px" } }}>
                 {cell}
               </ButtonBase>
             ) : (
@@ -101,16 +109,16 @@ export function OutcomeButtons({ kind, value, onChange, compact }: OutcomeButton
         aria-label={`${o}, ${text}`}
         onClick={() => onChange(on ? null : o)}
         sx={{
-          fontFamily: "inherit", fontSize: compact ? "0.9rem" : "0.78rem", fontWeight: compact ? 800 : 600,
+          fontFamily: "inherit", fontSize: compact ? "0.8rem" : "0.8rem", fontWeight: compact ? 800 : 600,
           px: compact ? 0 : 1.25, py: compact ? 0 : 0.6,
-          width: compact ? 40 : "auto", height: compact ? 40 : "auto",
+          width: compact ? 34 : "auto", height: compact ? 34 : "auto",
           borderRadius: 2, whiteSpace: "nowrap",
           border: `1.5px solid ${on ? c.line : "var(--border)"}`,
           backgroundColor: on ? c.bg : "var(--surface)",
           color: on ? c.fg : "var(--tx-3)",
           transition: "all 0.15s",
           "&:hover": { borderColor: on ? c.line : "var(--border-2)", color: on ? c.fg : "var(--tx-2)" },
-          "&.Mui-focusVisible": { outline: "2px solid #6366f1", outlineOffset: "2px" },
+          "&.Mui-focusVisible": { outline: "2px solid var(--accent)", outlineOffset: "2px" },
         }}
       >
         {compact ? o : `${o} · ${text}`}
@@ -125,7 +133,9 @@ export function OutcomeButtons({ kind, value, onChange, compact }: OutcomeButton
   );
 }
 
+/** Current win streak. Nothing is shown for a streak of 0. */
 export function StreakBadge({ streak }: { streak: number }) {
+  if (streak <= 0) return null;
   const hot = streak >= 3;
   return (
     <Typography component="span" title={`Current win streak: ${streak}`} sx={{
@@ -137,10 +147,7 @@ export function StreakBadge({ streak }: { streak: number }) {
   );
 }
 
-export const groupLabelSx = {
-  fontSize: "0.66rem", fontWeight: 700, color: "var(--tx-3)",
-  textTransform: "uppercase" as const, letterSpacing: 1.1,
-};
+export const groupLabelSx = type.label;
 
 // Shared by every row in every group so the week strips and buttons line up.
 const ROW_COLUMNS = "18px minmax(0, 1fr) 182px 236px 52px";
@@ -199,7 +206,7 @@ function HabitRow({ habit, first, today, weekStartsOn, narrow, allowBackfill, on
   const streak = statsFor(habit, today, weekStartsOn).currentStreak;
   const strip = (
     <WeekStrip outcomes={habit.outcomes} today={today} weekStartsOn={weekStartsOn} showLabels={first}
-      size={narrow ? 18 : 22}
+      size={narrow ? 18 : 22} markToday={false}
       onCycle={allowBackfill ? (date) => onOutcome(habit.id, date, nextOutcome(habit.outcomes[date])) : undefined} />
   );
   // On narrow screens the buttons are square W and L; the labels only fit on wide rows.
@@ -209,12 +216,12 @@ function HabitRow({ habit, first, today, weekStartsOn, narrow, allowBackfill, on
   );
   const handle = (
     <Box {...attributes} {...listeners} aria-label="Drag to reorder" className="habit-drag"
-      sx={{ cursor: "grab", color: "var(--tx-4)", display: "flex", opacity: { xs: 1, md: 0 }, transition: "opacity 0.15s", "&:focus-visible": { opacity: 1, outline: "2px solid #6366f1", borderRadius: 1 } }}>
+      sx={{ cursor: "grab", color: "var(--tx-4)", display: "flex", opacity: { xs: 1, md: 0 }, transition: "opacity 0.15s", "&:focus-visible": { opacity: 1, outline: "2px solid var(--accent)", borderRadius: 1 } }}>
       <DragIndicatorIcon sx={{ fontSize: 16 }} />
     </Box>
   );
   const name = (
-    <ButtonBase onClick={onOpen} sx={{ justifyContent: "flex-start", textAlign: "left", borderRadius: 1, minWidth: 0, "&:hover .habit-name": { color: "#6366f1" } }}>
+    <ButtonBase onClick={onOpen} sx={{ justifyContent: "flex-start", textAlign: "left", borderRadius: 1, minWidth: 0, "&:hover .habit-name": { color: "var(--accent)" } }}>
       <Typography className="habit-name" sx={{ fontSize: "0.9rem", fontWeight: 500, color: "var(--tx-2)", overflowWrap: "anywhere", transition: "color 0.15s" }}>
         {habit.name || "Locked habit"}
       </Typography>
@@ -281,7 +288,7 @@ export function MonthCalendar({ month, outcomes, today, weekStartsOn, onCycle }:
             fontSize: "0.62rem", fontWeight: o ? 800 : 500,
             backgroundColor: o === "W" ? WIN.bg : o === "L" ? LOSS.bg : future ? "transparent" : "var(--surface-2)",
             color: o === "W" ? WIN.fg : o === "L" ? LOSS.fg : "var(--tx-3)",
-            outline: date === today ? "2px solid #6366f1" : "none", outlineOffset: "1px",
+            outline: date === today ? "2px solid var(--accent)" : "none", outlineOffset: "1px",
             opacity: future ? 0.45 : 1,
           }}>
             {o ?? Number(date.slice(8))}
@@ -290,7 +297,7 @@ export function MonthCalendar({ month, outcomes, today, weekStartsOn, onCycle }:
         const label = `${date}: ${o === "W" ? "win" : o === "L" ? "loss" : "not logged"}`;
         return onCycle && !future ? (
           <ButtonBase key={date} aria-label={label} title={label} onClick={() => onCycle(date)}
-            sx={{ borderRadius: "6px", "&.Mui-focusVisible": { outline: "2px solid #6366f1", outlineOffset: "2px" } }}>
+            sx={{ borderRadius: "6px", "&.Mui-focusVisible": { outline: "2px solid var(--accent)", outlineOffset: "2px" } }}>
             {cell}
           </ButtonBase>
         ) : (
@@ -318,7 +325,7 @@ export function PeriodSwitch({ years, value, onChange }: { years: number[]; valu
             color: on ? "var(--tx)" : "var(--tx-3)",
             backgroundColor: on ? "var(--surface)" : "transparent",
             boxShadow: on ? "0 1px 2px rgba(0,0,0,0.12)" : "none",
-            "&.Mui-focusVisible": { outline: "2px solid #6366f1" },
+            "&.Mui-focusVisible": { outline: "2px solid var(--accent)" },
           }}>{o.label}</ButtonBase>
         );
       })}

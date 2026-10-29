@@ -24,9 +24,9 @@ function descriptionPreview(html: string | null | undefined): string {
 }
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  high:   { bg: "#fff1f2", text: "#e11d48", border: "#fecdd3" },
-  medium: { bg: "#fffbeb", text: "#d97706", border: "#fde68a" },
-  low:    { bg: "#f0fdf4", text: "#16a34a", border: "#bbf7d0" },
+  high:   { bg: "var(--danger-bg)", text: "var(--danger-fg)", border: "transparent" },
+  medium: { bg: "var(--warning-bg)", text: "var(--warning-fg)", border: "transparent" },
+  low:    { bg: "var(--success-bg)", text: "var(--success-fg)", border: "transparent" },
 };
 
 const PROJECT_COLORS = [
@@ -157,7 +157,7 @@ export default function TaskCard({ task, onClick, onAddToFocus, privacyMode }: P
               sx={{
                 p: 0.3, opacity: 0, flexShrink: 0, mt: "-2px",
                 color: "var(--tx-4)", transition: "opacity 0.15s, color 0.15s",
-                "&:hover": { color: "#6366f1", backgroundColor: "transparent" },
+                "&:hover": { color: "var(--accent)", backgroundColor: "transparent" },
               }}
             >
               <AddTaskIcon sx={{ fontSize: 15 }} />
@@ -187,13 +187,13 @@ export default function TaskCard({ task, onClick, onAddToFocus, privacyMode }: P
           {task.dueDate && (
             <Box sx={{
               display: "flex", alignItems: "center", gap: 0.5,
-              color: isOverdue ? "#e11d48" : "#64748b",
+              color: isOverdue ? "var(--danger-fg)" : "var(--tx-3)",
             }}>
               <CalendarTodayIcon sx={{ fontSize: 12 }} />
               <Typography sx={{
                 fontSize: "0.75rem",
                 fontWeight: isOverdue ? 700 : 400,
-                color: isOverdue ? "#e11d48" : "#64748b",
+                color: isOverdue ? "var(--danger-fg)" : "var(--tx-3)",
               }}>
                 {dayjs(task.dueDate).format("MMM D")}
               </Typography>

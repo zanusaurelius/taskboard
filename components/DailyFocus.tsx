@@ -48,7 +48,8 @@ import { DailyGoal, Task } from "@/lib/types";
 import { useHabits } from "@/lib/useHabits";
 import { KIND_COPY } from "@/lib/habit-kind";
 import type { HabitKind } from "@/lib/habit-stats";
-import { SortableHabitRows, groupLabelSx } from "./HabitParts";
+import { SortableHabitRows } from "./HabitParts";
+import { cardSx, type } from "@/lib/ui";
 import { useVault } from "@/lib/vault-context";
 
 const localDateStr = (d: Date) =>
@@ -392,7 +393,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
       borderRadius: 2, fontSize: "0.875rem", backgroundColor: "var(--surface-2)",
       "& fieldset": { borderColor: "var(--border)" },
       "&:hover fieldset": { borderColor: "var(--border-2)" },
-      "&.Mui-focused fieldset": { borderColor: "#6366f1", borderWidth: 1.5 },
+      "&.Mui-focused fieldset": { borderColor: "var(--accent)", borderWidth: 1.5 },
     },
     "& textarea": { py: 1, px: 0.5, lineHeight: 1.5 },
   };
@@ -405,14 +406,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
   const loggedHabits = habits.filter((h) => h.outcomes[habitsApi.today]).length;
 
   return (
-    <Box sx={{
-      backgroundColor: "var(--surface)",
-      borderRadius: 2.5,
-      boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
-      mb: 3,
-      flexShrink: 0,
-      overflow: "hidden",
-    }}>
+    <Box sx={{ ...cardSx, flexShrink: 0, overflow: "hidden" }}>
       {/* Header */}
       <Box sx={{
         px: 3, py: 1.5,
@@ -456,7 +450,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                 return (
                   <Box sx={{ ml: 0.75, px: 1, py: 0.2, borderRadius: 99,
                     backgroundColor: "var(--accent-tint)", display: "inline-flex", alignItems: "center" }}>
-                    <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: "#6366f1", lineHeight: 1 }}>
+                    <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--accent)", lineHeight: 1 }}>
                       {relativeLabel}
                     </Typography>
                   </Box>
@@ -468,7 +462,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                   size="small"
                   onClick={(e) => { e.stopPropagation(); setDayOffset(0); }}
                   sx={{ ml: 0.5, textTransform: "none", fontSize: "0.72rem", fontWeight: 600,
-                    color: "#6366f1", backgroundColor: "var(--accent-tint)", borderRadius: 99,
+                    color: "var(--accent)", backgroundColor: "var(--accent-tint)", borderRadius: 99,
                     px: 1, py: 0.15, minWidth: 0, "&:hover": { backgroundColor: "var(--accent-tint)", opacity: 0.8 } }}
                 >
                   Today
@@ -480,20 +474,20 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
             <Box sx={{ display: { xs: "none", sm: "flex" }, gap: 1 }}>
               {goals.length > 0 && (
                 <Box sx={{
-                  backgroundColor: completedGoals === goals.length ? "#dcfce7" : "var(--surface-2)",
+                  backgroundColor: completedGoals === goals.length ? "var(--success-bg)" : "var(--surface-2)",
                   borderRadius: 99, px: 1.25, py: 0.2,
                 }}>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: completedGoals === goals.length ? "#16a34a" : "var(--tx-3)" }}>
+                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: completedGoals === goals.length ? "var(--success-fg)" : "var(--tx-3)" }}>
                     {completedGoals}/{goals.length} goals
                   </Typography>
                 </Box>
               )}
               {habits.length > 0 && (
                 <Box sx={{
-                  backgroundColor: loggedHabits === habits.length ? "#dcfce7" : "var(--surface-2)",
+                  backgroundColor: loggedHabits === habits.length ? "var(--success-bg)" : "var(--surface-2)",
                   borderRadius: 99, px: 1.25, py: 0.2,
                 }}>
-                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: loggedHabits === habits.length ? "#16a34a" : "var(--tx-3)" }}>
+                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: loggedHabits === habits.length ? "var(--success-fg)" : "var(--tx-3)" }}>
                     {loggedHabits}/{habits.length} habits
                   </Typography>
                 </Box>
@@ -528,7 +522,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               borderLeft: "3px solid #6366f1",
               pl: 1.5, py: 0.5,
             }}>
-              <Typography sx={{ fontSize: "0.72rem", fontWeight: 800, color: "#6366f1", textTransform: "uppercase", letterSpacing: 0.8, flexShrink: 0, mt: "1px" }}>
+              <Typography sx={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--accent)", textTransform: "uppercase", letterSpacing: 0.8, flexShrink: 0, mt: "1px" }}>
                 One thing to do better today
               </Typography>
               <Typography sx={{ fontSize: "0.85rem", color: "var(--tx-2)", fontWeight: 500, lineHeight: 1.4 }}>
@@ -540,12 +534,12 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
           {/* ── Habits ── (today only; past days are logged on the Habits page) */}
           {isToday && <Box>
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.75 }}>
-              <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 1.1 }}>
+              <Typography sx={{ ...type.label }}>
                 Daily Habits
               </Typography>
               <Button size="small" endIcon={<ArrowForwardIcon sx={{ fontSize: "14px !important" }} />}
                 onClick={() => window.dispatchEvent(new CustomEvent("app:navigate", { detail: "habits" }))}
-                sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 600, color: "#6366f1", minWidth: 0, py: 0 }}>
+                sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 600, color: "var(--accent)", minWidth: 0, py: 0 }}>
                 {habits.length === 0 ? "Add a habit" : "Habits"}
               </Button>
             </Box>
@@ -554,7 +548,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               if (items.length === 0) return null;
               return (
                 <Box key={kind} sx={{ mb: 1 }}>
-                  <Typography sx={{ ...groupLabelSx, mb: 0.25 }}>{KIND_COPY[kind].group}</Typography>
+                  <Typography sx={{ ...type.small, fontWeight: 600, mb: 0.25 }}>{KIND_COPY[kind].group}</Typography>
                   <Box sx={{ mx: isNarrow ? 0 : -1.5 }}>
                     <SortableHabitRows items={items} today={habitsApi.today} weekStartsOn={habitsApi.weekStartsOn}
                       narrow={isNarrow} labelFirst={kind === "GOOD" || !habits.some((h) => h.kind === "GOOD")}
@@ -572,18 +566,18 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
           {/* ── Goals ── */}
           <Box>
             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.25 }}>
-              <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 1.1 }}>
+              <Typography sx={{ ...type.label }}>
                 {isToday ? `Today's Top Goals` : dayOffset === 1 ? `Tomorrow's Goals` : dayOffset === -1 ? `Yesterday's Goals` : `${formatDate(viewDate).split(",")[0]}'s Goals`}
               </Typography>
               {isToday && carryOver.length > 0 && (
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <Typography sx={{ fontSize: "0.75rem", color: "#f59e0b", fontWeight: 500 }}>
+                  <Typography sx={{ fontSize: "0.75rem", color: "var(--warning-fg)", fontWeight: 500 }}>
                     {carryOver.length} unfinished from yesterday
                   </Typography>
                   <Button size="small" onClick={handleCarryOver}
-                    sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 600, color: "#f59e0b",
-                      backgroundColor: "#fef3c7", borderRadius: 1.5, px: 1.25, py: 0.3, minWidth: 0,
-                      "&:hover": { backgroundColor: "#fde68a" } }}>
+                    sx={{ textTransform: "none", fontSize: "0.75rem", fontWeight: 600, color: "var(--warning-fg)",
+                      backgroundColor: "var(--warning-bg)", borderRadius: 1.5, px: 1.25, py: 0.3, minWidth: 0,
+                      "&:hover": { backgroundColor: "var(--warning-bg)", filter: "brightness(0.95)" } }}>
                     Carry over
                   </Button>
                 </Box>
@@ -657,7 +651,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
                         color: "var(--tx-4)",
                         borderRadius: 1.5,
                         transition: "color 0.15s, background-color 0.15s",
-                        "&:hover": { color: "#6366f1", backgroundColor: "#f5f3ff" },
+                        "&:hover": { color: "var(--accent)", backgroundColor: "var(--accent-tint)" },
                       }}
                     >
                       <AddIcon sx={{ fontSize: 14 }} />
@@ -675,11 +669,11 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               <Box sx={{ borderTop: "1px solid var(--divider)" }} />
               <Box>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-                  <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 1.1 }}>
+                  <Typography sx={{ ...type.label }}>
                     One thing to do better tomorrow
                   </Typography>
                   {reflectionSaved && (
-                    <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, color: "#22c55e" }}>
+                    <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--success-fg)" }}>
                       Saved
                     </Typography>
                   )}
@@ -702,7 +696,7 @@ export default function DailyFocus({ tasks, onCreateBoardTask }: DailyFocusProps
               </Box>
 
               <Box>
-                <Typography sx={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--tx-4)", textTransform: "uppercase", letterSpacing: 1.1, mb: 1 }}>
+                <Typography sx={{ ...type.label, mb: 1 }}>
                   One thing I&apos;m grateful for
                 </Typography>
                 <TextField
@@ -826,7 +820,7 @@ function GoalSlot({
           onChange={onToggleGoal}
           size="small"
           icon={<RadioButtonUncheckedIcon sx={{ fontSize: 18, color: "var(--tx-4)" }} />}
-          checkedIcon={<CheckCircleIcon sx={{ fontSize: 18, color: "#22c55e" }} />}
+          checkedIcon={<CheckCircleIcon sx={{ fontSize: 18, color: "var(--success-fg)" }} />}
           sx={{ p: 0.25 }}
         />
         {isEditing ? (
@@ -873,7 +867,7 @@ function GoalSlot({
           <Tooltip title="Edit" placement="top">
             <IconButton className="goal-action" size="small" onClick={() => setIsEditing(true)}
               sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
-                "&:hover": { color: "#6366f1" } }}>
+                "&:hover": { color: "var(--accent)" } }}>
               <EditOutlinedIcon sx={{ fontSize: 14 }} />
             </IconButton>
           </Tooltip>
@@ -883,7 +877,7 @@ function GoalSlot({
           <Tooltip title={goal.taskId ? "Mark done & move task to Done" : "Mark done"} placement="top">
             <IconButton className="goal-action" size="small" onClick={onToggleGoal}
               sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
-                "&:hover": { color: "#22c55e" } }}>
+                "&:hover": { color: "var(--success-fg)" } }}>
               <TaskAltIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
@@ -892,7 +886,7 @@ function GoalSlot({
           <Tooltip title="Move to next day" placement="top">
             <IconButton className="goal-action" size="small" onClick={onMoveToNextDay}
               sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
-                "&:hover": { color: "#6366f1" } }}>
+                "&:hover": { color: "var(--accent)" } }}>
               <ArrowForwardIcon sx={{ fontSize: 14 }} />
             </IconButton>
           </Tooltip>
@@ -901,7 +895,7 @@ function GoalSlot({
           <Tooltip title="Send to board" placement="top">
             <IconButton className="goal-action" size="small" onClick={onSendToBoard}
               sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
-                "&:hover": { color: "#6366f1" } }}>
+                "&:hover": { color: "var(--accent)" } }}>
               <ReplyIcon sx={{ fontSize: 14 }} />
             </IconButton>
           </Tooltip>
@@ -910,7 +904,7 @@ function GoalSlot({
           <Tooltip title="Remove" placement="top">
             <IconButton className="goal-action" size="small" onClick={onDeleteGoal}
               sx={{ p: 0.5, opacity: 0, transition: "opacity 0.15s", color: "var(--border-2)",
-                "&:hover": { color: "#ef4444" } }}>
+                "&:hover": { color: "var(--danger-fg)" } }}>
               <DeleteOutlineIcon sx={{ fontSize: 15 }} />
             </IconButton>
           </Tooltip>
@@ -1010,7 +1004,7 @@ function GoalSlot({
         border: "1.5px dashed var(--border)",
         cursor: canAdd ? "pointer" : "default",
         opacity: canAdd ? 1 : 0.4,
-        "&:hover": canAdd ? { borderColor: "#6366f1", backgroundColor: "#f5f3ff" } : {},
+        "&:hover": canAdd ? { borderColor: "var(--accent)", backgroundColor: "var(--accent-tint)" } : {},
         transition: "all 0.15s",
       }}>
       <Box sx={{

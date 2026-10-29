@@ -39,7 +39,8 @@ import TaskCard from "./TaskCard";
 import TaskModal from "./TaskModal";
 import VaultUnlockModal from "./VaultUnlockModal";
 import VaultSetupModal from "./VaultSetupModal";
-import PrivacyToggle from "./PrivacyToggle";
+import PageHeader from "./PageHeader";
+import { cardSx, primaryButtonSx, secondaryButtonSx, type } from "@/lib/ui";
 import { usePrivacy } from "@/lib/privacy";
 import dynamic from "next/dynamic";
 const DailyFocus = dynamic(() => import("./DailyFocus"), { ssr: false });
@@ -90,7 +91,7 @@ function DeletionToast({ entry, onUndo }: { entry: DeletionEntry; onUndo: () => 
           startIcon={<UndoIcon sx={{ fontSize: 15 }} />}
           onClick={onUndo}
           sx={{
-            color: "#6366f1",
+            color: "var(--accent)",
             fontWeight: 700,
             fontSize: "0.8rem",
             textTransform: "none",
@@ -657,92 +658,29 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
   return (
     <Box sx={{ minHeight: "100%", backgroundColor: "var(--bg)", display: "flex", flexDirection: "column" }}>
 
-      {/* ── Top action bar ── */}
-      <Box sx={{
-        backgroundColor: "var(--surface)",
-        borderBottom: "1px solid var(--border)",
-        px: { xs: 1.5, sm: 3 }, py: 1.5,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        flexShrink: 0,
-      }}>
-        <Typography sx={{ fontWeight: 700, fontSize: "1rem", color: "var(--tx)", letterSpacing: "-0.2px" }}>
-          Task Board
-        </Typography>
-        <Box sx={{ display: "flex", gap: { xs: 0.75, sm: 1.5 }, alignItems: "center" }}>
-          <Tooltip title="Search everything  ⌘K" placement="bottom" arrow>
-            <IconButton
-              size="small"
-              onClick={() => window.dispatchEvent(new CustomEvent("globalsearch:open"))}
-              sx={{
-                color: "var(--tx-3)",
-                border: "1px solid var(--border)",
-                borderRadius: 1.5,
-                p: 0.75,
-                "&:hover": { backgroundColor: "var(--surface-hover)", color: "var(--tx)", borderColor: "var(--border-2)" },
-              }}
-            >
-              <SearchIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Tooltip>
-          <PrivacyToggle sensitiveTasks={tasks.some((t) => t.sensitive)} />
-          <Button
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={() => setNewProjectOpen(true)}
-            variant="outlined"
-            sx={{
-              color: "var(--tx-2)",
-              borderColor: "var(--border-2)",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              textTransform: "none",
-              borderRadius: 2,
-              px: { xs: 1, sm: 2 },
-              minWidth: 0,
-              "&:hover": { borderColor: "var(--tx-4)", backgroundColor: "var(--surface-2)" },
-            }}>
-            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Project</Box>
+      <PageHeader
+        title="Board"
+        privacy={{ sensitiveTasks: tasks.some((t) => t.sensitive) }}
+        actions={<>
+          <Button size="small" startIcon={<AddIcon />} onClick={() => setNewProjectOpen(true)} sx={secondaryButtonSx}>
+            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New project</Box>
             <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Project</Box>
           </Button>
-          <Tooltip title="New Task" placement="bottom" arrow>
-            <Button
-              size="small"
-              startIcon={<AddIcon />}
-              variant="contained"
-              onClick={() => openCreate("todo")}
-              sx={{
-                background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                textTransform: "none",
-                borderRadius: 2,
-                px: { xs: 1, sm: 2 },
-                minWidth: 0,
-                boxShadow: "0 2px 8px rgba(99,102,241,0.4)",
-                "&:hover": { background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)" },
-              }}>
-              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New Task</Box>
-              <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Task</Box>
-            </Button>
-          </Tooltip>
-        </Box>
-      </Box>
+          <Button size="small" startIcon={<AddIcon />} onClick={() => openCreate("todo")} sx={primaryButtonSx}>
+            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>New task</Box>
+            <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>Task</Box>
+          </Button>
+        </>}
+      />
 
       {/* ── Page body ── */}
-      <Box sx={{ flex: 1, p: { xs: 1.5, sm: 3 }, display: "flex", flexDirection: "column", overflowX: isMobile ? "hidden" : "auto" }}>
+      <Box sx={{ flex: 1, px: { xs: 2, sm: 3 }, py: { xs: 2, sm: 3 }, display: "flex", flexDirection: "column", gap: 3, overflowX: isMobile ? "hidden" : "auto" }}>
 
         {/* ── Daily Focus ── */}
         <DailyFocus tasks={tasks} onCreateBoardTask={handleCreateFromFocus} />
 
         {/* ── Filter bar ── */}
-        <Box sx={{
-          backgroundColor: "var(--surface)",
-          borderRadius: 2.5,
-          boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
-          p: { xs: 1.5, sm: 3 },
-          mb: 3,
-          flexShrink: 0,
-        }}>
+        <Box sx={{ ...cardSx, p: { xs: 2, sm: 2.5 }, flexShrink: 0 }}>
           <TextField
             size="small"
             placeholder="Search tasks…"
@@ -765,7 +703,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                 backgroundColor: "var(--surface-2)",
                 "& fieldset": { borderColor: "var(--border)" },
                 "&:hover fieldset": { borderColor: "var(--border-2)" },
-                "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                "&.Mui-focused fieldset": { borderColor: "var(--accent)" },
               },
               "& input": { py: "10px" },
             }}
@@ -776,8 +714,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
           {/* Projects row */}
           <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 2 }}>
             <Typography sx={{
-              color: "var(--tx-4)", fontWeight: 800, fontSize: "0.7rem",
-              textTransform: "uppercase", letterSpacing: 1.2,
+              ...type.label,
               flexShrink: 0, minWidth: 70, lineHeight: "30px",
             }}>
               Projects
@@ -824,12 +761,12 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
                   />
                   <IconButton size="small" title="Restore project"
                     onClick={() => updateProject(p.id, { archived: false })}
-                    sx={{ p: 0.4, flexShrink: 0, color: "var(--tx-4)", "&:hover": { color: "#22c55e", backgroundColor: "#f0fdf4" } }}>
+                    sx={{ p: 0.4, flexShrink: 0, color: "var(--tx-4)", "&:hover": { color: "var(--success-fg)", backgroundColor: "var(--success-bg)" } }}>
                     <RestoreIcon sx={{ fontSize: 15 }} />
                   </IconButton>
                   <IconButton size="small" title="Delete permanently"
                     onClick={() => handlePermanentDeleteProject(p.id, p.name)}
-                    sx={{ p: 0.4, flexShrink: 0, color: "var(--tx-4)", "&:hover": { color: "#ef4444", backgroundColor: "#fff1f2" } }}>
+                    sx={{ p: 0.4, flexShrink: 0, color: "var(--tx-4)", "&:hover": { color: "var(--danger-fg)", backgroundColor: "var(--danger-bg)" } }}>
                     <DeleteForeverIcon sx={{ fontSize: 15 }} />
                   </IconButton>
                 </Box>
@@ -846,8 +783,7 @@ export default function TaskBoard({ pendingNoteTask, onClearPendingNoteTask }: T
           {/* Stages row */}
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, flexWrap: "wrap" }}>
             <Typography sx={{
-              color: "var(--tx-2)", fontWeight: 800, fontSize: "0.7rem",
-              textTransform: "uppercase", letterSpacing: 1.2, minWidth: 70,
+              ...type.label, minWidth: 70,
             }}>
               Stages
             </Typography>
